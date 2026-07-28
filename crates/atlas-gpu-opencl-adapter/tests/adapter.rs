@@ -224,6 +224,26 @@ fn rejects_global_size_that_is_not_multiple_of_local_size() {
 }
 
 #[test]
+fn rejects_max_matches_that_exceeds_kernel_uint() {
+    let error = LaunchArgs::parse(&[
+        "target/atlas-gpu/atlas_search.cl".to_owned(),
+        "--start".to_owned(),
+        "10".to_owned(),
+        "--end".to_owned(),
+        "20".to_owned(),
+        "--max-matches".to_owned(),
+        "4294967296".to_owned(),
+        "--global-size".to_owned(),
+        "256".to_owned(),
+        "--local-size".to_owned(),
+        "64".to_owned(),
+    ])
+    .unwrap_err();
+
+    assert!(error.contains("max-matches exceeds OpenCL uint"));
+}
+
+#[test]
 fn cli_emits_match_lines_from_launcher() {
     let output = run_cli(
         &[

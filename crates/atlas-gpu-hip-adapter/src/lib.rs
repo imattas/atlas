@@ -85,6 +85,9 @@ impl LaunchArgs {
         if max_matches == 0 {
             return Err("max-matches must be nonzero".to_owned());
         }
+        if u32::try_from(max_matches).is_err() {
+            return Err("max-matches exceeds HIP uint".to_owned());
+        }
         let global_size = parse_usize_flag(args, "--global-size")?;
         let local_size = parse_usize_flag(args, "--local-size")?;
         if global_size == 0 || local_size == 0 {
