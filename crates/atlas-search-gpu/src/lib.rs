@@ -620,6 +620,10 @@ pub struct RuntimeTelemetry {
     ///
     /// `None` means no GPU driver was launched or attempted.
     pub selected_gpu_sdk: Option<String>,
+    /// Concrete runtime/toolchain identity for the selected SDK.
+    ///
+    /// `None` means no GPU driver was launched or attempted.
+    pub selected_gpu_runtime: Option<String>,
     /// Selected SDK plan rationale.
     pub rationale: String,
     /// Whether every returned match was CPU validated.
@@ -710,6 +714,7 @@ impl AcceleratorRuntime {
                 telemetry: RuntimeTelemetry {
                     launch,
                     selected_gpu_sdk: None,
+                    selected_gpu_runtime: None,
                     rationale: plan.rationale,
                     cpu_validated: true,
                     rejected_device_matches: 0,
@@ -726,6 +731,10 @@ impl AcceleratorRuntime {
                 telemetry: RuntimeTelemetry {
                     launch,
                     selected_gpu_sdk: plan.selected.as_ref().map(|sdk| sdk.name().to_owned()),
+                    selected_gpu_runtime: plan
+                        .selected
+                        .as_ref()
+                        .map(|sdk| sdk.runtime_identity().to_owned()),
                     rationale: format!(
                         "{}; no valid device matches after CPU validation",
                         plan.rationale
@@ -751,6 +760,10 @@ impl AcceleratorRuntime {
                     telemetry: RuntimeTelemetry {
                         launch,
                         selected_gpu_sdk: plan.selected.as_ref().map(|sdk| sdk.name().to_owned()),
+                        selected_gpu_runtime: plan
+                            .selected
+                            .as_ref()
+                            .map(|sdk| sdk.runtime_identity().to_owned()),
                         rationale: format!(
                             "{}; incomplete device matches after CPU completeness audit",
                             plan.rationale
@@ -766,6 +779,10 @@ impl AcceleratorRuntime {
             telemetry: RuntimeTelemetry {
                 launch,
                 selected_gpu_sdk: plan.selected.as_ref().map(|sdk| sdk.name().to_owned()),
+                selected_gpu_runtime: plan
+                    .selected
+                    .as_ref()
+                    .map(|sdk| sdk.runtime_identity().to_owned()),
                 rationale: plan.rationale,
                 cpu_validated: true,
                 rejected_device_matches: validation.rejected,
@@ -865,6 +882,7 @@ impl AcceleratorRuntime {
                 telemetry: RuntimeTelemetry {
                     launch,
                     selected_gpu_sdk: None,
+                    selected_gpu_runtime: None,
                     rationale: rationale.to_owned(),
                     cpu_validated: true,
                     rejected_device_matches: 0,
@@ -906,6 +924,7 @@ impl AcceleratorRuntime {
                     telemetry: RuntimeTelemetry {
                         launch,
                         selected_gpu_sdk: None,
+                        selected_gpu_runtime: None,
                         rationale,
                         cpu_validated: true,
                         rejected_device_matches: 0,
@@ -922,6 +941,7 @@ impl AcceleratorRuntime {
                 telemetry: RuntimeTelemetry {
                     launch,
                     selected_gpu_sdk: None,
+                    selected_gpu_runtime: None,
                     rationale: "no compatible GPU SDK detected for search program".to_owned(),
                     cpu_validated: true,
                     rejected_device_matches: 0,
@@ -1099,6 +1119,7 @@ impl AcceleratorRuntime {
             telemetry: RuntimeTelemetry {
                 launch: Self::plan_launch(domain, 256, 1024),
                 selected_gpu_sdk: None,
+                selected_gpu_runtime: None,
                 rationale: "cancelled before GPU driver launch".to_owned(),
                 cpu_validated: true,
                 rejected_device_matches: 0,
@@ -1165,6 +1186,7 @@ fn sdk_runtime_telemetry(
     RuntimeTelemetry {
         launch,
         selected_gpu_sdk: Some(sdk.name().to_owned()),
+        selected_gpu_runtime: Some(sdk.runtime_identity().to_owned()),
         rationale,
         cpu_validated: true,
         rejected_device_matches,

@@ -24,6 +24,7 @@ class HardwareBenchmarkSummaryTests(unittest.TestCase):
                 "elapsed_ns": 200,
                 "requested_gpu_sdk": "hip",
                 "actual_gpu_sdk": "HIP",
+                "hardware": "AMD HIP runtime/toolchain",
                 "mode": "DeviceValidated",
                 "matches": list(range(1500)),
                 "launch": {
@@ -56,6 +57,7 @@ class HardwareBenchmarkSummaryTests(unittest.TestCase):
         self.assertEqual(summary["simd"]["match_count"], 1500)
         self.assertEqual(summary["accelerator"]["mode"], "DeviceValidated")
         self.assertEqual(summary["accelerator"]["actual_gpu_sdk"], "HIP")
+        self.assertEqual(summary["accelerator"]["hardware"], "AMD HIP runtime/toolchain")
         self.assertEqual(summary["accelerator"]["match_count"], 1500)
         self.assertEqual(summary["accelerator"]["first_matches"], [0, 1, 2, 3, 4])
         self.assertEqual(summary["accelerator"]["last_matches"], [1495, 1496, 1497, 1498, 1499])

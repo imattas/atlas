@@ -40,6 +40,7 @@ def summarize_benchmark(document: dict[str, Any]) -> dict[str, Any]:
             "elapsed_ns": accelerator.get("elapsed_ns"),
             "requested_gpu_sdk": accelerator.get("requested_gpu_sdk"),
             "actual_gpu_sdk": accelerator.get("actual_gpu_sdk"),
+            "hardware": accelerator.get("hardware"),
             "mode": accelerator.get("mode"),
             "launch": accelerator.get("launch"),
             "telemetry": accelerator.get("telemetry"),

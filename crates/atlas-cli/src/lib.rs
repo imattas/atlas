@@ -172,8 +172,9 @@ fn benchmark(args: &[String]) -> Result<String, String> {
     let speedup_ratio = format_speedup_ratio(native_elapsed_ns, accelerator_elapsed_ns);
     let requested_gpu_sdk = requested_gpu_sdk_json(request.gpu_sdk);
     let actual_gpu_sdk = optional_string_json(accelerator.telemetry.selected_gpu_sdk.as_deref());
+    let hardware = optional_string_json(accelerator.telemetry.selected_gpu_runtime.as_deref());
     Ok(format!(
-        "{{\"schema_major\":1,\"kind\":\"benchmark\",\"fixture\":\"{}\",\"domain\":{{\"start\":{},\"end\":{}}},\"sample_count\":{},\"native_samples_ns\":{},\"simd_samples_ns\":{},\"accelerator_samples_ns\":{},\"native\":{{\"elapsed_ns\":{},\"matches\":{}}},\"simd\":{{\"elapsed_ns\":{},\"matches\":{}}},\"accelerator\":{{\"elapsed_ns\":{},\"requested_gpu_sdk\":{},\"actual_gpu_sdk\":{},\"speedup_ratio\":{},\"mode\":\"{}\",\"matches\":{},\"launch\":{{\"global_size\":{},\"local_size\":{},\"max_matches\":{},\"output_buffer_bytes\":{}}},\"telemetry\":\"{}\"}}}}\n",
+        "{{\"schema_major\":1,\"kind\":\"benchmark\",\"fixture\":\"{}\",\"domain\":{{\"start\":{},\"end\":{}}},\"sample_count\":{},\"native_samples_ns\":{},\"simd_samples_ns\":{},\"accelerator_samples_ns\":{},\"native\":{{\"elapsed_ns\":{},\"matches\":{}}},\"simd\":{{\"elapsed_ns\":{},\"matches\":{}}},\"accelerator\":{{\"elapsed_ns\":{},\"requested_gpu_sdk\":{},\"actual_gpu_sdk\":{},\"hardware\":{},\"speedup_ratio\":{},\"mode\":\"{}\",\"matches\":{},\"launch\":{{\"global_size\":{},\"local_size\":{},\"max_matches\":{},\"output_buffer_bytes\":{}}},\"telemetry\":\"{}\"}}}}\n",
         json_escape(&request.fixture),
         request.domain.start,
         request.domain.end,
@@ -188,6 +189,7 @@ fn benchmark(args: &[String]) -> Result<String, String> {
         accelerator_elapsed_ns,
         requested_gpu_sdk,
         actual_gpu_sdk,
+        hardware,
         speedup_ratio,
         mode_name(accelerator.mode),
         format_matches(&accelerator.matches),
@@ -309,6 +311,7 @@ fn missing_requested_gpu_sdk_report(
         telemetry: RuntimeTelemetry {
             launch: AcceleratorRuntime::plan_launch(domain, 256, 1024),
             selected_gpu_sdk: None,
+            selected_gpu_runtime: None,
             rationale: format!(
                 "requested GPU SDK {} not detected; CPU fallback used",
                 gpu_sdk_choice_display_name(choice)
