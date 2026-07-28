@@ -3,6 +3,7 @@
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::ptr;
 
 type CuDevice = c_int;
@@ -201,7 +202,16 @@ fn read_cuda_artifact_as_ptx(path: &str) -> Result<String, String> {
     }
     let source = fs::read_to_string(path)
         .map_err(|error| format!("cannot read CUDA source {path}: {error}"))?;
-    NvrtcCompiler::load()?.compile_source_to_ptx(&source)
+    match NvrtcCompiler::load().and_then(|compiler| compiler.compile_source_to_ptx(&source)) {
+        Ok(ptx) => Ok(ptx),
+        Err(nvrtc_error) => NvccCompiler::load()
+            .and_then(|compiler| compiler.compile_source_file_to_ptx(path))
+            .map_err(|nvcc_error| {
+                format!(
+                    "failed to compile CUDA source with NVRTC or nvcc; NVRTC: {nvrtc_error}; nvcc: {nvcc_error}"
+                )
+            }),
+    }
 }
 
 fn ensure_atlas_entry(ptx: &str) -> Result<(), String> {
@@ -421,6 +431,51 @@ struct NvrtcProgramGuard<'a> {
 impl Drop for NvrtcProgramGuard<'_> {
     fn drop(&mut self) {
         let _ = unsafe { (self.compiler.api.nvrtc_destroy_program)(&mut self.raw) };
+    }
+}
+
+#[derive(Debug, Clone)]
+struct NvccCompiler {
+    command: PathBuf,
+}
+
+impl NvccCompiler {
+    fn load() -> Result<Self, String> {
+        find_nvcc_command()
+            .map(|command| Self { command })
+            .ok_or_else(|| "failed to find nvcc CUDA compiler command".to_owned())
+    }
+
+    fn compile_source_file_to_ptx(&self, source_path: &str) -> Result<String, String> {
+        let output_path =
+            std::env::temp_dir().join(format!("atlas-cuda-nvcc-{}.ptx", std::process::id()));
+        let output = Command::new(&self.command)
+            .arg("-ptx")
+            .arg("-std=c++11")
+            .arg("-arch=compute_52")
+            .arg(source_path)
+            .arg("-o")
+            .arg(&output_path)
+            .output()
+            .map_err(|error| format!("failed to execute {}: {error}", self.command.display()))?;
+
+        if !output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let _ = fs::remove_file(&output_path);
+            return Err(format!(
+                "{} exited with status {}; stdout: {}; stderr: {}",
+                self.command.display(),
+                output.status,
+                stdout.trim(),
+                stderr.trim()
+            ));
+        }
+
+        let ptx = fs::read_to_string(&output_path)
+            .map_err(|error| format!("cannot read nvcc PTX {}: {error}", output_path.display()))?;
+        let _ = fs::remove_file(output_path);
+        Ok(ptx)
     }
 }
 
@@ -850,6 +905,47 @@ pub fn nvrtc_library_candidates_from_roots(
         .collect()
 }
 
+/// Returns candidate `nvcc` compiler commands from CUDA SDK roots.
+#[must_use]
+pub fn nvcc_command_candidates_from_roots(
+    roots: impl IntoIterator<Item = PathBuf>,
+) -> Vec<PathBuf> {
+    roots
+        .into_iter()
+        .flat_map(|root| {
+            nvcc_command_names()
+                .into_iter()
+                .map(move |name| root.join("bin").join(name))
+        })
+        .collect()
+}
+
+fn find_nvcc_command() -> Option<PathBuf> {
+    nvcc_command_candidates_from_roots(cuda_root_dirs())
+        .into_iter()
+        .find(|path| path.is_file())
+        .or_else(|| find_command_on_path(nvcc_command_names()))
+}
+
+fn nvcc_command_names() -> Vec<&'static str> {
+    #[cfg(windows)]
+    {
+        vec!["nvcc.exe", "nvcc.bat", "nvcc.cmd"]
+    }
+    #[cfg(not(windows))]
+    {
+        vec!["nvcc"]
+    }
+}
+
+fn find_command_on_path(names: Vec<&'static str>) -> Option<PathBuf> {
+    std::env::var_os("PATH")
+        .into_iter()
+        .flat_map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
+        .flat_map(|dir| names.iter().map(move |name| dir.join(name)))
+        .find(|path| path.is_file())
+}
+
 fn find_cuda_root_nvrtc_library() -> Option<String> {
     nvrtc_library_candidates_from_roots(cuda_root_dirs())
         .into_iter()
@@ -858,11 +954,77 @@ fn find_cuda_root_nvrtc_library() -> Option<String> {
 }
 
 fn cuda_root_dirs() -> Vec<PathBuf> {
-    ["CUDA_PATH", "CUDA_HOME", "CUDA_ROOT"]
+    let mut roots = ["CUDA_PATH", "CUDA_HOME", "CUDA_ROOT"]
         .into_iter()
         .filter_map(std::env::var_os)
         .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
-        .collect()
+        .collect::<Vec<_>>();
+    roots.extend(default_cuda_sdk_root_candidates());
+    dedup_paths(roots)
+}
+
+fn default_cuda_sdk_root_candidates() -> Vec<PathBuf> {
+    #[cfg(windows)]
+    {
+        let bases = ["ProgramFiles", "ProgramFiles(x86)"]
+            .into_iter()
+            .filter_map(std::env::var_os)
+            .map(PathBuf::from)
+            .collect::<Vec<_>>();
+        cuda_sdk_root_candidates_from_bases(bases)
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let roots = [PathBuf::from("/usr/local/cuda")];
+        dedup_paths(roots)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let roots = [PathBuf::from("/usr/local/cuda")];
+        dedup_paths(roots)
+    }
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+    {
+        Vec::new()
+    }
+}
+
+/// Returns CUDA SDK roots beneath standard installer base directories.
+#[must_use]
+pub fn cuda_sdk_root_candidates_from_bases(
+    bases: impl IntoIterator<Item = PathBuf>,
+) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    for base in bases {
+        let cuda_base = base.join("NVIDIA GPU Computing Toolkit").join("CUDA");
+        roots.push(cuda_base.clone());
+        if let Ok(entries) = fs::read_dir(&cuda_base) {
+            roots.extend(
+                entries
+                    .filter_map(Result::ok)
+                    .map(|entry| entry.path())
+                    .filter(|path| path.is_dir())
+                    .filter(|path| {
+                        path.file_name()
+                            .and_then(|name| name.to_str())
+                            .is_some_and(|name| name.starts_with('v'))
+                    }),
+            );
+        }
+    }
+    roots.sort();
+    roots.reverse();
+    dedup_paths(roots)
+}
+
+fn dedup_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
+    let mut deduped = Vec::new();
+    for path in paths {
+        if !deduped.iter().any(|existing| existing == &path) {
+            deduped.push(path);
+        }
+    }
+    deduped
 }
 
 fn nvrtc_library_dirs(root: &Path) -> Vec<PathBuf> {

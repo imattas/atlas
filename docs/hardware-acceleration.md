@@ -33,6 +33,7 @@ Runtime behavior:
   launches the generated `atlas_search` kernel, and prints `match=<candidate>`
   lines for CPU validation by the runtime;
 - the CUDA adapter uses NVRTC for in-process CUDA-source-to-PTX compilation,
+  falls back to SDK-discovered `nvcc -ptx` when NVRTC is unavailable, uses
   dynamic CUDA Driver API loading, module validation, kernel launch, and
   `match=<candidate>` output for CPU validation by the runtime;
 - the HIP adapter uses dynamic HIP runtime loading, validates generated code
@@ -48,6 +49,9 @@ Runtime behavior:
   compile-check;
 - HIP compilation uses `hipcc --genco -O2` so the adapter receives a loadable
   `.hsaco` code object instead of a host executable;
+- CUDA SDK discovery checks `CUDA_PATH`, `CUDA_HOME`, `CUDA_ROOT`, standard
+  Toolkit install roots, SDK `bin` directories for `nvcc`, and dynamic-library
+  locations for NVRTC/CUDA driver loading;
 - launch configuration records global size, local size, output cap, and transfer
   bytes;
 - accelerator placement can load Track 3 calibration thresholds for SIMD and

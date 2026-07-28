@@ -1,7 +1,8 @@
 //! CUDA adapter CLI tests.
 
 use atlas_gpu_cuda_adapter::{
-    cuda_driver_library_candidates_from_roots, nvrtc_library_candidates_from_roots, run_cli,
+    cuda_driver_library_candidates_from_roots, cuda_sdk_root_candidates_from_bases,
+    nvcc_command_candidates_from_roots, nvrtc_library_candidates_from_roots, run_cli,
     AdapterCommand, CudaPtxLauncher, LaunchArgs, Launcher,
 };
 use atlas_search_gpu::GpuSearcher;
@@ -254,6 +255,47 @@ fn cuda_driver_library_candidates_include_cuda_root_driver_compat_directories() 
     assert!(candidates
         .iter()
         .any(|path| path.starts_with(cuda_root.join("lib64"))));
+}
+
+#[test]
+fn cuda_sdk_root_candidates_include_versioned_standard_install_dirs() {
+    let program_files =
+        std::env::temp_dir().join(format!("atlas-cuda-program-files-{}", std::process::id()));
+    let cuda_base = program_files
+        .join("NVIDIA GPU Computing Toolkit")
+        .join("CUDA");
+    let v12 = cuda_base.join("v12.4");
+    let v13 = cuda_base.join("v13.0");
+    fs::create_dir_all(&v12).unwrap();
+    fs::create_dir_all(&v13).unwrap();
+
+    let candidates = cuda_sdk_root_candidates_from_bases([program_files.clone()]);
+
+    assert!(candidates.contains(&v13));
+    assert!(candidates.contains(&v12));
+    assert!(candidates.iter().any(|path| {
+        path.starts_with(
+            program_files
+                .join("NVIDIA GPU Computing Toolkit")
+                .join("CUDA"),
+        )
+    }));
+    let _ = fs::remove_dir_all(program_files);
+}
+
+#[test]
+fn nvcc_command_candidates_include_cuda_sdk_bins() {
+    let cuda_root = std::env::temp_dir().join(format!("atlas-cuda-nvcc-{}", std::process::id()));
+    let candidates = nvcc_command_candidates_from_roots([cuda_root.clone()]);
+
+    assert!(candidates
+        .iter()
+        .any(|path| path.starts_with(cuda_root.join("bin"))));
+    assert!(candidates.iter().any(|path| {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("nvcc"))
+    }));
 }
 
 #[test]
