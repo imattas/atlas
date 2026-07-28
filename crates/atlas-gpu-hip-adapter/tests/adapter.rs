@@ -13,8 +13,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-#[cfg(windows)]
-static WINDOWS_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
     if let Some(value) = original {
@@ -367,8 +366,7 @@ fn compile_check_rejects_missing_code_object_artifact() {
 
 #[test]
 fn compile_check_writes_code_object_artifact_from_hip_source() {
-    #[cfg(windows)]
-    let _env_lock = WINDOWS_ENV_LOCK.lock().unwrap();
+    let _env_lock = ENV_LOCK.lock().unwrap();
     let root = std::env::temp_dir().join(format!("atlas-hip-fake-hipcc-{}", std::process::id()));
     let bin_dir = root.join("bin");
     fs::create_dir_all(&bin_dir).unwrap();
@@ -434,7 +432,7 @@ fn hip_runtime_library_candidates_include_sdk_root_library_directories() {
 #[cfg(windows)]
 #[test]
 fn hip_runtime_library_candidates_include_standard_rocm_layout() {
-    let _env_lock = WINDOWS_ENV_LOCK.lock().unwrap();
+    let _env_lock = ENV_LOCK.lock().unwrap();
     let root = std::env::temp_dir().join(format!("atlas-hip-standard-{}", std::process::id()));
     let rocm_root = root.join("AMD").join("ROCm").join("6.1");
     fs::create_dir_all(rocm_root.join("bin")).unwrap();
@@ -459,7 +457,7 @@ fn hip_runtime_library_candidates_include_standard_rocm_layout() {
 #[cfg(windows)]
 #[test]
 fn hip_runtime_library_candidates_prefer_newest_standard_rocm_runtime() {
-    let _env_lock = WINDOWS_ENV_LOCK.lock().unwrap();
+    let _env_lock = ENV_LOCK.lock().unwrap();
     let root =
         std::env::temp_dir().join(format!("atlas-hip-standard-order-{}", std::process::id()));
     let rocm_base = root.join("AMD").join("ROCm");
@@ -490,7 +488,7 @@ fn hip_runtime_library_candidates_prefer_newest_standard_rocm_runtime() {
 #[cfg(windows)]
 #[test]
 fn hip_runtime_library_candidates_do_not_emit_duplicate_bin_segments() {
-    let _env_lock = WINDOWS_ENV_LOCK.lock().unwrap();
+    let _env_lock = ENV_LOCK.lock().unwrap();
     let root =
         std::env::temp_dir().join(format!("atlas-hip-standard-clean-{}", std::process::id()));
     let rocm_root = root.join("AMD").join("ROCm").join("6.1");
@@ -519,7 +517,7 @@ fn hip_runtime_library_candidates_do_not_emit_duplicate_bin_segments() {
 #[cfg(windows)]
 #[test]
 fn hip_runtime_library_candidates_do_not_emit_duplicate_hip_segments() {
-    let _env_lock = WINDOWS_ENV_LOCK.lock().unwrap();
+    let _env_lock = ENV_LOCK.lock().unwrap();
     let root =
         std::env::temp_dir().join(format!("atlas-hip-standard-clean-{}", std::process::id()));
     let rocm_root = root.join("AMD").join("ROCm").join("6.1");
@@ -689,7 +687,7 @@ fn write_fake_hipcc(bin_dir: &Path) -> PathBuf {
         let path = bin_dir.join("hipcc");
         fs::write(
             &path,
-            "#!/bin/sh\nprintf '%s\\n' \"$@\" | grep -- '-nogpuinc' >/dev/null || exit 3\nprintf '%s\\n' \"$@\" | grep -- '-nogpulib' >/dev/null || exit 4\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = \"-o\" ]; then shift; echo fake-hsaco > \"$1\"; exit 0; fi\n  shift\ndone\nexit 5\n",
+            "#!/bin/sh\nhas_nogpuinc=0\nhas_nogpulib=0\noutput=''\nwhile [ \"$#\" -gt 0 ]; do\n  case \"$1\" in\n    -nogpuinc) has_nogpuinc=1 ;;\n    -nogpulib) has_nogpulib=1 ;;\n    -o) shift; output=\"$1\" ;;\n  esac\n  shift\ndone\n[ \"$has_nogpuinc\" = 1 ] || exit 3\n[ \"$has_nogpulib\" = 1 ] || exit 4\n[ -n \"$output\" ] || exit 5\necho fake-hsaco > \"$output\"\n",
         )
         .unwrap();
         let mut permissions = fs::metadata(&path).unwrap().permissions();
