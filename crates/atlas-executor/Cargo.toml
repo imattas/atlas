@@ -1,0 +1,18 @@
+[package]
+name = "atlas-executor"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+atlas-program = { path = "../atlas-program" }
+atlas-validator = { path = "../atlas-validator" }
+
+[lib]
+name = "atlas_executor"
+path = "src/lib.rs"
+
+[lints]
+workspace = true

@@ -22,6 +22,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "atlas-executor"
+version = "0.1.0"
+dependencies = [
+ "atlas-program",
+ "atlas-validator",
+]
+
+[[package]]
 name = "atlas-facts"
 version = "0.1.0"
 
