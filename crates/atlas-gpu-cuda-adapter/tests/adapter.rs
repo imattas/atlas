@@ -1,8 +1,11 @@
 //! CUDA adapter CLI tests.
 
 use atlas_gpu_cuda_adapter::{run_cli, AdapterCommand, CudaPtxLauncher, LaunchArgs, Launcher};
+use atlas_search_gpu::GpuSearcher;
+use atlas_search_ir::SearchProgram;
 use std::cell::RefCell;
 use std::fs;
+use std::process::Command;
 
 #[derive(Debug, Clone, Copy)]
 struct FixtureLauncher;
@@ -163,5 +166,44 @@ fn compile_check_rejects_ptx_without_atlas_kernel_entry() {
         .unwrap_err();
 
     assert!(error.contains("missing atlas_search kernel entry"));
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+#[ignore = "requires nvcc, CUDA driver runtime, and an NVIDIA CUDA device"]
+fn generated_cuda_kernel_runs_on_device_and_preserves_full_candidates() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let source = GpuSearcher::compile_cuda(&program);
+    let output_dir = std::env::temp_dir().join(format!("atlas-cuda-e2e-{}", std::process::id()));
+    fs::create_dir_all(&output_dir).unwrap();
+    let source_path = output_dir.join("atlas_search.cu");
+    let ptx_path = output_dir.join("atlas_search.ptx");
+    fs::write(&source_path, source).unwrap();
+
+    let compile = Command::new("nvcc")
+        .arg("-ptx")
+        .arg("-O2")
+        .arg(&source_path)
+        .arg("-o")
+        .arg(&ptx_path)
+        .output()
+        .unwrap();
+    assert!(
+        compile.status.success(),
+        "nvcc failed: {}",
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let args = LaunchArgs {
+        artifact: ptx_path.to_string_lossy().into_owned(),
+        start: 0x50,
+        end: 0x160,
+        max_matches: 8,
+        global_size: 512,
+        local_size: 64,
+    };
+
+    let matches = CudaPtxLauncher.launch(&args).unwrap();
+
+    assert_eq!(matches, vec![0x55, 0x155]);
     let _ = fs::remove_dir_all(output_dir);
 }

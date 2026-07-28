@@ -3,8 +3,11 @@
 use atlas_gpu_vulkan_adapter::{
     run_cli, AdapterCommand, LaunchArgs, Launcher, VulkanSpirvLauncher,
 };
+use atlas_search_gpu::GpuSearcher;
+use atlas_search_ir::SearchProgram;
 use std::cell::RefCell;
 use std::fs;
+use std::process::Command;
 
 #[derive(Debug, Clone, Copy)]
 struct FixtureLauncher;
@@ -165,5 +168,43 @@ fn compile_check_rejects_non_spirv_artifact() {
         .unwrap_err();
 
     assert!(error.contains("invalid SPIR-V magic"));
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+#[ignore = "requires glslc, Vulkan runtime, and a Vulkan compute-capable device"]
+fn generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let source = GpuSearcher::compile_vulkan_glsl(&program);
+    let output_dir = std::env::temp_dir().join(format!("atlas-vulkan-e2e-{}", std::process::id()));
+    fs::create_dir_all(&output_dir).unwrap();
+    let source_path = output_dir.join("atlas_search.comp");
+    let spirv_path = output_dir.join("atlas_search.spv");
+    fs::write(&source_path, source).unwrap();
+
+    let compile = Command::new("glslc")
+        .arg("-O")
+        .arg(&source_path)
+        .arg("-o")
+        .arg(&spirv_path)
+        .output()
+        .unwrap();
+    assert!(
+        compile.status.success(),
+        "glslc failed: {}",
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let args = LaunchArgs {
+        artifact: spirv_path.to_string_lossy().into_owned(),
+        start: 0x50,
+        end: 0x160,
+        max_matches: 8,
+        global_size: 512,
+        local_size: 256,
+    };
+
+    let matches = VulkanSpirvLauncher.launch(&args).unwrap();
+
+    assert_eq!(matches, vec![0x55, 0x155]);
     let _ = fs::remove_dir_all(output_dir);
 }

@@ -138,6 +138,25 @@ fn hip_driver_plan_uses_generated_hip_kernel_source() {
 }
 
 #[test]
+fn hip_driver_plan_compiles_loadable_code_object_for_adapter() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let plan = DriverCommandPlan::for_sdk(
+        &GpuSdk::Hip {
+            sdk: "AMD HIP SDK".to_owned(),
+        },
+        &program,
+        "target/atlas-gpu",
+    );
+
+    assert_eq!(plan.artifact_file, "target/atlas-gpu/atlas_search.hsaco");
+    assert_eq!(plan.compile_command[0], "hipcc");
+    assert!(plan.compile_command.iter().any(|arg| arg == "--genco"));
+    assert!(plan
+        .launch_command
+        .starts_with(&["atlas-gpu-hip-run".to_owned(), plan.artifact_file.clone()]));
+}
+
+#[test]
 fn opencl_and_vulkan_codegen_are_hardware_independent_and_encode_shape() {
     let program = SearchProgram::try_from_fixture("xor").unwrap();
     let opencl = GpuSearcher::compile_opencl(&program);

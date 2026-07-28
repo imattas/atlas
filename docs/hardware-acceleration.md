@@ -43,6 +43,8 @@ Runtime behavior:
   adapters can compile/launch kernels without changing search semantics;
 - process-backed execution writes generated per-program kernel source into the
   build output directory before invoking the selected SDK compiler;
+- HIP compilation uses `hipcc --genco -O2` so the adapter receives a loadable
+  `.hsaco` code object instead of a host executable;
 - launch configuration records global size, local size, output cap, and transfer
   bytes;
 - generated kernels are cache-keyed by program, compiler, device, and options;
@@ -67,6 +69,17 @@ Checked adapter artifacts:
 - `crates/atlas-gpu-hip-adapter/src/main.rs`
 - `crates/atlas-gpu-vulkan-adapter/src/lib.rs`
 - `crates/atlas-gpu-vulkan-adapter/src/main.rs`
+
+Real-device validation commands:
+
+- OpenCL:
+  `cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture`
+- CUDA:
+  `cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture`
+- HIP:
+  `cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture`
+- Vulkan:
+  `cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture`
 
 Primary GPU references checked while implementing this boundary:
 

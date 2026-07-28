@@ -206,7 +206,7 @@ impl DriverCommandPlan {
                     "atlas_search.hip",
                     "atlas_search.hsaco",
                     "hipcc",
-                    "-O2",
+                    "--genco -O2",
                     GpuSearcher::compile_cuda(program),
                 ),
             };

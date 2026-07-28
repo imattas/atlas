@@ -1,7 +1,11 @@
 //! HIP adapter CLI tests.
 
 use atlas_gpu_hip_adapter::{run_cli, AdapterCommand, HipModuleLauncher, LaunchArgs, Launcher};
+use atlas_search_gpu::GpuSearcher;
+use atlas_search_ir::SearchProgram;
 use std::cell::RefCell;
+use std::fs;
+use std::process::Command;
 
 #[derive(Debug, Clone, Copy)]
 struct FixtureLauncher;
@@ -160,4 +164,43 @@ fn compile_check_rejects_missing_code_object_artifact() {
     let error = HipModuleLauncher.compile_check(&missing).unwrap_err();
 
     assert!(error.contains("cannot read HIP code object"));
+}
+
+#[test]
+#[ignore = "requires hipcc, HIP runtime, and an AMD HIP-capable device"]
+fn generated_hip_kernel_runs_on_device_and_preserves_full_candidates() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let source = GpuSearcher::compile_cuda(&program);
+    let output_dir = std::env::temp_dir().join(format!("atlas-hip-e2e-{}", std::process::id()));
+    fs::create_dir_all(&output_dir).unwrap();
+    let source_path = output_dir.join("atlas_search.hip");
+    let code_object_path = output_dir.join("atlas_search.hsaco");
+    fs::write(&source_path, source).unwrap();
+
+    let compile = Command::new("hipcc")
+        .arg("--genco")
+        .arg("-O2")
+        .arg(&source_path)
+        .arg("-o")
+        .arg(&code_object_path)
+        .output()
+        .unwrap();
+    assert!(
+        compile.status.success(),
+        "hipcc failed: {}",
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let args = LaunchArgs {
+        artifact: code_object_path.to_string_lossy().into_owned(),
+        start: 0x50,
+        end: 0x160,
+        max_matches: 8,
+        global_size: 512,
+        local_size: 64,
+    };
+
+    let matches = HipModuleLauncher.launch(&args).unwrap();
+
+    assert_eq!(matches, vec![0x55, 0x155]);
+    let _ = fs::remove_dir_all(output_dir);
 }
