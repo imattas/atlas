@@ -6,6 +6,14 @@ use crate::{Endianness, SourceLocation, Type, Value};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ExprId(pub(crate) usize);
 
+impl ExprId {
+    /// Returns the stable numeric index of this expression in its graph.
+    #[must_use]
+    pub fn index(self) -> usize {
+        self.0
+    }
+}
+
 /// UCIR expression operation.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ExprKind {
@@ -15,6 +23,10 @@ pub enum ExprKind {
     Var(String),
     /// Addition.
     Add(ExprId, ExprId),
+    /// Bitwise exclusive-or for bit-vectors.
+    Xor(ExprId, ExprId),
+    /// Boolean conjunction.
+    And(Vec<ExprId>),
     /// Equality.
     Eq(ExprId, ExprId),
     /// Unsigned less-than.

@@ -1,0 +1,1 @@
+//! Algebraic analysis pass namespace.

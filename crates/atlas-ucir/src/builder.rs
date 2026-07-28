@@ -133,6 +133,38 @@ impl Builder {
         }
     }
 
+    /// Adds bit-vector XOR.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error unless both operands are same-width bit-vectors.
+    pub fn xor(&mut self, left: ExprId, right: ExprId) -> Result<ExprId, String> {
+        let width = self.require_same_bitvec(left, right)?;
+        Ok(self.intern(Node::new(
+            Type::BitVec { width },
+            ExprKind::Xor(left, right),
+            None,
+        )))
+    }
+
+    /// Adds boolean conjunction.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when any input is not boolean or when no inputs exist.
+    pub fn and(&mut self, inputs: impl Into<Vec<ExprId>>) -> Result<ExprId, String> {
+        let inputs = inputs.into();
+        if inputs.is_empty() {
+            return Err("and requires at least one input".to_owned());
+        }
+        for input in &inputs {
+            if self.ty(*input) != Some(Type::Bool) {
+                return Err("and inputs must be boolean".to_owned());
+            }
+        }
+        Ok(self.intern(Node::new(Type::Bool, ExprKind::And(inputs), None)))
+    }
+
     /// Adds equality comparison.
     ///
     /// # Errors

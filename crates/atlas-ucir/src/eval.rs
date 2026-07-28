@@ -62,6 +62,18 @@ fn eval_id(graph: &ExprGraph, id: ExprId, model: &Model) -> Result<Value, EvalEr
             eval_id(graph, *left, model)?,
             eval_id(graph, *right, model)?,
         ),
+        ExprKind::Xor(left, right) => xor(
+            eval_id(graph, *left, model)?,
+            eval_id(graph, *right, model)?,
+        ),
+        ExprKind::And(inputs) => {
+            for input in inputs {
+                if eval_id(graph, *input, model)? != Value::Bool(true) {
+                    return Ok(Value::Bool(false));
+                }
+            }
+            Ok(Value::Bool(true))
+        }
         ExprKind::Eq(left, right) => Ok(Value::Bool(
             eval_id(graph, *left, model)? == eval_id(graph, *right, model)?,
         )),
@@ -122,6 +134,23 @@ fn add(left: Value, right: Value) -> Result<Value, EvalError> {
         ) if modulus == right_modulus => Value::modular(modulus, a + b).map_err(EvalError::new),
         (left, right) => Err(EvalError::new(format!(
             "cannot add values of type {:?} and {:?}",
+            left.ty(),
+            right.ty()
+        ))),
+    }
+}
+
+fn xor(left: Value, right: Value) -> Result<Value, EvalError> {
+    match (left, right) {
+        (
+            Value::BitVec { width, value: a },
+            Value::BitVec {
+                width: right_width,
+                value: b,
+            },
+        ) if width == right_width => Value::bitvec(width, a ^ b).map_err(EvalError::new),
+        (left, right) => Err(EvalError::new(format!(
+            "cannot xor values of type {:?} and {:?}",
             left.ty(),
             right.ty()
         ))),

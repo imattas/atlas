@@ -2,6 +2,7 @@
 members = [
     "crates/atlas-protocol",
     "crates/atlas-ucir",
+    "crates/atlas-analysis",
 ]
 resolver = "2"
 
