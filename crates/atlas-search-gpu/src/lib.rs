@@ -2127,14 +2127,18 @@ fn resolve_adjacent_adapter_program(program: &str) -> Option<PathBuf> {
 }
 
 fn adapter_program_candidates(dir: &Path, plain_name: &str) -> Vec<PathBuf> {
-    let mut candidates = vec![dir.join(plain_name)];
     #[cfg(windows)]
     {
+        let mut candidates = vec![dir.join(plain_name)];
         candidates.push(dir.join(format!("{plain_name}.exe")));
         candidates.push(dir.join(format!("{plain_name}.cmd")));
         candidates.push(dir.join(format!("{plain_name}.bat")));
+        candidates
     }
-    candidates
+    #[cfg(not(windows))]
+    {
+        vec![dir.join(plain_name)]
+    }
 }
 
 fn resolve_sdk_tool_program(program: &str) -> Option<PathBuf> {
@@ -2191,14 +2195,18 @@ fn versioned_cuda_path_env_dirs() -> Vec<PathBuf> {
 }
 
 fn sdk_tool_candidates(dir: &Path, plain_name: &str) -> Vec<PathBuf> {
-    let mut candidates = vec![dir.join(plain_name)];
     #[cfg(windows)]
     {
+        let mut candidates = vec![dir.join(plain_name)];
         candidates.push(dir.join(format!("{plain_name}.exe")));
         candidates.push(dir.join(format!("{plain_name}.cmd")));
         candidates.push(dir.join(format!("{plain_name}.bat")));
+        candidates
     }
-    candidates
+    #[cfg(not(windows))]
+    {
+        vec![dir.join(plain_name)]
+    }
 }
 
 fn parse_match_token(token: &str) -> Option<u64> {
@@ -2561,6 +2569,7 @@ fn standard_sdk_root_dirs() -> Vec<PathBuf> {
     deduped
 }
 
+#[cfg(windows)]
 fn sdk_version_key(path: &Path) -> Vec<u32> {
     path.file_name()
         .and_then(|name| name.to_str())
@@ -2574,6 +2583,7 @@ fn sdk_version_key(path: &Path) -> Vec<u32> {
         .unwrap_or_default()
 }
 
+#[cfg(windows)]
 fn push_existing_dir(paths: &mut Vec<PathBuf>, path: PathBuf) {
     if path.is_dir() {
         paths.push(path);
