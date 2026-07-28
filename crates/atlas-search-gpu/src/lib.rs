@@ -222,6 +222,33 @@ fn compatible_sdk_candidates(
     compatible
 }
 
+fn cache_prioritized_sdk_candidates(
+    compatible_sdks: &[GpuSdk],
+    program: &SearchProgram,
+    domain: SearchDomain,
+    cached_kernel_keys: &[KernelCacheKey],
+) -> Vec<GpuSdk> {
+    let launch = AcceleratorRuntime::plan_launch(domain, 256, 1024);
+    let mut candidates = compatible_sdks
+        .iter()
+        .enumerate()
+        .map(|(index, sdk)| {
+            let plan =
+                DriverCommandPlan::for_launch(sdk, program, domain, launch, "target/atlas-gpu");
+            (
+                !cached_kernel_keys.contains(&plan.cache_key),
+                index,
+                sdk.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by_key(|(cache_miss, index, _)| (*cache_miss, *index));
+    candidates
+        .into_iter()
+        .map(|(_, _, sdk)| sdk)
+        .collect::<Vec<_>>()
+}
+
 /// SDK-specific driver command plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DriverCommandPlan {
@@ -673,15 +700,34 @@ impl AcceleratorRuntime {
             return Self::cancelled_report(program, domain, cancellation);
         }
         let compatible_sdks = compatible_sdk_candidates(detected_sdks, true, program);
-        let plan = GpuSdkPlan::choose_for_program(detected_sdks, true, program);
-        let Some(selected) = plan.selected else {
+        if compatible_sdks.is_empty() {
+            let launch = Self::plan_launch(domain, 256, 1024);
+            let rationale = if detected_sdks.is_empty() {
+                "no GPU SDK detected; hardware acceleration disabled"
+            } else {
+                "no compatible GPU SDK detected for search program"
+            };
+            return AcceleratorReport {
+                mode: RuntimeMode::CpuFallback,
+                matches: NativeSearcher::search(program, domain, cancellation),
+                telemetry: RuntimeTelemetry {
+                    launch,
+                    rationale: rationale.to_owned(),
+                    cpu_validated: true,
+                    rejected_device_matches: 0,
+                },
+            };
+        }
+        let execution_sdks =
+            cache_prioritized_sdk_candidates(&compatible_sdks, program, domain, cached_kernel_keys);
+        let Some(selected) = execution_sdks.first().cloned() else {
             let launch = Self::plan_launch(domain, 256, 1024);
             return AcceleratorReport {
                 mode: RuntimeMode::CpuFallback,
                 matches: NativeSearcher::search(program, domain, cancellation),
                 telemetry: RuntimeTelemetry {
                     launch,
-                    rationale: plan.rationale,
+                    rationale: "no compatible GPU SDK detected for search program".to_owned(),
                     cpu_validated: true,
                     rejected_device_matches: 0,
                 },
@@ -724,7 +770,7 @@ impl AcceleratorRuntime {
             }
         }
         let mut fallback_report = None;
-        for sdk in compatible_sdks {
+        for sdk in execution_sdks {
             let report = Self::execute_with_driver(program, domain, &sdk, cancellation, runner);
             if report.mode == RuntimeMode::DeviceValidated || cancellation.is_cancelled() {
                 return report;

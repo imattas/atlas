@@ -204,6 +204,37 @@ impl DriverRunner for FailingThenSuccessfulSdkRunner {
     }
 }
 
+#[derive(Debug)]
+struct SuccessfulSdkRecordingRunner {
+    attempted_sdks: RefCell<Vec<&'static str>>,
+}
+
+impl SuccessfulSdkRecordingRunner {
+    fn new() -> Self {
+        Self {
+            attempted_sdks: RefCell::new(Vec::new()),
+        }
+    }
+}
+
+impl DriverRunner for SuccessfulSdkRecordingRunner {
+    fn run(&self, plan: &DriverCommandPlan) -> DriverRunOutput {
+        let sdk = match &plan.sdk {
+            GpuSdk::OpenCl { .. } => "OpenCL",
+            GpuSdk::Vulkan { .. } => "Vulkan",
+            GpuSdk::Cuda { .. } => "CUDA",
+            GpuSdk::Hip { .. } => "HIP",
+        };
+        self.attempted_sdks.borrow_mut().push(sdk);
+        DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![3],
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        }
+    }
+}
+
 #[test]
 fn gpu_boundary_matches_native_without_hardware() {
     let token = CancellationToken::new();
@@ -2537,6 +2568,38 @@ fn runtime_uses_gpu_cache_hit_threshold_for_warmed_kernel() {
     assert_eq!(report.mode, RuntimeMode::DeviceValidated);
     assert_eq!(*runner.calls.borrow(), 1);
     assert!(report.telemetry.rationale.contains("driver exit 0"));
+}
+
+#[test]
+fn runtime_prefers_compatible_backend_with_warmed_kernel_cache() {
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    let domain = SearchDomain::new(0, 100_000);
+    let opencl = GpuSdk::OpenCl {
+        sdk: "test OpenCL runtime".to_owned(),
+    };
+    let vulkan = GpuSdk::Vulkan {
+        sdk: "test Vulkan runtime".to_owned(),
+    };
+    let launch = AcceleratorRuntime::plan_launch(domain, 256, 1024);
+    let cached_plan =
+        DriverCommandPlan::for_launch(&vulkan, &program, domain, launch, "target/atlas-gpu");
+    let sdks = [opencl, vulkan];
+    let runner = SuccessfulSdkRecordingRunner::new();
+
+    let report = AcceleratorRuntime::execute_with_detected_driver_and_kernel_cache(
+        &program,
+        domain,
+        &sdks,
+        &token,
+        &[cached_plan.cache_key],
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    assert_eq!(report.matches, vec![3]);
+    assert_eq!(runner.attempted_sdks.borrow().as_slice(), ["Vulkan"]);
+    assert!(report.telemetry.rationale.contains("Vulkan"));
 }
 
 #[test]
