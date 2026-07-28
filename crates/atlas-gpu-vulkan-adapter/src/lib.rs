@@ -25,6 +25,17 @@ pub struct LaunchArgs {
     pub global_size: usize,
     /// Vulkan shader local size. The generated shader currently uses 256.
     pub local_size: usize,
+    /// Optional explicit shader launch ABI metadata.
+    pub launch_abi: Option<VulkanLaunchAbi>,
+}
+
+/// Host/shader launch ABI used by generated Vulkan kernels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VulkanLaunchAbi {
+    /// Shader writes retained candidates as paired 32-bit words.
+    U32,
+    /// Shader writes retained candidates as native 64-bit values.
+    U64,
 }
 
 /// Device launch output.
@@ -123,6 +134,9 @@ impl LaunchArgs {
         if u64::try_from(global_size).unwrap_or(u64::MAX) < end.saturating_sub(start) {
             return Err("global-size must cover launch domain".to_owned());
         }
+        let launch_abi = optional_flag_value(args, "--abi")?
+            .map(parse_launch_abi)
+            .transpose()?;
         Ok(Self {
             artifact: artifact.clone(),
             start,
@@ -130,6 +144,7 @@ impl LaunchArgs {
             max_matches,
             global_size,
             local_size,
+            launch_abi,
         })
     }
 }
@@ -264,6 +279,24 @@ fn optional_output_path(args: &[String]) -> Result<Option<String>, String> {
         .cloned()
         .map(Some)
         .ok_or_else(|| "missing output path after -o".to_owned())
+}
+
+fn optional_flag_value<'a>(args: &'a [String], flag: &str) -> Result<Option<&'a str>, String> {
+    let Some(index) = args.iter().position(|arg| arg == flag) else {
+        return Ok(None);
+    };
+    args.get(index + 1)
+        .map(String::as_str)
+        .map(Some)
+        .ok_or_else(|| format!("missing {flag} value"))
+}
+
+fn parse_launch_abi(value: &str) -> Result<VulkanLaunchAbi, String> {
+    match value {
+        "u32" => Ok(VulkanLaunchAbi::U32),
+        "u64" => Ok(VulkanLaunchAbi::U64),
+        _ => Err(format!("unsupported --abi '{value}'; expected u32 or u64")),
+    }
 }
 
 fn read_spirv_words(path: &str) -> Result<Vec<u32>, String> {

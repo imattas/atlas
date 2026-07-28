@@ -367,7 +367,10 @@ impl DriverCommandPlan {
         ];
         if matches!(
             sdk,
-            GpuSdk::OpenCl { .. } | GpuSdk::Cuda { .. } | GpuSdk::Hip { .. }
+            GpuSdk::OpenCl { .. }
+                | GpuSdk::Vulkan { .. }
+                | GpuSdk::Cuda { .. }
+                | GpuSdk::Hip { .. }
         ) {
             launch_command.push("--abi".to_owned());
             launch_command.push(if program.width <= 32 { "u32" } else { "u64" }.to_owned());

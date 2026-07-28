@@ -2,7 +2,7 @@
 
 use atlas_gpu_vulkan_adapter::{
     run_cli, vulkan_loader_candidates_from_host_roots, vulkan_loader_candidates_from_roots,
-    AdapterCommand, LaunchArgs, LaunchOutput, Launcher, VulkanSpirvLauncher,
+    AdapterCommand, LaunchArgs, LaunchOutput, Launcher, VulkanLaunchAbi, VulkanSpirvLauncher,
 };
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::{SearchOp, SearchProgram};
@@ -253,6 +253,49 @@ fn rejects_dispatch_group_count_that_exceeds_vulkan_uint() {
 }
 
 #[test]
+fn parses_explicit_u32_launch_abi() {
+    let args = LaunchArgs::parse(&[
+        "target/atlas-gpu/atlas_search.spv".to_owned(),
+        "--start".to_owned(),
+        "10".to_owned(),
+        "--end".to_owned(),
+        "20".to_owned(),
+        "--max-matches".to_owned(),
+        "3".to_owned(),
+        "--global-size".to_owned(),
+        "256".to_owned(),
+        "--local-size".to_owned(),
+        "256".to_owned(),
+        "--abi".to_owned(),
+        "u32".to_owned(),
+    ])
+    .unwrap();
+
+    assert_eq!(args.launch_abi, Some(VulkanLaunchAbi::U32));
+}
+
+#[test]
+fn rejects_missing_explicit_launch_abi_value() {
+    let error = LaunchArgs::parse(&[
+        "target/atlas-gpu/atlas_search.spv".to_owned(),
+        "--start".to_owned(),
+        "10".to_owned(),
+        "--end".to_owned(),
+        "20".to_owned(),
+        "--max-matches".to_owned(),
+        "3".to_owned(),
+        "--global-size".to_owned(),
+        "256".to_owned(),
+        "--local-size".to_owned(),
+        "256".to_owned(),
+        "--abi".to_owned(),
+    ])
+    .unwrap_err();
+
+    assert!(error.contains("missing --abi value"));
+}
+
+#[test]
 fn cli_emits_match_lines_from_launcher() {
     let output = run_cli(
         &[
@@ -432,6 +475,7 @@ fn generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates() {
         max_matches: 8,
         global_size: 512,
         local_size: 256,
+        launch_abi: Some(VulkanLaunchAbi::U32),
     };
 
     let output = VulkanSpirvLauncher.launch(&args).unwrap();
@@ -466,6 +510,7 @@ fn generated_vulkan_64_bit_kernel_runs_on_device() {
         max_matches: 2,
         global_size: 256,
         local_size: 256,
+        launch_abi: Some(VulkanLaunchAbi::U64),
     };
 
     let output = VulkanSpirvLauncher.launch(&args).unwrap();

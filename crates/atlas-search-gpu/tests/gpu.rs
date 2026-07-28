@@ -1730,6 +1730,30 @@ fn vulkan_driver_plan_uses_adapter_compiler_without_external_glslc() {
 }
 
 #[test]
+fn vulkan_launch_plan_passes_explicit_u32_abi_for_32_bit_programs() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let plan = DriverCommandPlan::for_launch(
+        &GpuSdk::Vulkan {
+            sdk: "Vulkan runtime".to_owned(),
+        },
+        &program,
+        SearchDomain::new(0x50, 0x60),
+        LaunchConfig {
+            global_size: 256,
+            local_size: 256,
+            max_matches: 16,
+            output_buffer_bytes: 128,
+        },
+        "target/atlas-gpu",
+    );
+
+    assert!(plan
+        .launch_command
+        .windows(2)
+        .any(|window| window == ["--abi", "u32"]));
+}
+
+#[test]
 fn cuda_driver_plan_uses_adapter_compiler_without_external_nvcc() {
     let program = SearchProgram::try_from_fixture("xor").unwrap();
     let launch = AcceleratorRuntime::plan_launch(SearchDomain::new(0x50, 0x160), 64, 8);
