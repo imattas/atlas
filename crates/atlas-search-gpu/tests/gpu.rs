@@ -635,6 +635,46 @@ fn gpu_codegen_rejects_out_of_width_byte_constraints_without_overshifting() {
 }
 
 #[test]
+fn gpu_64_bit_codegen_rejects_impossible_checksums_without_device_modulo() {
+    let zero_modulus = SearchProgram::new(
+        64,
+        vec![SearchOp::ChecksumEq {
+            modulus: 0,
+            target: 0,
+        }],
+    )
+    .unwrap();
+    let target_outside_modulus = SearchProgram::new(
+        64,
+        vec![SearchOp::ChecksumEq {
+            modulus: 17,
+            target: 17,
+        }],
+    )
+    .unwrap();
+
+    for source in [
+        GpuSearcher::compile_cuda(&zero_modulus),
+        GpuSearcher::compile_hip(&zero_modulus),
+        GpuSearcher::compile_opencl(&zero_modulus),
+        GpuSearcher::compile_vulkan_glsl(&zero_modulus),
+        GpuSearcher::compile_cuda(&target_outside_modulus),
+        GpuSearcher::compile_hip(&target_outside_modulus),
+        GpuSearcher::compile_opencl(&target_outside_modulus),
+        GpuSearcher::compile_vulkan_glsl(&target_outside_modulus),
+    ] {
+        assert!(
+            source.contains("0ULL == 1ULL")
+                || source.contains("0UL == 1UL")
+                || source.contains("uint64_t(0) == uint64_t(1)"),
+            "{source}"
+        );
+        assert!(!source.contains("candidate % 0"), "{source}");
+        assert!(!source.contains("candidate % 17"), "{source}");
+    }
+}
+
+#[test]
 fn vulkan_codegen_emits_restricted_ir_predicates_and_preserves_full_candidate() {
     let program = SearchProgram::new(
         24,

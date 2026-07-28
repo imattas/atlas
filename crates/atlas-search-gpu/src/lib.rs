@@ -2295,6 +2295,9 @@ fn opencl_predicate(op: &SearchOp, width: u32) -> String {
             format!("((candidate ^ {mask}UL) & mask) == {target}UL")
         }
         SearchOp::ChecksumEq { modulus, target } => {
+            if modulus == 0 || target >= modulus {
+                return "0UL == 1UL".to_owned();
+            }
             format!("(candidate % {modulus}UL) == {target}UL")
         }
         SearchOp::MulAddEq {
@@ -2507,6 +2510,9 @@ fn cuda_predicate(op: &SearchOp, width: u32) -> String {
             format!("((candidate ^ {mask}ULL) & mask) == {target}ULL")
         }
         SearchOp::ChecksumEq { modulus, target } => {
+            if modulus == 0 || target >= modulus {
+                return "0ULL == 1ULL".to_owned();
+            }
             format!("(candidate % {modulus}ULL) == {target}ULL")
         }
         SearchOp::MulAddEq {
@@ -2625,6 +2631,9 @@ fn glsl_predicate(op: &SearchOp, width: u32) -> String {
             format!("((candidate ^ {mask}UL) & mask) == {target}UL")
         }
         SearchOp::ChecksumEq { modulus, target } => {
+            if modulus == 0 || target >= modulus {
+                return "uint64_t(0) == uint64_t(1)".to_owned();
+            }
             format!("(candidate % {modulus}UL) == {target}UL")
         }
         SearchOp::MulAddEq {
