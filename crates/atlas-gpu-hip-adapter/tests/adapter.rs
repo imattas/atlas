@@ -1,6 +1,9 @@
 //! HIP adapter CLI tests.
 
-use atlas_gpu_hip_adapter::{run_cli, AdapterCommand, HipModuleLauncher, LaunchArgs, Launcher};
+use atlas_gpu_hip_adapter::{
+    hip_runtime_library_candidates_from_roots, run_cli, AdapterCommand, HipModuleLauncher,
+    LaunchArgs, Launcher,
+};
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::SearchProgram;
 use std::cell::RefCell;
@@ -164,6 +167,23 @@ fn compile_check_rejects_missing_code_object_artifact() {
     let error = HipModuleLauncher.compile_check(&missing).unwrap_err();
 
     assert!(error.contains("cannot read HIP code object"));
+}
+
+#[test]
+fn hip_runtime_library_candidates_include_sdk_root_library_directories() {
+    let hip_root =
+        std::env::temp_dir().join(format!("atlas-hip-runtime-root-{}", std::process::id()));
+    let candidates = hip_runtime_library_candidates_from_roots([hip_root.clone()]);
+
+    assert!(candidates
+        .iter()
+        .any(|path| path.starts_with(hip_root.join("bin"))));
+    assert!(candidates
+        .iter()
+        .any(|path| path.starts_with(hip_root.join("lib"))));
+    assert!(candidates
+        .iter()
+        .any(|path| path.starts_with(hip_root.join("lib64"))));
 }
 
 #[test]

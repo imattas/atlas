@@ -2,6 +2,7 @@
 
 use std::ffi::{c_char, c_int, c_uint, c_void, CString};
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::ptr;
 
 type HipModuleHandle = *mut c_void;
@@ -445,12 +446,18 @@ impl DynamicLibrary {
     fn open_hip() -> Result<Self, String> {
         #[cfg(windows)]
         {
+            if let Some(library) = find_hip_root_runtime_library() {
+                return Self::open(&library);
+            }
             Self::open("amdhip64.dll")
                 .or_else(|_| Self::open("amdhip64_7.dll"))
                 .or_else(|_| Self::open("amdhip64_6.dll"))
         }
         #[cfg(target_os = "linux")]
         {
+            if let Some(library) = find_hip_root_runtime_library() {
+                return Self::open(&library);
+            }
             Self::open("libamdhip64.so").or_else(|_| Self::open("libamdhip64.so.6"))
         }
         #[cfg(target_os = "macos")]
@@ -497,6 +504,64 @@ impl Drop for DynamicLibrary {
         unsafe {
             platform_close(self.handle);
         }
+    }
+}
+
+/// Returns candidate HIP runtime dynamic-library paths from HIP/ROCm SDK roots.
+#[must_use]
+pub fn hip_runtime_library_candidates_from_roots(
+    roots: impl IntoIterator<Item = PathBuf>,
+) -> Vec<PathBuf> {
+    roots
+        .into_iter()
+        .flat_map(|root| {
+            hip_runtime_library_dirs(&root).into_iter().flat_map(|dir| {
+                hip_runtime_library_names()
+                    .into_iter()
+                    .map(move |name| dir.join(name))
+            })
+        })
+        .collect()
+}
+
+fn find_hip_root_runtime_library() -> Option<String> {
+    hip_runtime_library_candidates_from_roots(hip_root_dirs())
+        .into_iter()
+        .find(|path| path.is_file())
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
+fn hip_root_dirs() -> Vec<PathBuf> {
+    ["HIP_PATH", "ROCM_PATH", "ROCM_HOME"]
+        .into_iter()
+        .filter_map(std::env::var_os)
+        .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
+        .collect()
+}
+
+fn hip_runtime_library_dirs(root: &Path) -> Vec<PathBuf> {
+    vec![
+        root.join("bin"),
+        root.join("lib"),
+        root.join("lib64"),
+        root.join("hip").join("bin"),
+        root.join("hip").join("lib"),
+        root.join("hip").join("lib64"),
+    ]
+}
+
+fn hip_runtime_library_names() -> Vec<&'static str> {
+    #[cfg(windows)]
+    {
+        vec!["amdhip64.dll", "amdhip64_7.dll", "amdhip64_6.dll"]
+    }
+    #[cfg(target_os = "linux")]
+    {
+        vec!["libamdhip64.so", "libamdhip64.so.6"]
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    {
+        Vec::new()
     }
 }
 
