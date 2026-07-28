@@ -1,10 +1,11 @@
 //! HIP adapter CLI tests.
 
 use atlas_gpu_hip_adapter::{
-    hip_runtime_library_candidates_from_host_roots, hip_runtime_library_candidates_from_roots,
-    run_cli, AdapterCommand, FeatureReport, HipLaunchAbi, HipModuleLauncher, LaunchArgs,
-    LaunchOutput, Launcher,
+    hip_runtime_library_candidates_from_roots, run_cli, AdapterCommand, FeatureReport,
+    HipLaunchAbi, HipModuleLauncher, LaunchArgs, LaunchOutput, Launcher,
 };
+#[cfg(windows)]
+use atlas_gpu_hip_adapter::hip_runtime_library_candidates_from_host_roots;
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::{SearchOp, SearchProgram};
 use std::cell::RefCell;
