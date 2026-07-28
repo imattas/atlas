@@ -8,6 +8,7 @@ param(
     [string]$Branch = $(if ($env:ATLAS_BRANCH) { $env:ATLAS_BRANCH } else { "main" }),
     [string]$Tag = $env:ATLAS_TAG,
     [string]$Rev = $env:ATLAS_REV,
+    [string]$Release = $(if ($env:ATLAS_RELEASE) { $env:ATLAS_RELEASE } else { "latest" }),
     [string]$Root = $env:ATLAS_ROOT,
     [string]$CargoArgs = $env:ATLAS_CARGO_ARGS
 )
@@ -38,6 +39,7 @@ Environment:
   ATLAS_BRANCH=main       Git branch to install when ATLAS_TAG/ATLAS_REV are unset.
   ATLAS_TAG=v0.1.0        Git tag to install.
   ATLAS_REV=<sha>         Git revision to install.
+  ATLAS_RELEASE=latest    Install latest GitHub Release tag by default. Use "off" for ATLAS_BRANCH.
   ATLAS_INSTALL_GPU=1     Also install GPU adapter binaries.
   ATLAS_ROOT=$HOME\.cargo Cargo install root. Defaults to Cargo's install root.
   ATLAS_CARGO_ARGS="..."  Extra arguments appended to each cargo install command.
@@ -58,6 +60,27 @@ function Resolve-Cargo {
         throw "missing required command: cargo; install Rust from https://rustup.rs/ or add Cargo to PATH"
     }
     return $cargo.Source
+}
+
+function Resolve-ReleaseTag {
+    if ($Tag -or $Rev -or $Release -eq "off") {
+        return
+    }
+    if ($Release -ne "latest") {
+        $script:Tag = $Release
+        return
+    }
+    try {
+        $apiUrl = "https://api.github.com/repos/$Repo/releases/latest"
+        $latest = Invoke-RestMethod -Uri $apiUrl -UseBasicParsing
+        if ($latest.tag_name) {
+            $script:Tag = [string]$latest.tag_name
+            Write-Host "==> Installing latest GitHub Release $script:Tag"
+        }
+    }
+    catch {
+        Write-Warning "latest GitHub Release not found; falling back to branch $Branch"
+    }
 }
 
 function Get-RefArgs {
@@ -108,6 +131,7 @@ function Install-Package([string]$Package, [string]$Bin) {
 }
 
 $script:CargoCommand = Resolve-Cargo
+Resolve-ReleaseTag
 
 Install-Package "atlas-cli" "atlas"
 

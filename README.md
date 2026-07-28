@@ -18,6 +18,9 @@ Install the CLI from GitHub:
 curl -fsSL https://raw.githubusercontent.com/imattas/atlas/main/install.sh | sh
 ```
 
+Installers use the latest GitHub Release tag by default and fall back to `main`
+when no release exists yet.
+
 On Windows PowerShell:
 
 ```powershell
@@ -95,6 +98,17 @@ This repository uses GitHub Releases rather than a checked-in `release/` directo
 - `.github/workflows/release.yml`
 
 Create a release by pushing a tag like `v0.1.0`. The workflow validates release metadata, runs release tests, builds a source archive, writes checksums, and publishes the GitHub Release.
+
+You can also run the release workflow manually with a version input such as
+`v0.1.0`; it will create/update the tag and publish the GitHub Release.
+
+## Repository layout
+
+The repo is a multi-track workspace, so the top-level folders separate Rust
+crates, GPU kernels, Python helpers, benchmark evidence, schemas, docs, and
+release tests. See `docs/repository-layout.md` for the current map and cleanup
+direction. Local `target/` and `release/` folders are ignored build/scratch
+output, not GitHub source folders.
 
 ## Verification profiles
 

@@ -6,6 +6,7 @@ repo_url="${ATLAS_REPO_URL:-https://github.com/${repo}.git}"
 branch="${ATLAS_BRANCH:-main}"
 tag="${ATLAS_TAG:-}"
 rev="${ATLAS_REV:-}"
+release="${ATLAS_RELEASE:-latest}"
 install_gpu="${ATLAS_INSTALL_GPU:-0}"
 install_root="${ATLAS_ROOT:-}"
 extra_cargo_args="${ATLAS_CARGO_ARGS:-}"
@@ -37,6 +38,7 @@ Environment:
   ATLAS_BRANCH=main       Git branch to install when ATLAS_TAG/ATLAS_REV are unset.
   ATLAS_TAG=v0.1.0        Git tag to install.
   ATLAS_REV=<sha>         Git revision to install.
+  ATLAS_RELEASE=latest    Install latest GitHub Release tag by default. Use "off" for ATLAS_BRANCH.
   ATLAS_INSTALL_GPU=1     Also install GPU adapter binaries.
   ATLAS_ROOT=$HOME/.local Cargo install root. Defaults to Cargo's install root.
   ATLAS_CARGO_ARGS="..."  Extra arguments appended to each cargo install command.
@@ -65,6 +67,32 @@ resolve_cargo() {
   else
     echo "missing required command: cargo; install Rust from https://rustup.rs/ or add Cargo to PATH" >&2
     return 127
+  fi
+}
+
+resolve_release_tag() {
+  if [ -n "$tag" ] || [ -n "$rev" ] || [ "$release" = "off" ]; then
+    return 0
+  fi
+  if [ "$release" != "latest" ]; then
+    tag="$release"
+    return 0
+  fi
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "curl not found for latest release lookup; falling back to branch ${branch}" >&2
+    return 0
+  fi
+  api_url="https://api.github.com/repos/${repo}/releases/latest"
+  latest_tag=$(
+    curl -fsSL "$api_url" 2>/dev/null \
+      | sed -n 's/^[[:space:]]*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+      | head -n 1
+  ) || latest_tag=""
+  if [ -n "$latest_tag" ]; then
+    tag="$latest_tag"
+    echo "==> Installing latest GitHub Release ${tag}"
+  else
+    echo "latest GitHub Release not found; falling back to branch ${branch}" >&2
   fi
 }
 
@@ -100,6 +128,7 @@ install_package() {
 
 require_command mktemp
 cargo_cmd="$(resolve_cargo)"
+resolve_release_tag
 
 install_package atlas-cli atlas
 

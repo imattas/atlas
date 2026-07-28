@@ -5,6 +5,11 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version tag, for example v0.1.0"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -27,12 +32,28 @@ jobs:
       - name: Test release metadata
         run: python -m unittest discover tests/release
 
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            version="${{ inputs.version }}"
+            if [[ ! "$version" =~ ^v[0-9]+(\.[0-9]+)*([-.][0-9A-Za-z.-]+)?$ ]]; then
+              echo "workflow_dispatch version must look like v0.1.0, got: $version" >&2
+              exit 2
+            fi
+          else
+            version="${GITHUB_REF_NAME}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Build release archive
         shell: bash
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME:-manual}"
-          archive="atlas-${{ github.ref_name }}.zip"
+          version="${{ steps.version.outputs.version }}"
+          archive="atlas-${version}-source.zip"
           git archive --format=zip --output "$archive" HEAD
           sha256sum "$archive" RELEASE_MANIFEST.toml > "atlas-${version}-checksums.txt"
 
@@ -40,10 +61,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version="${GITHUB_REF_NAME:-manual}"
+          version="${{ steps.version.outputs.version }}"
+          target_args=()
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            target_args+=(--target "$GITHUB_SHA")
+          fi
           gh release create "$version" \
-            "atlas-${{ github.ref_name }}.zip" \
+            "atlas-${version}-source.zip" \
             "atlas-${version}-checksums.txt" \
             "RELEASE_MANIFEST.toml" \
             --title "AtlasCTF ${version}" \
+            --latest \
+            "${target_args[@]}" \
             --notes "Automated AtlasCTF release with source archive, checksums, and release manifest."

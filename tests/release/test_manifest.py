@@ -36,7 +36,7 @@ class ReleaseManifestTest(unittest.TestCase):
         self.assertEqual(tracked_release_paths, [], "release metadata should not be tracked in release/")
         self.assertTrue((ROOT / ".github" / "workflows" / "release.yml").exists())
         workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-        for token in ["gh release create", "RELEASE_MANIFEST.toml", "atlas-${{ github.ref_name }}"]:
+        for token in ["gh release create", "RELEASE_MANIFEST.toml", "atlas-${version}-source.zip"]:
             self.assertIn(token, workflow)
 
     def test_readme_and_gitignore_cover_project_handoff(self) -> None:

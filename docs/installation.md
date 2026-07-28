@@ -17,6 +17,9 @@ Install the CLI directly from GitHub:
 curl -fsSL https://raw.githubusercontent.com/imattas/atlas/main/install.sh | sh
 ```
 
+Installers use the latest GitHub Release tag by default and fall back to `main`
+when no release exists yet. Set `ATLAS_RELEASE=off` to force `ATLAS_BRANCH`.
+
 On Windows PowerShell:
 
 ```powershell
