@@ -969,9 +969,17 @@ fn find_command_on_path(names: Vec<&'static str>) -> Option<PathBuf> {
 }
 
 fn find_cuda_root_nvrtc_library() -> Option<String> {
-    nvrtc_library_candidates_from_roots(cuda_root_dirs())
+    find_cuda_root_nvrtc_library_from_roots(cuda_root_dirs())
+}
+
+fn find_cuda_root_nvrtc_library_from_roots(
+    roots: impl IntoIterator<Item = PathBuf>,
+) -> Option<String> {
+    let roots = roots.into_iter().collect::<Vec<_>>();
+    nvrtc_library_candidates_from_roots(roots.clone())
         .into_iter()
         .find(|path| path.is_file())
+        .or_else(|| find_nvrtc_library_by_scanning_roots(roots))
         .map(|path| path.to_string_lossy().into_owned())
 }
 
@@ -992,6 +1000,45 @@ fn format_path_candidates(candidates: Vec<PathBuf>) -> String {
         .map(|path| path.display().to_string())
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn find_nvrtc_library_by_scanning_roots(
+    roots: impl IntoIterator<Item = PathBuf>,
+) -> Option<PathBuf> {
+    roots
+        .into_iter()
+        .flat_map(|root| nvrtc_library_dirs(&root))
+        .filter_map(|dir| fs::read_dir(dir).ok())
+        .flat_map(|entries| entries.filter_map(Result::ok))
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.is_file()
+                && path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(is_nvrtc_library_name)
+        })
+}
+
+fn is_nvrtc_library_name(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    #[cfg(windows)]
+    {
+        name.starts_with("nvrtc64_") && name.ends_with(".dll")
+    }
+    #[cfg(target_os = "linux")]
+    {
+        name == "libnvrtc.so" || name.starts_with("libnvrtc.so.")
+    }
+    #[cfg(target_os = "macos")]
+    {
+        name == "libnvrtc.dylib"
+    }
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+    {
+        let _ = name;
+        false
+    }
 }
 
 fn cuda_root_dirs() -> Vec<PathBuf> {
@@ -1195,5 +1242,20 @@ mod tests {
         assert!(nvrtc.contains("nvrtc"));
         assert!(nvcc.contains("atlas-test"));
         assert!(nvcc.contains("nvcc"));
+    }
+
+    #[test]
+    fn cuda_root_nvrtc_discovery_accepts_newer_runtime_compiler_names() {
+        let cuda_root =
+            std::env::temp_dir().join(format!("atlas-cuda-new-nvrtc-{}", std::process::id()));
+        let bin_dir = cuda_root.join("bin");
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        let library = bin_dir.join("nvrtc64_999_0.dll");
+        std::fs::write(&library, []).unwrap();
+
+        let found = find_cuda_root_nvrtc_library_from_roots([cuda_root.clone()]);
+
+        assert_eq!(found, Some(library.to_string_lossy().into_owned()));
+        let _ = std::fs::remove_dir_all(cuda_root);
     }
 }
