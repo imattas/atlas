@@ -175,12 +175,17 @@ impl Launcher for HipModuleLauncher {
 
     fn launch(&self, args: &LaunchArgs) -> Result<Vec<u64>, String> {
         ensure_artifact_readable(&args.artifact)?;
+        let uses_u32_abi = artifact_path_uses_u32_launch_abi(&args.artifact)?;
         let runtime = HipRuntime::load()?;
         runtime.init()?;
         runtime.set_device(0)?;
         let module = runtime.load_module(&args.artifact)?;
         let function = runtime.get_function(module.raw, "atlas_search")?;
-        launch_hip(&runtime, function, args)
+        if uses_u32_abi {
+            launch_hip_u32(&runtime, function, args)
+        } else {
+            launch_hip(&runtime, function, args)
+        }
     }
 }
 
@@ -224,6 +229,18 @@ fn ensure_artifact_readable(path: &str) -> Result<(), String> {
     fs::metadata(path)
         .map(|_| ())
         .map_err(|error| format!("cannot read HIP code object {path}: {error}"))
+}
+
+fn artifact_path_uses_u32_launch_abi(path: &str) -> Result<bool, String> {
+    let bytes =
+        fs::read(path).map_err(|error| format!("cannot read HIP artifact {path}: {error}"))?;
+    Ok(artifact_uses_u32_launch_abi(&bytes))
+}
+
+fn artifact_uses_u32_launch_abi(bytes: &[u8]) -> bool {
+    bytes
+        .windows(b"atlas_search_u32_abi".len())
+        .any(|window| window == b"atlas_search_u32_abi")
 }
 
 fn read_hip_artifact<'a>(input: &'a str, output: Option<&'a str>) -> Result<&'a str, String> {
@@ -347,6 +364,88 @@ fn launch_hip(
     matches.truncate(retained);
     matches.sort_unstable();
     Ok(matches)
+}
+
+fn launch_hip_u32(
+    runtime: &HipRuntime,
+    function: HipFunction,
+    args: &LaunchArgs,
+) -> Result<Vec<u64>, String> {
+    let out_len = runtime.malloc(std::mem::size_of::<u32>())?;
+    let out_words_len = args
+        .max_matches
+        .checked_mul(2)
+        .ok_or_else(|| "output word count overflow".to_owned())?;
+    let out_bytes = out_words_len
+        .checked_mul(std::mem::size_of::<u32>())
+        .ok_or_else(|| "output buffer size overflow".to_owned())?;
+    let out_words = runtime.malloc(out_bytes)?;
+    let _out_len_guard = DeviceAllocation {
+        runtime,
+        ptr: out_len,
+    };
+    let _out_guard = DeviceAllocation {
+        runtime,
+        ptr: out_words,
+    };
+    runtime.memset(out_len, 0, std::mem::size_of::<u32>())?;
+
+    let mut start_lo = low_u32(args.start);
+    let mut start_hi = high_u32(args.start);
+    let mut end_lo = low_u32(args.end);
+    let mut end_hi = high_u32(args.end);
+    let mut out_param = out_words;
+    let mut out_len_param = out_len;
+    let mut max_matches =
+        u32::try_from(args.max_matches).map_err(|_| "max-matches exceeds HIP uint".to_owned())?;
+    let mut params = [
+        (&mut start_lo as *mut u32).cast::<c_void>(),
+        (&mut start_hi as *mut u32).cast::<c_void>(),
+        (&mut end_lo as *mut u32).cast::<c_void>(),
+        (&mut end_hi as *mut u32).cast::<c_void>(),
+        (&mut out_param as *mut *mut c_void).cast::<c_void>(),
+        (&mut out_len_param as *mut *mut c_void).cast::<c_void>(),
+        (&mut max_matches as *mut u32).cast::<c_void>(),
+    ];
+    let block_x =
+        u32::try_from(args.local_size).map_err(|_| "local-size exceeds HIP uint".to_owned())?;
+    let grid_x = args.global_size.div_ceil(args.local_size);
+    let grid_x = u32::try_from(grid_x).map_err(|_| "grid size exceeds HIP uint".to_owned())?;
+    runtime.launch_kernel(function, grid_x, block_x, params.as_mut_ptr())?;
+    runtime.synchronize()?;
+
+    let mut retained = 0_u32;
+    runtime.memcpy_device_to_host(
+        (&mut retained as *mut u32).cast::<c_void>(),
+        out_len,
+        std::mem::size_of::<u32>(),
+    )?;
+    let retained = usize::try_from(retained)
+        .unwrap_or(args.max_matches)
+        .min(args.max_matches);
+    let mut out_words_host = vec![0_u32; out_words_len];
+    runtime.memcpy_device_to_host(
+        out_words_host.as_mut_ptr().cast::<c_void>(),
+        out_words,
+        out_bytes,
+    )?;
+    let mut matches = out_words_host
+        .chunks_exact(2)
+        .take(retained)
+        .map(|words| u64::from(words[0]) | (u64::from(words[1]) << 32))
+        .collect::<Vec<_>>();
+    matches.sort_unstable();
+    Ok(matches)
+}
+
+fn low_u32(value: u64) -> u32 {
+    let bytes = value.to_le_bytes();
+    u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+}
+
+fn high_u32(value: u64) -> u32 {
+    let bytes = value.to_le_bytes();
+    u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]])
 }
 
 #[derive(Debug)]
@@ -844,4 +943,22 @@ unsafe fn platform_close(handle: *mut c_void) {
         fn dlclose(handle: *mut c_void) -> c_int;
     }
     let _ = dlclose(handle);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::artifact_uses_u32_launch_abi;
+
+    #[test]
+    fn hip_artifact_marker_selects_u32_launch_abi() {
+        assert!(artifact_uses_u32_launch_abi(
+            b"extern \"C\" __device__ unsigned int atlas_search_u32_abi = 1U;"
+        ));
+        assert!(artifact_uses_u32_launch_abi(
+            b"\0atlas_search_u32_abi\0atlas_search\0"
+        ));
+        assert!(!artifact_uses_u32_launch_abi(
+            b"extern \"C\" __global__ void atlas_search(unsigned long long start)"
+        ));
+    }
 }

@@ -297,7 +297,54 @@ fn hip_driver_plan_uses_generated_hip_kernel_source() {
     assert!(plan.kernel_source.contains("__global__ void atlas_search"));
     assert!(plan
         .kernel_source
-        .contains("((candidate ^ 170ULL) & mask) == 255ULL"));
+        .contains("((candidate ^ 170U) & mask) == 255U"));
+    assert!(plan.kernel_source.contains("atlas_search_u32_abi"));
+}
+
+#[test]
+fn hip_32_bit_codegen_does_not_require_64_bit_device_integer_ops() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+
+    let hip = GpuSearcher::compile_hip(&program);
+
+    assert!(!hip.contains("unsigned long long"));
+    assert!(!hip.contains("ULL"));
+    assert!(hip.contains("atlas_search_u32_abi"));
+    assert!(hip.contains("unsigned int raw_candidate"));
+    assert!(hip.contains("unsigned int candidate"));
+    assert!(hip.contains("unsigned int* out_words"));
+    assert!(hip.contains("out_words[word_index] = raw_low"));
+    assert!(hip.contains("out_words[word_index + 1U] = raw_high"));
+}
+
+#[test]
+fn hip_32_bit_codegen_keeps_literals_in_32_bit_range() {
+    let program = SearchProgram::new(
+        8,
+        vec![
+            SearchOp::XorEq {
+                mask: 0x1_0000_00aa,
+                target: 0xff,
+            },
+            SearchOp::AddEq {
+                addend: 0x1_0000_0001,
+                target: 4,
+            },
+            SearchOp::ChecksumEq {
+                modulus: 0x1_0000_0000,
+                target: 0xff,
+            },
+        ],
+    )
+    .unwrap();
+
+    let hip = GpuSearcher::compile_hip(&program);
+
+    assert!(hip.contains("((candidate ^ 170U) & mask) == 255U"));
+    assert!(hip.contains("((candidate + 1U) & mask) == 4U"));
+    assert!(hip.contains("candidate == 255U"));
+    assert!(!hip.contains("4294967296U"));
+    assert!(!hip.contains("ULL"));
 }
 
 #[test]

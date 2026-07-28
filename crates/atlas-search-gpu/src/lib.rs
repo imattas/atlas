@@ -1527,6 +1527,49 @@ extern "C" __global__ void atlas_search(unsigned long long start, unsigned long 
     #[must_use]
     pub fn compile_hip(program: &SearchProgram) -> String {
         let mask = width_mask(program.width);
+        if program.width <= 32 {
+            let predicates = program
+                .ops
+                .iter()
+                .map(|op| cuda_predicate_32(op, program.width))
+                .collect::<Vec<_>>()
+                .join(" &&\n      ");
+            return format!(
+                r#"#include <hip/hip_runtime.h>
+
+extern "C" __device__ unsigned int atlas_search_u32_abi = 1U;
+
+__device__ unsigned int rotate_left_width(unsigned int value, unsigned int amount, unsigned int width) {{
+  unsigned int mask = width == 32U ? 4294967295U : ((1U << width) - 1U);
+  value = value & mask;
+  amount = amount % width;
+  return amount == 0U ? value : (((value << amount) | (value >> (width - amount))) & mask);
+}}
+
+extern "C" __global__ void atlas_search(unsigned int start_lo, unsigned int start_hi, unsigned int end_lo, unsigned int end_hi, unsigned int* out_words, unsigned int* out_len, unsigned int max_matches) {{
+  /* width={} ops={} */
+  unsigned int gid = blockIdx.x * blockDim.x + threadIdx.x;
+  unsigned int raw_low = start_lo + gid;
+  unsigned int raw_high = start_hi + (raw_low < start_lo ? 1U : 0U);
+  unsigned int mask = {mask}U;
+  if (raw_high > end_hi || (raw_high == end_hi && raw_low >= end_lo)) {{
+    return;
+  }}
+  unsigned int raw_candidate = raw_low;
+  unsigned int candidate = raw_candidate & mask;
+  if ({predicates}) {{
+    unsigned int slot = atomicAdd(out_len, 1U);
+    if (slot < max_matches) {{
+      unsigned int word_index = slot * 2U;
+      out_words[word_index] = raw_low;
+      out_words[word_index + 1U] = raw_high;
+    }}
+  }}
+}}"#,
+                program.width,
+                program.ops.len()
+            );
+        }
         let predicates = program
             .ops
             .iter()
