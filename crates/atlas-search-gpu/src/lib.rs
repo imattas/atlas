@@ -420,7 +420,12 @@ impl AcceleratorRuntime {
         let local_size = local_size.max(1);
         let candidates = domain.end.saturating_sub(domain.start);
         let groups = candidates.saturating_add(local_size - 1) / local_size;
-        let global_size = groups.max(1).saturating_mul(local_size);
+        let mut global_size = groups.max(1).saturating_mul(local_size);
+        let mut local_size = local_size;
+        if global_size < candidates {
+            local_size = 1;
+            global_size = candidates.max(1);
+        }
         LaunchConfig {
             global_size,
             local_size,

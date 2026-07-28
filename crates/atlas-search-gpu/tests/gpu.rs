@@ -810,6 +810,19 @@ fn launch_config_bounds_workgroups_and_output_transfer_capacity() {
 }
 
 #[test]
+fn launch_config_never_under_covers_large_64_bit_domains() {
+    let domain = SearchDomain::new(0, u64::MAX);
+    let config = AcceleratorRuntime::plan_launch(domain, 256, 1024);
+
+    assert!(
+        config.global_size >= domain.end - domain.start,
+        "global_size {} under-covers candidate count {}",
+        config.global_size,
+        domain.end - domain.start
+    );
+}
+
+#[test]
 fn runtime_falls_back_with_telemetry_when_no_device_is_available() {
     let program = SearchProgram::try_from_fixture("add").unwrap();
     let token = CancellationToken::new();
