@@ -100,6 +100,11 @@ path = "gpu/cuda/atlas_search.cu"
 digest = "tracked-by-git"
 
 [[artifacts]]
+name = "hip-kernel-fixture"
+path = "gpu/hip/atlas_search.hip"
+digest = "tracked-by-git"
+
+[[artifacts]]
 name = "opencl-kernel-fixture"
 path = "gpu/opencl/atlas_search.cl"
 digest = "tracked-by-git"

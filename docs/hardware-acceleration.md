@@ -15,8 +15,12 @@ Runtime behavior:
 
 - detected SDKs are ranked by `GpuSdkPlan`;
 - missing SDKs produce a precise diagnostic and scalar/SIMD fallback;
-- CUDA, OpenCL, and Vulkan compute sources are generated from the same
+- CUDA, HIP, OpenCL, and Vulkan compute sources are generated from the same
   restricted IR boundary;
+- per-SDK command plans select checked-in kernel artifacts and compiler
+  frontends (`opencl-clang`, `glslc`, `nvcc`, or `hipcc`);
+- production driver execution is isolated behind a runner boundary so host
+  adapters can compile/launch kernels without changing search semantics;
 - launch configuration records global size, local size, output cap, and transfer
   bytes;
 - generated kernels are cache-keyed by program, compiler, device, and options;
@@ -27,6 +31,7 @@ Runtime behavior:
 Checked packaging fixtures:
 
 - `gpu/cuda/atlas_search.cu`
+- `gpu/hip/atlas_search.hip`
 - `gpu/opencl/atlas_search.cl`
 - `gpu/vulkan/atlas_search.comp`
 

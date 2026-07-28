@@ -43,6 +43,7 @@ if ($Profile -in @("distributed", "advanced", "full")) {
         "docs/guides/workers.md",
         "deploy/worker/README.md",
         "gpu/cuda/atlas_search.cu",
+        "gpu/hip/atlas_search.hip",
         "gpu/opencl/atlas_search.cl",
         "gpu/vulkan/atlas_search.comp"
     )) {

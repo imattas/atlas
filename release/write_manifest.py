@@ -22,6 +22,7 @@ NATIVE_MATH_EVIDENCE = {
 }
 GPU_KERNEL_EVIDENCE = {
     "gpu/cuda/atlas_search.cu",
+    "gpu/hip/atlas_search.hip",
     "gpu/opencl/atlas_search.cl",
     "gpu/vulkan/atlas_search.comp",
 }
@@ -112,8 +113,10 @@ def render_manifest() -> str:
         "crates/atlas-math/src/lib.rs",
         "backends/native-math/atlas_native_math_backend.py",
         "gpu/cuda/atlas_search.cu",
+        "gpu/hip/atlas_search.hip",
         "gpu/opencl/atlas_search.cl",
         "gpu/vulkan/atlas_search.comp",
+        "docs/hardware-acceleration.md",
     ]
     body = [
         'manifest_version = "1"',
@@ -140,6 +143,7 @@ def render_manifest() -> str:
         ("distributed-acceleration", "crates/atlas-worker"),
         ("advanced-automation", "tests/e2e/track4/manifest.toml"),
         ("native-exact-math", "crates/atlas-math"),
+        ("portable-gpu-sdk-selection", "crates/atlas-search-gpu/src/lib.rs"),
     ]:
         body.extend(["[[capabilities]]", f'name = "{name}"', 'status = "supported"', f'evidence = "{evidence}"', ""])
     for path in evidence_paths:

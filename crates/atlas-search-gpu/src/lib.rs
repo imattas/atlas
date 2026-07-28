@@ -4,6 +4,7 @@ use atlas_scheduler::CancellationToken;
 use atlas_search_ir::{SearchDomain, SearchProgram};
 use atlas_search_native::NativeSearcher;
 use std::collections::BTreeSet;
+use std::process::Command;
 
 /// Kernel cache key.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -124,6 +125,120 @@ impl GpuSdkPlan {
     }
 }
 
+/// SDK-specific driver command plan.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DriverCommandPlan {
+    /// SDK selected for this command plan.
+    pub sdk: GpuSdk,
+    /// Kernel source artifact path.
+    pub source_file: String,
+    /// Compiled kernel artifact path.
+    pub artifact_file: String,
+    /// Command used to compile the kernel artifact.
+    pub compile_command: Vec<String>,
+    /// Command used by a host-side driver adapter to launch the kernel.
+    pub launch_command: Vec<String>,
+    /// Kernel cache key for the compiled artifact.
+    pub cache_key: KernelCacheKey,
+}
+
+impl DriverCommandPlan {
+    /// Builds a deterministic driver command plan for an SDK.
+    #[must_use]
+    pub fn for_sdk(sdk: &GpuSdk, program: &SearchProgram, output_dir: &str) -> Self {
+        let (source_file, artifact_name, compiler, options) = match sdk {
+            GpuSdk::OpenCl { .. } => (
+                "gpu/opencl/atlas_search.cl",
+                "atlas_search.opencl.bin",
+                "opencl-clang",
+                "-cl-std=CL3.0 -O2",
+            ),
+            GpuSdk::Vulkan { .. } => (
+                "gpu/vulkan/atlas_search.comp",
+                "atlas_search.spv",
+                "glslc",
+                "-O",
+            ),
+            GpuSdk::Cuda { .. } => (
+                "gpu/cuda/atlas_search.cu",
+                "atlas_search.ptx",
+                "nvcc",
+                "-ptx -O2",
+            ),
+            GpuSdk::Hip { .. } => (
+                "gpu/hip/atlas_search.hip",
+                "atlas_search.hsaco",
+                "hipcc",
+                "-O2",
+            ),
+        };
+        let artifact_file = join_path(output_dir, artifact_name);
+        let compile_command = compile_command_for(compiler, options, source_file, &artifact_file);
+        let launch_command = vec![
+            format!("atlas-gpu-{}-run", sdk.name().to_ascii_lowercase()),
+            artifact_file.clone(),
+        ];
+        Self {
+            sdk: sdk.clone(),
+            source_file: source_file.to_owned(),
+            artifact_file,
+            compile_command,
+            launch_command,
+            cache_key: KernelCacheKey::new(format!("{program:?}"), compiler, sdk.name(), options),
+        }
+    }
+}
+
+/// Driver execution output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DriverRunOutput {
+    /// Process-style exit code.
+    pub exit_code: i32,
+    /// Matches reported by the device output buffer.
+    pub reported_matches: Vec<u64>,
+    /// Captured standard output from the driver adapter.
+    pub stdout: String,
+    /// Captured standard error from the driver adapter.
+    pub stderr: String,
+}
+
+impl DriverRunOutput {
+    /// Parses newline-separated device matches from launcher output.
+    ///
+    /// Accepted tokens are decimal values, hexadecimal values prefixed by
+    /// `0x`, or `match=<value>` lines using either numeric form.
+    #[must_use]
+    pub fn parse_reported_matches(stdout: &str) -> Vec<u64> {
+        stdout
+            .lines()
+            .filter_map(|line| parse_match_token(line.trim()))
+            .collect()
+    }
+}
+
+/// Driver runner abstraction for SDK command execution.
+pub trait DriverRunner {
+    /// Runs the compile and launch plan and returns device-reported output.
+    fn run(&self, plan: &DriverCommandPlan) -> DriverRunOutput;
+}
+
+/// Process-backed driver runner.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ProcessDriverRunner;
+
+impl DriverRunner for ProcessDriverRunner {
+    fn run(&self, plan: &DriverCommandPlan) -> DriverRunOutput {
+        let compile = run_command(&plan.compile_command);
+        if compile.exit_code != 0 {
+            return compile;
+        }
+        let mut launch = run_command(&plan.launch_command);
+        launch.stdout = [compile.stdout, launch.stdout].join("");
+        launch.stderr = [compile.stderr, launch.stderr].join("");
+        launch
+    }
+}
+
 /// GPU launch configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LaunchConfig {
@@ -229,6 +344,102 @@ impl AcceleratorRuntime {
             },
             matches,
         }
+    }
+
+    /// Executes through a GPU driver runner and validates device-reported matches.
+    #[must_use]
+    pub fn execute_with_driver(
+        program: &SearchProgram,
+        domain: SearchDomain,
+        sdk: &GpuSdk,
+        cancellation: &CancellationToken,
+        runner: &dyn DriverRunner,
+    ) -> AcceleratorReport {
+        let launch = Self::plan_launch(domain, 256, 1024);
+        let command_plan = DriverCommandPlan::for_sdk(sdk, program, "target/atlas-gpu");
+        let output = runner.run(&command_plan);
+        let base_rationale = format!("{}; driver exit {}", sdk.name(), output.exit_code);
+        if output.exit_code != 0 || output.reported_matches.is_empty() {
+            return AcceleratorReport {
+                mode: RuntimeMode::CpuFallback,
+                matches: NativeSearcher::search(program, domain, cancellation),
+                telemetry: RuntimeTelemetry {
+                    launch,
+                    rationale: base_rationale,
+                    cpu_validated: true,
+                    rejected_device_matches: 0,
+                },
+            };
+        }
+        let matches = GpuSearcher::cpu_validate_matches(program, &output.reported_matches);
+        AcceleratorReport {
+            mode: RuntimeMode::DeviceValidated,
+            telemetry: RuntimeTelemetry {
+                launch,
+                rationale: base_rationale,
+                cpu_validated: true,
+                rejected_device_matches: output
+                    .reported_matches
+                    .len()
+                    .saturating_sub(matches.len()),
+            },
+            matches,
+        }
+    }
+}
+
+fn compile_command_for(
+    compiler: &str,
+    options: &str,
+    source_file: &str,
+    artifact_file: &str,
+) -> Vec<String> {
+    let mut command = vec![compiler.to_owned()];
+    command.extend(options.split_whitespace().map(str::to_owned));
+    command.push(source_file.to_owned());
+    command.push("-o".to_owned());
+    command.push(artifact_file.to_owned());
+    command
+}
+
+fn join_path(output_dir: &str, artifact_name: &str) -> String {
+    let output_dir = output_dir.trim_end_matches(['/', '\\']);
+    format!("{output_dir}/{artifact_name}")
+}
+
+fn run_command(command: &[String]) -> DriverRunOutput {
+    let Some((program, args)) = command.split_first() else {
+        return DriverRunOutput {
+            exit_code: 127,
+            reported_matches: Vec::new(),
+            stdout: String::new(),
+            stderr: "empty driver command".to_owned(),
+        };
+    };
+    match Command::new(program).args(args).output() {
+        Ok(output) => DriverRunOutput {
+            exit_code: output.status.code().unwrap_or(1),
+            reported_matches: DriverRunOutput::parse_reported_matches(&String::from_utf8_lossy(
+                &output.stdout,
+            )),
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        },
+        Err(error) => DriverRunOutput {
+            exit_code: 127,
+            reported_matches: Vec::new(),
+            stdout: String::new(),
+            stderr: error.to_string(),
+        },
+    }
+}
+
+fn parse_match_token(token: &str) -> Option<u64> {
+    let token = token.strip_prefix("match=").unwrap_or(token);
+    if let Some(hex) = token.strip_prefix("0x") {
+        u64::from_str_radix(hex, 16).ok()
+    } else {
+        token.parse().ok()
     }
 }
 
