@@ -1527,6 +1527,46 @@ extern "C" __global__ void atlas_search(unsigned long long start, unsigned long 
     #[must_use]
     pub fn compile_opencl(program: &SearchProgram) -> String {
         let mask = width_mask(program.width);
+        if program.width <= 32 {
+            let predicates = program
+                .ops
+                .iter()
+                .map(|op| opencl_predicate_32(op, program.width))
+                .collect::<Vec<_>>()
+                .join(" &&\n      ");
+            return format!(
+                r"/* atlas-opencl-u32-abi */
+uint rotate_left_width(uint value, uint amount, uint width) {{
+  uint mask = width == 32U ? 4294967295U : ((1U << width) - 1U);
+  value = value & mask;
+  amount = amount % width;
+  return amount == 0U ? value : (((value << amount) | (value >> (width - amount))) & mask);
+}}
+
+__kernel void atlas_search(uint start_lo, uint start_hi, uint end_lo, uint end_hi, __global uint* out_words, __global uint* out_len, uint max_matches) {{
+  /* width={} ops={} */
+  uint gid = (uint)get_global_id(0);
+  uint raw_low = start_lo + gid;
+  uint raw_high = start_hi + (uint)(raw_low < start_lo);
+  uint mask = {mask}U;
+  if (raw_high > end_hi || (raw_high == end_hi && raw_low >= end_lo)) {{
+    return;
+  }}
+  uint raw_candidate = raw_low;
+  uint candidate = raw_candidate & mask;
+  if ({predicates}) {{
+    uint slot = atomic_inc(out_len);
+    if (slot < max_matches) {{
+      uint word_index = slot * 2U;
+      out_words[word_index] = raw_low;
+      out_words[word_index + 1U] = raw_high;
+    }}
+  }}
+}}",
+                program.width,
+                program.ops.len()
+            );
+        }
         let predicates = program
             .ops
             .iter()
@@ -1742,6 +1782,97 @@ fn opencl_predicate(op: &SearchOp, width: u32) -> String {
                 u64::from(value)
             )
         }
+    }
+}
+
+fn opencl_predicate_32(op: &SearchOp, width: u32) -> String {
+    let width_mask = width_mask(width);
+    match *op {
+        SearchOp::AddEq { addend, target } => {
+            if target > width_mask {
+                return false_predicate_32();
+            }
+            format!(
+                "((candidate + {}U) & mask) == {}U",
+                low_u32(addend),
+                exact_u32(target)
+            )
+        }
+        SearchOp::XorEq { mask, target } => {
+            if target > width_mask {
+                return false_predicate_32();
+            }
+            format!(
+                "((candidate ^ {}U) & mask) == {}U",
+                low_u32(mask),
+                exact_u32(target)
+            )
+        }
+        SearchOp::ChecksumEq { modulus, target } => {
+            if modulus == 0 || target > u64::from(u32::MAX) {
+                return false_predicate_32();
+            }
+            if modulus > u64::from(u32::MAX) {
+                return format!("candidate == {}U", exact_u32(target));
+            }
+            if target >= modulus {
+                return false_predicate_32();
+            }
+            format!(
+                "(candidate % {}U) == {}U",
+                exact_u32(modulus),
+                exact_u32(target)
+            )
+        }
+        SearchOp::MulAddEq {
+            multiplier,
+            addend,
+            target,
+        } => {
+            if target > width_mask {
+                return false_predicate_32();
+            }
+            format!(
+                "((candidate * {}U + {}U) & mask) == {}U",
+                low_u32(multiplier),
+                low_u32(addend),
+                exact_u32(target)
+            )
+        }
+        SearchOp::RotateXorEq {
+            rotate_left,
+            mask,
+            target,
+        } => {
+            if target > width_mask {
+                return false_predicate_32();
+            }
+            format!(
+                "((rotate_left_width(candidate, {rotate_left}U, {width}U) ^ {}U) & mask) == {}U",
+                low_u32(mask),
+                exact_u32(target)
+            )
+        }
+        SearchOp::ByteEq { byte_index, value } => {
+            let shift = byte_index.saturating_mul(8);
+            format!("((candidate >> {shift}U) & 255U) == {}U", u64::from(value))
+        }
+    }
+}
+
+fn false_predicate_32() -> String {
+    "0U == 1U".to_owned()
+}
+
+fn low_u32(value: u64) -> u32 {
+    let bytes = value.to_le_bytes();
+    u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+}
+
+fn exact_u32(value: u64) -> u32 {
+    match u32::try_from(value) {
+        Ok(value) => value,
+        Err(_) => unreachable!("value is checked before OpenCL u32 literal emission"),
     }
 }
 

@@ -393,26 +393,69 @@ fn opencl_codegen_emits_restricted_ir_predicates() {
 
     let opencl = GpuSearcher::compile_opencl(&program);
 
-    assert!(opencl.contains("candidate = start + gid"));
-    assert!(opencl.contains("ulong candidate = raw_candidate & mask"));
-    assert!(opencl.contains("((candidate ^ 170UL) & mask) == 255UL"));
-    assert!(opencl.contains("((candidate + 1UL) & mask) == 4UL"));
-    assert!(opencl.contains("(candidate % 17UL) == 3UL"));
-    assert!(opencl.contains("((candidate * 65537UL + 4919UL) & mask) == 12648430UL"));
+    assert!(opencl.contains("uint raw_candidate = raw_low"));
+    assert!(opencl.contains("uint candidate = raw_candidate & mask"));
+    assert!(opencl.contains("((candidate ^ 170U) & mask) == 255U"));
+    assert!(opencl.contains("((candidate + 1U) & mask) == 4U"));
+    assert!(opencl.contains("(candidate % 17U) == 3U"));
+    assert!(opencl.contains("((candidate * 65537U + 4919U) & mask) == 12648430U"));
     assert!(opencl.contains("rotate_left_width(candidate, 7U, 24U)"));
-    assert!(opencl.contains("((candidate >> 8U) & 255UL) == 84UL"));
+    assert!(opencl.contains("((candidate >> 8U) & 255U) == 84U"));
     assert!(opencl.contains("atomic_inc(out_len)"));
 }
 
 #[test]
 fn opencl_codegen_preserves_full_candidate_when_outputting_matches() {
-    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let program = SearchProgram::new(64, vec![SearchOp::XorEq { mask: 0, target: 0 }]).unwrap();
 
     let opencl = GpuSearcher::compile_opencl(&program);
 
     assert!(opencl.contains("ulong raw_candidate = start + gid"));
     assert!(opencl.contains("ulong candidate = raw_candidate & mask"));
     assert!(opencl.contains("out[slot] = raw_candidate"));
+}
+
+#[test]
+fn opencl_32_bit_codegen_does_not_require_ulong() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+
+    let opencl = GpuSearcher::compile_opencl(&program);
+
+    assert!(!opencl.contains("ulong"));
+    assert!(opencl.contains("uint raw_candidate"));
+    assert!(opencl.contains("__global uint* out_words"));
+    assert!(opencl.contains("out_words[word_index] = raw_low"));
+    assert!(opencl.contains("out_words[word_index + 1U] = raw_high"));
+}
+
+#[test]
+fn opencl_32_bit_codegen_keeps_literals_in_32_bit_range() {
+    let program = SearchProgram::new(
+        8,
+        vec![
+            SearchOp::XorEq {
+                mask: 0x1_0000_00aa,
+                target: 0xff,
+            },
+            SearchOp::AddEq {
+                addend: 0x1_0000_0001,
+                target: 4,
+            },
+            SearchOp::ChecksumEq {
+                modulus: 0x1_0000_0000,
+                target: 0xff,
+            },
+        ],
+    )
+    .unwrap();
+
+    let opencl = GpuSearcher::compile_opencl(&program);
+
+    assert!(opencl.contains("((candidate ^ 170U) & mask) == 255U"));
+    assert!(opencl.contains("((candidate + 1U) & mask) == 4U"));
+    assert!(opencl.contains("candidate == 255U"));
+    assert!(!opencl.contains("4294967296U"));
+    assert!(!opencl.contains("ulong"));
 }
 
 #[test]
@@ -1315,10 +1358,10 @@ fn opencl_driver_plan_carries_generated_semantic_kernel_source() {
 
     assert!(plan.source_file.starts_with("target/atlas-gpu/"));
     assert!(plan.source_file.ends_with("/atlas_search.cl"));
-    assert!(plan.kernel_source.contains("candidate = start + gid"));
+    assert!(plan.kernel_source.contains("uint raw_candidate = raw_low"));
     assert!(plan
         .kernel_source
-        .contains("((candidate ^ 170UL) & mask) == 255UL"));
+        .contains("((candidate ^ 170U) & mask) == 255U"));
     assert_eq!(plan.compile_command[0], "atlas-gpu-opencl-run");
     assert!(plan
         .compile_command
@@ -1351,7 +1394,7 @@ fn process_driver_runner_writes_generated_source_before_compile() {
 
     let written_source = fs::read_to_string(&plan.source_file).unwrap();
     assert_eq!(output.exit_code, 0);
-    assert!(written_source.contains("candidate = start + gid"));
+    assert!(written_source.contains("uint raw_candidate = raw_low"));
     assert_eq!(runner.commands.borrow().len(), 2);
     let _ = fs::remove_dir_all(output_dir);
 }

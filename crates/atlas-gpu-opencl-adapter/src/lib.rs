@@ -237,6 +237,9 @@ fn write_opencl_source(path: &str, source: &str) -> Result<(), String> {
 fn launch_opencl(args: &LaunchArgs) -> Result<Vec<u64>, String> {
     let source = fs::read_to_string(&args.artifact).map_err(|error| error.to_string())?;
     let (context, queue, program) = build_opencl_program(&source)?;
+    if uses_u32_launch_abi(&source) {
+        return launch_opencl_u32(args, &context, &queue, &program);
+    }
     let out_buffer = unsafe {
         Buffer::<cl_ulong>::create(
             &context,
@@ -288,6 +291,78 @@ fn launch_opencl(args: &LaunchArgs) -> Result<Vec<u64>, String> {
             .map_err(|error| error.to_string())?;
     }
     matches.truncate(retained);
+    matches.sort_unstable();
+    Ok(matches)
+}
+
+fn uses_u32_launch_abi(source: &str) -> bool {
+    source.contains("atlas-opencl-u32-abi")
+}
+
+fn launch_opencl_u32(
+    args: &LaunchArgs,
+    context: &Context,
+    queue: &CommandQueue,
+    program: &Program,
+) -> Result<Vec<u64>, String> {
+    let out_words_len = args
+        .max_matches
+        .checked_mul(2)
+        .ok_or_else(|| "max-matches output word count overflowed".to_owned())?;
+    let out_words_buffer = unsafe {
+        Buffer::<cl_uint>::create(context, CL_MEM_READ_WRITE, out_words_len, ptr::null_mut())
+            .map_err(|error| error.to_string())?
+    };
+    let mut out_len_buffer = unsafe {
+        Buffer::<cl_uint>::create(context, CL_MEM_READ_WRITE, 1, ptr::null_mut())
+            .map_err(|error| error.to_string())?
+    };
+    let mut zero = vec![0_u32; 1];
+    unsafe {
+        queue
+            .enqueue_write_buffer(&mut out_len_buffer, CL_BLOCKING, 0, &zero, &[])
+            .map_err(|error| error.to_string())?;
+    }
+    let max_matches = cl_uint::try_from(args.max_matches)
+        .map_err(|_| "max-matches exceeds OpenCL uint".to_owned())?;
+    let start_lo = args.start as cl_uint;
+    let start_hi = (args.start >> 32) as cl_uint;
+    let end_lo = args.end as cl_uint;
+    let end_hi = (args.end >> 32) as cl_uint;
+    let kernel = Kernel::create(program, "atlas_search").map_err(|error| error.to_string())?;
+    unsafe {
+        ExecuteKernel::new(&kernel)
+            .set_arg(&start_lo)
+            .set_arg(&start_hi)
+            .set_arg(&end_lo)
+            .set_arg(&end_hi)
+            .set_arg(&out_words_buffer)
+            .set_arg(&out_len_buffer)
+            .set_arg(&max_matches)
+            .set_global_work_size(args.global_size)
+            .set_local_work_size(args.local_size)
+            .enqueue_nd_range(queue)
+            .map_err(|error| error.to_string())?;
+    }
+    unsafe {
+        queue
+            .enqueue_read_buffer(&out_len_buffer, CL_BLOCKING, 0, &mut zero, &[])
+            .map_err(|error| error.to_string())?;
+    }
+    let retained = usize::try_from(zero[0])
+        .unwrap_or(args.max_matches)
+        .min(args.max_matches);
+    let mut out_words = vec![0_u32; out_words_len];
+    unsafe {
+        queue
+            .enqueue_read_buffer(&out_words_buffer, CL_BLOCKING, 0, &mut out_words, &[])
+            .map_err(|error| error.to_string())?;
+    }
+    let mut matches = out_words
+        .chunks_exact(2)
+        .take(retained)
+        .map(|words| u64::from(words[0]) | (u64::from(words[1]) << 32))
+        .collect::<Vec<_>>();
     matches.sort_unstable();
     Ok(matches)
 }
@@ -437,5 +512,18 @@ fn opencl_loader_names() -> Vec<&'static str> {
         vec!["OpenCL", "libOpenCL.dylib"]
     } else {
         vec!["libOpenCL.so.1", "libOpenCL.so"]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::uses_u32_launch_abi;
+
+    #[test]
+    fn opencl_source_marker_selects_u32_launch_abi() {
+        assert!(uses_u32_launch_abi("/* atlas-opencl-u32-abi */"));
+        assert!(!uses_u32_launch_abi(
+            "__kernel void atlas_search(ulong start, ulong end)"
+        ));
     }
 }
