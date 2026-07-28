@@ -31,6 +31,17 @@ pub struct LaunchArgs {
     pub global_size: usize,
     /// HIP block size.
     pub local_size: usize,
+    /// Optional explicit host/kernel launch ABI.
+    pub launch_abi: Option<HipLaunchAbi>,
+}
+
+/// Host/kernel launch ABI used by generated HIP kernels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HipLaunchAbi {
+    /// Split 64-bit launch bounds and match output into 32-bit words.
+    U32,
+    /// Use native 64-bit HIP kernel parameters and match output.
+    U64,
 }
 
 /// Device launch output.
@@ -127,6 +138,9 @@ impl LaunchArgs {
         if u64::try_from(global_size).unwrap_or(u64::MAX) < end.saturating_sub(start) {
             return Err("global-size must cover launch domain".to_owned());
         }
+        let launch_abi = optional_flag_value(args, "--abi")?
+            .map(parse_launch_abi)
+            .transpose()?;
         Ok(Self {
             artifact: artifact.clone(),
             start,
@@ -134,6 +148,7 @@ impl LaunchArgs {
             max_matches,
             global_size,
             local_size,
+            launch_abi,
         })
     }
 }
@@ -193,7 +208,11 @@ impl Launcher for HipModuleLauncher {
 
     fn launch(&self, args: &LaunchArgs) -> Result<LaunchOutput, String> {
         ensure_artifact_readable(&args.artifact)?;
-        let uses_u32_abi = artifact_path_uses_u32_launch_abi(&args.artifact)?;
+        let uses_u32_abi = match args.launch_abi {
+            Some(HipLaunchAbi::U32) => true,
+            Some(HipLaunchAbi::U64) => false,
+            None => artifact_path_uses_u32_launch_abi(&args.artifact)?,
+        };
         let runtime = HipRuntime::load()?;
         runtime.init()?;
         runtime.set_device(0)?;
@@ -351,6 +370,24 @@ fn optional_output_path(args: &[String]) -> Result<Option<String>, String> {
         .cloned()
         .map(Some)
         .ok_or_else(|| "missing output path after -o".to_owned())
+}
+
+fn optional_flag_value<'a>(args: &'a [String], flag: &str) -> Result<Option<&'a str>, String> {
+    let Some(index) = args.iter().position(|arg| arg == flag) else {
+        return Ok(None);
+    };
+    args.get(index + 1)
+        .map(String::as_str)
+        .map(Some)
+        .ok_or_else(|| format!("missing {flag} value"))
+}
+
+fn parse_launch_abi(value: &str) -> Result<HipLaunchAbi, String> {
+    match value {
+        "u32" => Ok(HipLaunchAbi::U32),
+        "u64" => Ok(HipLaunchAbi::U64),
+        _ => Err(format!("unsupported --abi '{value}'; expected u32 or u64")),
+    }
 }
 
 fn launch_hip(

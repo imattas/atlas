@@ -365,7 +365,7 @@ impl DriverCommandPlan {
             "--local-size".to_owned(),
             launch.local_size.to_string(),
         ];
-        if matches!(sdk, GpuSdk::Cuda { .. }) {
+        if matches!(sdk, GpuSdk::Cuda { .. } | GpuSdk::Hip { .. }) {
             launch_command.push("--abi".to_owned());
             launch_command.push(if program.width <= 32 { "u32" } else { "u64" }.to_owned());
         }

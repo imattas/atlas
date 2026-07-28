@@ -2,7 +2,7 @@
 
 use atlas_gpu_hip_adapter::{
     hip_runtime_library_candidates_from_host_roots, hip_runtime_library_candidates_from_roots,
-    run_cli, AdapterCommand, HipModuleLauncher, LaunchArgs, LaunchOutput, Launcher,
+    run_cli, AdapterCommand, HipLaunchAbi, HipModuleLauncher, LaunchArgs, LaunchOutput, Launcher,
 };
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::SearchProgram;
@@ -277,6 +277,49 @@ fn rejects_local_size_that_exceeds_hip_block_limit() {
 }
 
 #[test]
+fn parses_explicit_u32_launch_abi() {
+    let args = LaunchArgs::parse(&[
+        "target/atlas-gpu/atlas_search.hsaco".to_owned(),
+        "--start".to_owned(),
+        "10".to_owned(),
+        "--end".to_owned(),
+        "20".to_owned(),
+        "--max-matches".to_owned(),
+        "3".to_owned(),
+        "--global-size".to_owned(),
+        "256".to_owned(),
+        "--local-size".to_owned(),
+        "64".to_owned(),
+        "--abi".to_owned(),
+        "u32".to_owned(),
+    ])
+    .unwrap();
+
+    assert_eq!(args.launch_abi, Some(HipLaunchAbi::U32));
+}
+
+#[test]
+fn rejects_missing_explicit_launch_abi_value() {
+    let error = LaunchArgs::parse(&[
+        "target/atlas-gpu/atlas_search.hsaco".to_owned(),
+        "--start".to_owned(),
+        "10".to_owned(),
+        "--end".to_owned(),
+        "20".to_owned(),
+        "--max-matches".to_owned(),
+        "3".to_owned(),
+        "--global-size".to_owned(),
+        "256".to_owned(),
+        "--local-size".to_owned(),
+        "64".to_owned(),
+        "--abi".to_owned(),
+    ])
+    .unwrap_err();
+
+    assert!(error.contains("missing --abi value"));
+}
+
+#[test]
 fn cli_emits_match_lines_from_launcher() {
     let output = run_cli(
         &[
@@ -517,6 +560,7 @@ fn generated_hip_kernel_runs_on_device_and_preserves_full_candidates() {
         max_matches: 8,
         global_size: 512,
         local_size: 64,
+        launch_abi: Some(HipLaunchAbi::U32),
     };
 
     let output = HipModuleLauncher.launch(&args).unwrap();
