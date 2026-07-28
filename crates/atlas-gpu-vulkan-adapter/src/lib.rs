@@ -30,6 +30,8 @@ pub struct LaunchArgs {
 /// Adapter CLI command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdapterCommand {
+    /// Report runtime/device features understood by this adapter.
+    Features,
     /// Shader-module-check a SPIR-V file without launching a search.
     CompileCheck {
         /// Generated GLSL or SPIR-V path.
@@ -48,6 +50,9 @@ impl AdapterCommand {
     ///
     /// Returns an error for malformed commands.
     pub fn parse(args: &[String]) -> Result<Self, String> {
+        if args.first().is_some_and(|arg| arg == "--features") {
+            return Ok(Self::Features);
+        }
         if args.first().is_some_and(|arg| arg == "--compile-check") {
             let Some(spirv) = args.get(1) else {
                 return Err("missing compile-check SPIR-V".to_owned());
@@ -113,6 +118,13 @@ impl LaunchArgs {
 
 /// Launches one parsed Vulkan request.
 pub trait Launcher {
+    /// Reports runtime/device features available to generated kernels.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when runtime loading or device creation fails.
+    fn features(&self) -> Result<Vec<String>, String>;
+
     /// Checks generated SPIR-V has valid magic and can be loaded as a shader
     /// module when a Vulkan runtime is present.
     ///
@@ -136,6 +148,11 @@ pub trait Launcher {
 pub struct VulkanSpirvLauncher;
 
 impl Launcher for VulkanSpirvLauncher {
+    fn features(&self) -> Result<Vec<String>, String> {
+        let runtime = VulkanRuntime::new()?;
+        Ok(runtime.features())
+    }
+
     fn compile_check(&self, shader: &str, output: Option<&str>) -> Result<(), String> {
         let code = read_shader_words(shader)?;
         if let Some(output) = output {
@@ -166,6 +183,10 @@ impl Launcher for VulkanSpirvLauncher {
 /// Returns parse or launcher errors.
 pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, String> {
     match AdapterCommand::parse(args)? {
+        AdapterCommand::Features => {
+            let features = launcher.features()?;
+            Ok(format_features(&features))
+        }
         AdapterCommand::CompileCheck { input, output } => {
             launcher.compile_check(&input, output.as_deref())?;
             Ok(String::new())
@@ -175,6 +196,13 @@ pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, Strin
             Ok(format_matches(&matches))
         }
     }
+}
+
+fn format_features(features: &[String]) -> String {
+    features
+        .iter()
+        .map(|feature| format!("feature={feature}\n"))
+        .collect()
 }
 
 fn format_matches(matches: &[u64]) -> String {
@@ -467,6 +495,18 @@ impl VulkanRuntime {
             queue_family_index,
             queue,
         })
+    }
+
+    fn features(&self) -> Vec<String> {
+        let device_features = unsafe {
+            self.instance
+                .get_physical_device_features(self.physical_device)
+        };
+        let mut features = Vec::new();
+        if device_features.shader_int64 == vk::TRUE {
+            features.push("shaderInt64".to_owned());
+        }
+        features
     }
 
     fn create_shader_module(&self, code: &[u32]) -> Result<ShaderModule<'_>, String> {

@@ -55,6 +55,23 @@ impl CommandRunner for RecordingCommandRunner {
 }
 
 #[derive(Debug)]
+struct VulkanFeaturesCommandRunner {
+    stdout: &'static str,
+}
+
+impl CommandRunner for VulkanFeaturesCommandRunner {
+    fn run_command(&self, command: &[String]) -> DriverRunOutput {
+        assert_eq!(command, ["atlas-gpu-vulkan-run", "--features"]);
+        DriverRunOutput {
+            exit_code: 0,
+            reported_matches: Vec::new(),
+            stdout: self.stdout.to_owned(),
+            stderr: String::new(),
+        }
+    }
+}
+
+#[derive(Debug)]
 struct CountingDriverRunner {
     calls: RefCell<usize>,
     output: DriverRunOutput,
@@ -470,6 +487,21 @@ fn detects_vulkan_shader_int64_capability_from_tool_inventory() {
         sdk,
         GpuSdk::Vulkan { sdk } if sdk.contains("shaderInt64")
     )));
+
+    let program = SearchProgram::new(64, vec![SearchOp::XorEq { mask: 0, target: 0 }]).unwrap();
+    let plan = GpuSdkPlan::choose_for_program(&detected, false, &program);
+
+    assert!(matches!(plan.selected, Some(GpuSdk::Vulkan { .. })));
+}
+
+#[test]
+fn detects_vulkan_shader_int64_capability_from_adapter_features() {
+    let detected = GpuSdkDetector::detect_from_tools_with_adapter_features(
+        &["vulkaninfo.exe".to_owned()],
+        &VulkanFeaturesCommandRunner {
+            stdout: "feature=shaderInt64\n",
+        },
+    );
 
     let program = SearchProgram::new(64, vec![SearchOp::XorEq { mask: 0, target: 0 }]).unwrap();
     let plan = GpuSdkPlan::choose_for_program(&detected, false, &program);

@@ -169,7 +169,8 @@ fn execute_accelerator(
     token: &CancellationToken,
 ) -> atlas_search_gpu::AcceleratorReport {
     if force_gpu || gpu_sdk.is_some() {
-        let detected_sdks = GpuSdkDetector::detect_from_host_path();
+        let detected_sdks =
+            GpuSdkDetector::detect_from_host_path_with_adapter_features(&ProcessDriverRunner);
         let selected_sdks = filter_detected_sdks(detected_sdks, gpu_sdk);
         AcceleratorRuntime::execute_with_detected_driver_and_policy(
             program,

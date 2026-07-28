@@ -707,7 +707,8 @@ impl AcceleratorRuntime {
         domain: SearchDomain,
         cancellation: &CancellationToken,
     ) -> AcceleratorReport {
-        let detected_sdks = GpuSdkDetector::detect_from_host_path();
+        let detected_sdks =
+            GpuSdkDetector::detect_from_host_path_with_adapter_features(&ProcessDriverRunner);
         let cached_kernel_keys =
             persisted_kernel_cache_keys(program, domain, &detected_sdks, "target/atlas-gpu");
         Self::execute_with_detected_driver_and_explicit_cache(
@@ -1102,6 +1103,15 @@ impl GpuSdkDetector {
         Self::detect_from_path_dirs(paths)
     }
 
+    /// Detects SDKs from the host path and augments adapter-backed runtime
+    /// capabilities by querying checked-in adapter CLIs.
+    #[must_use]
+    pub fn detect_from_host_path_with_adapter_features(runner: &dyn CommandRunner) -> Vec<GpuSdk> {
+        let mut detected = Self::detect_from_host_path();
+        augment_with_adapter_features(&mut detected, runner);
+        detected
+    }
+
     /// Detects SDKs by scanning executable names in supplied path directories.
     ///
     /// Directory path components are also considered so explicit SDK roots such
@@ -1186,6 +1196,47 @@ impl GpuSdkDetector {
         }
         detected
     }
+
+    /// Detects SDKs from tool names and augments adapter-backed runtime
+    /// capabilities by querying adapter CLIs.
+    #[must_use]
+    pub fn detect_from_tools_with_adapter_features(
+        tools: &[String],
+        runner: &dyn CommandRunner,
+    ) -> Vec<GpuSdk> {
+        let mut detected = Self::detect_from_tools(tools);
+        augment_with_adapter_features(&mut detected, runner);
+        detected
+    }
+}
+
+fn augment_with_adapter_features(detected: &mut [GpuSdk], runner: &dyn CommandRunner) {
+    if !detected
+        .iter()
+        .any(|sdk| matches!(sdk, GpuSdk::Vulkan { .. }))
+    {
+        return;
+    }
+    let output = runner.run_command(&["atlas-gpu-vulkan-run".to_owned(), "--features".to_owned()]);
+    if output.exit_code != 0 || !adapter_features_include(&output.stdout, "shaderInt64") {
+        return;
+    }
+    for sdk in detected {
+        if let GpuSdk::Vulkan { sdk } = sdk {
+            let lower = sdk.to_ascii_lowercase();
+            if !lower.contains("shaderint64") {
+                sdk.push_str(" shaderInt64");
+            }
+        }
+    }
+}
+
+fn adapter_features_include(stdout: &str, feature: &str) -> bool {
+    stdout.lines().any(|line| {
+        line.trim()
+            .strip_prefix("feature=")
+            .is_some_and(|reported| reported.eq_ignore_ascii_case(feature))
+    })
 }
 
 fn standard_sdk_root_dirs() -> Vec<PathBuf> {
