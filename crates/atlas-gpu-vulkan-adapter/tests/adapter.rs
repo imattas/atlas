@@ -12,7 +12,7 @@ use std::fs;
 struct FixtureLauncher;
 
 impl Launcher for FixtureLauncher {
-    fn compile_check(&self, _spirv: &str) -> Result<(), String> {
+    fn compile_check(&self, _input: &str, _output: Option<&str>) -> Result<(), String> {
         Ok(())
     }
 
@@ -41,8 +41,10 @@ impl RecordingLauncher {
 }
 
 impl Launcher for RecordingLauncher {
-    fn compile_check(&self, spirv: &str) -> Result<(), String> {
-        self.compile_checked.borrow_mut().push(spirv.to_owned());
+    fn compile_check(&self, input: &str, output: Option<&str>) -> Result<(), String> {
+        self.compile_checked
+            .borrow_mut()
+            .push(format!("{input}->{}", output.unwrap_or("")));
         Ok(())
     }
 
@@ -87,7 +89,8 @@ fn parses_compile_check_command() {
     assert_eq!(
         command,
         AdapterCommand::CompileCheck {
-            spirv: "target/atlas-gpu/atlas_search.spv".to_owned(),
+            input: "target/atlas-gpu/atlas_search.spv".to_owned(),
+            output: None,
         }
     );
 }
@@ -108,7 +111,7 @@ fn cli_compile_check_invokes_launcher_backend() {
     assert_eq!(output, "");
     assert_eq!(
         launcher.compile_checked.borrow().as_slice(),
-        ["target/atlas-gpu/atlas_search.spv"]
+        ["target/atlas-gpu/atlas_search.spv->"]
     );
 }
 
@@ -163,7 +166,7 @@ fn compile_check_rejects_non_spirv_artifact() {
     fs::write(&spv_path, b"not spirv").unwrap();
 
     let error = VulkanSpirvLauncher
-        .compile_check(&spv_path.to_string_lossy())
+        .compile_check(&spv_path.to_string_lossy(), None)
         .unwrap_err();
 
     assert!(error.contains("invalid SPIR-V magic"));
@@ -181,9 +184,36 @@ fn compile_check_accepts_generated_glsl_source_without_external_glslc() {
     fs::write(&source_path, source).unwrap();
 
     VulkanSpirvLauncher
-        .compile_check(&source_path.to_string_lossy())
+        .compile_check(&source_path.to_string_lossy(), None)
         .unwrap();
 
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+fn compile_check_writes_spirv_artifact_when_output_is_requested() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let source = GpuSearcher::compile_vulkan_glsl(&program);
+    let output_dir =
+        std::env::temp_dir().join(format!("atlas-vulkan-cache-{}", std::process::id()));
+    fs::create_dir_all(&output_dir).unwrap();
+    let source_path = output_dir.join("atlas_search.comp");
+    let spirv_path = output_dir.join("atlas_search.spv");
+    fs::write(&source_path, source).unwrap();
+
+    run_cli(
+        &[
+            "--compile-check".to_owned(),
+            source_path.to_string_lossy().into_owned(),
+            "-o".to_owned(),
+            spirv_path.to_string_lossy().into_owned(),
+        ],
+        &VulkanSpirvLauncher,
+    )
+    .unwrap();
+
+    let bytes = fs::read(&spirv_path).unwrap();
+    assert_eq!(&bytes[0..4], &[0x03, 0x02, 0x23, 0x07]);
     let _ = fs::remove_dir_all(output_dir);
 }
 

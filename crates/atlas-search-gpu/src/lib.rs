@@ -232,13 +232,9 @@ impl DriverCommandPlan {
         let source_file = join_path(&cache_dir, source_name);
         let artifact_file = join_path(&cache_dir, artifact_name);
         let compile_command = compile_command_for(compiler, options, &source_file, &artifact_file);
-        let launch_input = if matches!(
-            sdk,
-            GpuSdk::OpenCl { .. } | GpuSdk::Vulkan { .. } | GpuSdk::Cuda { .. }
-        ) {
-            source_file.clone()
-        } else {
-            artifact_file.clone()
+        let launch_input = match sdk {
+            GpuSdk::OpenCl { .. } | GpuSdk::Cuda { .. } => source_file.clone(),
+            GpuSdk::Vulkan { .. } | GpuSdk::Hip { .. } => artifact_file.clone(),
         };
         let launch_command = vec![
             format!("atlas-gpu-{}-run", sdk.name().to_ascii_lowercase()),

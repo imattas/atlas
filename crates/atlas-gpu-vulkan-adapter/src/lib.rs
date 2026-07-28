@@ -32,8 +32,10 @@ pub struct LaunchArgs {
 pub enum AdapterCommand {
     /// Shader-module-check a SPIR-V file without launching a search.
     CompileCheck {
-        /// Generated SPIR-V path.
-        spirv: String,
+        /// Generated GLSL or SPIR-V path.
+        input: String,
+        /// Optional compiled SPIR-V output path.
+        output: Option<String>,
     },
     /// Launch a Vulkan search.
     Launch(LaunchArgs),
@@ -51,7 +53,8 @@ impl AdapterCommand {
                 return Err("missing compile-check SPIR-V".to_owned());
             };
             return Ok(Self::CompileCheck {
-                spirv: spirv.clone(),
+                input: spirv.clone(),
+                output: optional_output_path(args)?,
             });
         }
         LaunchArgs::parse(args).map(Self::Launch)
@@ -103,7 +106,7 @@ pub trait Launcher {
     ///
     /// Returns an error when the SPIR-V artifact is malformed or Vulkan module
     /// loading fails.
-    fn compile_check(&self, spirv: &str) -> Result<(), String>;
+    fn compile_check(&self, input: &str, output: Option<&str>) -> Result<(), String>;
 
     /// Runs the launch and returns device-reported matches.
     ///
@@ -119,8 +122,11 @@ pub trait Launcher {
 pub struct VulkanSpirvLauncher;
 
 impl Launcher for VulkanSpirvLauncher {
-    fn compile_check(&self, shader: &str) -> Result<(), String> {
+    fn compile_check(&self, shader: &str, output: Option<&str>) -> Result<(), String> {
         let code = read_shader_words(shader)?;
+        if let Some(output) = output {
+            write_spirv_words(output, &code)?;
+        }
         if let Ok(runtime) = VulkanRuntime::new() {
             let _shader = runtime.create_shader_module(&code)?;
         }
@@ -146,8 +152,8 @@ impl Launcher for VulkanSpirvLauncher {
 /// Returns parse or launcher errors.
 pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, String> {
     match AdapterCommand::parse(args)? {
-        AdapterCommand::CompileCheck { spirv } => {
-            launcher.compile_check(&spirv)?;
+        AdapterCommand::CompileCheck { input, output } => {
+            launcher.compile_check(&input, output.as_deref())?;
             Ok(String::new())
         }
         AdapterCommand::Launch(launch_args) => {
@@ -184,6 +190,16 @@ fn flag_value<'a>(args: &'a [String], flag: &str) -> Result<&'a str, String> {
         .ok_or_else(|| format!("missing {flag}"))
 }
 
+fn optional_output_path(args: &[String]) -> Result<Option<String>, String> {
+    let Some(index) = args.iter().position(|arg| arg == "-o" || arg == "--output") else {
+        return Ok(None);
+    };
+    args.get(index + 1)
+        .cloned()
+        .map(Some)
+        .ok_or_else(|| "missing output path after -o".to_owned())
+}
+
 fn read_spirv_words(path: &str) -> Result<Vec<u32>, String> {
     let bytes = fs::read(path).map_err(|error| format!("cannot read SPIR-V {path}: {error}"))?;
     if bytes.len() < 4 {
@@ -213,6 +229,18 @@ fn read_shader_words(path: &str) -> Result<Vec<u32>, String> {
     let source = fs::read_to_string(path)
         .map_err(|error| format!("cannot read Vulkan GLSL {path}: {error}"))?;
     compile_glsl_to_spirv(&source)
+}
+
+fn write_spirv_words(path: &str, words: &[u32]) -> Result<(), String> {
+    let mut bytes = Vec::with_capacity(words.len().saturating_mul(4));
+    for word in words {
+        bytes.extend(word.to_le_bytes());
+    }
+    if let Some(parent) = Path::new(path).parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("cannot create SPIR-V output: {error}"))?;
+    }
+    fs::write(path, bytes).map_err(|error| format!("cannot write SPIR-V {path}: {error}"))
 }
 
 /// Compiles generated Vulkan GLSL compute source to SPIR-V words.
