@@ -2420,6 +2420,40 @@ fn runtime_telemetry_includes_driver_stderr_on_gpu_launch_failure() {
 }
 
 #[test]
+fn runtime_does_not_duplicate_failed_attempt_telemetry_when_every_backend_fails() {
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    let sdks = [GpuSdk::Cuda {
+        sdk: "test CUDA".to_owned(),
+    }];
+    let runner = FixtureDriverRunner {
+        output: DriverRunOutput {
+            exit_code: 1,
+            reported_matches: Vec::new(),
+            stdout: String::new(),
+            stderr: "failed to load CUDA driver library nvcuda.dll".to_owned(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_detected_driver_and_policy(
+        &program,
+        SearchDomain::new(0, 1_000_000),
+        &sdks,
+        &token,
+        RuntimePolicy { force_gpu: true },
+        &[],
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert!(report.telemetry.rationale.contains("CUDA"));
+    assert!(report.telemetry.rationale.contains("driver exit 1"));
+    assert!(report.telemetry.rationale.contains("nvcuda.dll"));
+    assert!(!report.telemetry.rationale.contains("failed attempts:"));
+    assert!(!report.telemetry.rationale.contains("selected:"));
+}
+
+#[test]
 fn runtime_honors_cancellation_before_launching_gpu_driver() {
     let program = SearchProgram::try_from_fixture("add").unwrap();
     let token = CancellationToken::new();
