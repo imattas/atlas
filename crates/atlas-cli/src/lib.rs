@@ -58,7 +58,13 @@ fn doctor() -> String {
 fn solve(args: &[String]) -> Result<String, String> {
     let request = SolveRequest::parse(args)?;
     let token = CancellationToken::new();
-    let report = execute_accelerator(&request.program, request.domain, request.force_gpu, &token);
+    let report = execute_accelerator(
+        &request.program,
+        request.domain,
+        request.force_gpu,
+        request.gpu_sdk,
+        &token,
+    );
     let result_level = if report.matches.is_empty() {
         ResultLevel::Unknown
     } else {
@@ -89,8 +95,13 @@ fn benchmark(args: &[String]) -> Result<String, String> {
     let native_matches = NativeSearcher::search(&request.program, request.domain, &token);
     let native_elapsed_ns = native_start.elapsed().as_nanos();
     let accelerator_start = Instant::now();
-    let accelerator =
-        execute_accelerator(&request.program, request.domain, request.force_gpu, &token);
+    let accelerator = execute_accelerator(
+        &request.program,
+        request.domain,
+        request.force_gpu,
+        request.gpu_sdk,
+        &token,
+    );
     let accelerator_elapsed_ns = accelerator_start.elapsed().as_nanos();
     Ok(format!(
         "{{\"schema_major\":1,\"kind\":\"benchmark\",\"fixture\":\"{}\",\"domain\":{{\"start\":{},\"end\":{}}},\"native\":{{\"elapsed_ns\":{},\"matches\":{}}},\"accelerator\":{{\"elapsed_ns\":{},\"mode\":\"{}\",\"matches\":{},\"telemetry\":\"{}\"}}}}\n",
@@ -111,6 +122,7 @@ struct SolveRequest {
     program: SearchProgram,
     domain: SearchDomain,
     force_gpu: bool,
+    gpu_sdk: Option<GpuSdkChoice>,
 }
 
 impl SolveRequest {
@@ -134,6 +146,9 @@ impl SolveRequest {
             program,
             domain: SearchDomain::new(start, end),
             force_gpu: has_flag(args, "--force-gpu"),
+            gpu_sdk: optional_flag(args, "--gpu-sdk")
+                .map(parse_gpu_sdk_choice)
+                .transpose()?,
         })
     }
 }
@@ -142,14 +157,16 @@ fn execute_accelerator(
     program: &SearchProgram,
     domain: SearchDomain,
     force_gpu: bool,
+    gpu_sdk: Option<GpuSdkChoice>,
     token: &CancellationToken,
 ) -> atlas_search_gpu::AcceleratorReport {
-    if force_gpu {
+    if force_gpu || gpu_sdk.is_some() {
         let detected_sdks = GpuSdkDetector::detect_from_host_path();
+        let selected_sdks = filter_detected_sdks(detected_sdks, gpu_sdk);
         AcceleratorRuntime::execute_with_detected_driver_and_policy(
             program,
             domain,
-            &detected_sdks,
+            &selected_sdks,
             token,
             RuntimePolicy { force_gpu },
             &[],
@@ -157,6 +174,55 @@ fn execute_accelerator(
         )
     } else {
         AcceleratorRuntime::execute_with_host_driver(program, domain, token)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GpuSdkChoice {
+    OpenCl,
+    Vulkan,
+    Cuda,
+    Hip,
+}
+
+fn parse_gpu_sdk_choice(value: &str) -> Result<GpuSdkChoice, String> {
+    match value.to_ascii_lowercase().as_str() {
+        "opencl" => Ok(GpuSdkChoice::OpenCl),
+        "vulkan" => Ok(GpuSdkChoice::Vulkan),
+        "cuda" => Ok(GpuSdkChoice::Cuda),
+        "hip" => Ok(GpuSdkChoice::Hip),
+        _ => Err(format!(
+            "unsupported --gpu-sdk '{value}'; expected opencl, vulkan, cuda, or hip"
+        )),
+    }
+}
+
+fn filter_detected_sdks(detected_sdks: Vec<GpuSdk>, choice: Option<GpuSdkChoice>) -> Vec<GpuSdk> {
+    let Some(choice) = choice else {
+        return detected_sdks;
+    };
+    detected_sdks
+        .into_iter()
+        .filter(|sdk| gpu_sdk_matches_choice(sdk, choice))
+        .collect()
+}
+
+fn gpu_sdk_matches_choice(sdk: &GpuSdk, choice: GpuSdkChoice) -> bool {
+    matches!(
+        (sdk, choice),
+        (GpuSdk::OpenCl { .. }, GpuSdkChoice::OpenCl)
+            | (GpuSdk::Vulkan { .. }, GpuSdkChoice::Vulkan)
+            | (GpuSdk::Cuda { .. }, GpuSdkChoice::Cuda)
+            | (GpuSdk::Hip { .. }, GpuSdkChoice::Hip)
+    )
+}
+
+fn gpu_sdk_choice_name(choice: GpuSdkChoice) -> &'static str {
+    match choice {
+        GpuSdkChoice::OpenCl => "opencl",
+        GpuSdkChoice::Vulkan => "vulkan",
+        GpuSdkChoice::Cuda => "cuda",
+        GpuSdkChoice::Hip => "hip",
     }
 }
 
@@ -261,8 +327,12 @@ fn reproduction(request: &SolveRequest) -> String {
     } else {
         ""
     };
+    let gpu_sdk = request
+        .gpu_sdk
+        .map(|choice| format!(" --gpu-sdk {}", gpu_sdk_choice_name(choice)))
+        .unwrap_or_default();
     format!(
-        "atlas solve --fixture {} --start {} --end {}{}",
-        request.fixture, request.domain.start, request.domain.end, force
+        "atlas solve --fixture {} --start {} --end {}{}{}",
+        request.fixture, request.domain.start, request.domain.end, force, gpu_sdk
     )
 }

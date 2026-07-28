@@ -98,6 +98,85 @@ fn solve_force_gpu_launches_adapter_for_tiny_domain() {
 }
 
 #[test]
+fn solve_force_gpu_honors_explicit_gpu_sdk_selection() {
+    let _env_guard = env_lock();
+    let tool_dir =
+        std::env::temp_dir().join(format!("atlas-cli-selected-gpu-sdk-{}", std::process::id()));
+    fs::create_dir_all(&tool_dir).unwrap();
+    fs::write(
+        tool_dir.join(if cfg!(windows) {
+            "atlas-gpu-opencl-run.bat"
+        } else {
+            "atlas-gpu-opencl-run"
+        }),
+        if cfg!(windows) {
+            "@echo off\r\nexit /b 42\r\n"
+        } else {
+            "#!/bin/sh\nexit 42\n"
+        },
+    )
+    .unwrap();
+    fs::write(
+        tool_dir.join(if cfg!(windows) {
+            "atlas-gpu-vulkan-run.bat"
+        } else {
+            "atlas-gpu-vulkan-run"
+        }),
+        if cfg!(windows) {
+            "@echo off\r\necho match=85\r\nexit /b 0\r\n"
+        } else {
+            "#!/bin/sh\necho match=85\nexit 0\n"
+        },
+    )
+    .unwrap();
+    fs::write(tool_dir.join("clinfo.exe"), "").unwrap();
+    fs::write(tool_dir.join("vulkaninfo.exe"), "").unwrap();
+    let original_path = std::env::var_os("PATH").unwrap_or_default();
+    let joined_path = std::env::join_paths(
+        std::iter::once(tool_dir.clone()).chain(std::env::split_paths(&original_path)),
+    )
+    .unwrap();
+    std::env::set_var("PATH", &joined_path);
+
+    let output = run(&[
+        "solve".to_owned(),
+        "--fixture".to_owned(),
+        "xor".to_owned(),
+        "--start".to_owned(),
+        "0x50".to_owned(),
+        "--end".to_owned(),
+        "0x60".to_owned(),
+        "--force-gpu".to_owned(),
+        "--gpu-sdk".to_owned(),
+        "vulkan".to_owned(),
+    ])
+    .unwrap();
+
+    std::env::set_var("PATH", original_path);
+    let _ = fs::remove_dir_all(tool_dir);
+    assert!(output.contains("mode=DeviceValidated"));
+    assert!(output.contains("matches=[85]"));
+    assert!(output.contains("Vulkan"));
+    assert!(!output.contains("driver exit 42"));
+}
+
+#[test]
+fn solve_rejects_unknown_gpu_sdk_selection() {
+    let error = run(&[
+        "solve".to_owned(),
+        "--gpu-sdk".to_owned(),
+        "metal".to_owned(),
+    ])
+    .unwrap_err();
+
+    assert!(error.contains("unsupported --gpu-sdk"));
+    assert!(error.contains("opencl"));
+    assert!(error.contains("vulkan"));
+    assert!(error.contains("cuda"));
+    assert!(error.contains("hip"));
+}
+
+#[test]
 fn benchmark_reports_native_and_forced_gpu_runtime() {
     let _env_guard = env_lock();
     let tool_dir = std::env::temp_dir().join(format!(
