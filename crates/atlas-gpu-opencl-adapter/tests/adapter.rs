@@ -184,6 +184,7 @@ fn cli_compile_check_invokes_launcher_backend() {
 }
 
 #[test]
+#[ignore = "requires a local OpenCL runtime and device"]
 fn compile_check_writes_checked_source_artifact() {
     let root = std::env::temp_dir().join(format!("atlas-opencl-artifact-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();

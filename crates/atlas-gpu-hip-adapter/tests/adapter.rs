@@ -413,6 +413,7 @@ fn compile_check_writes_code_object_artifact_from_hip_source() {
 }
 
 #[test]
+#[cfg(any(windows, target_os = "linux"))]
 fn hip_runtime_library_candidates_include_sdk_root_library_directories() {
     let hip_root =
         std::env::temp_dir().join(format!("atlas-hip-runtime-root-{}", std::process::id()));
