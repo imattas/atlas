@@ -1,7 +1,8 @@
 //! Vulkan adapter CLI tests.
 
 use atlas_gpu_vulkan_adapter::{
-    run_cli, AdapterCommand, LaunchArgs, Launcher, VulkanSpirvLauncher,
+    run_cli, vulkan_loader_candidates_from_roots, AdapterCommand, LaunchArgs, Launcher,
+    VulkanSpirvLauncher,
 };
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::SearchProgram;
@@ -215,6 +216,31 @@ fn compile_check_writes_spirv_artifact_when_output_is_requested() {
     let bytes = fs::read(&spirv_path).unwrap();
     assert_eq!(&bytes[0..4], &[0x03, 0x02, 0x23, 0x07]);
     let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+fn vulkan_loader_candidates_include_sdk_root_loader_directories() {
+    let root = std::env::temp_dir().join(format!("atlas-vulkan-sdk-{}", std::process::id()));
+    let candidates = vulkan_loader_candidates_from_roots([root.clone()]);
+
+    assert!(
+        candidates
+            .iter()
+            .any(|candidate| candidate.starts_with(root.join("Bin"))),
+        "expected candidates to include Vulkan SDK Bin directory, got {candidates:?}"
+    );
+    assert!(
+        candidates
+            .iter()
+            .any(|candidate| candidate.starts_with(root.join("lib"))),
+        "expected candidates to include Vulkan SDK lib directory, got {candidates:?}"
+    );
+    assert!(
+        candidates
+            .iter()
+            .any(|candidate| candidate.starts_with(root.join("lib64"))),
+        "expected candidates to include Vulkan SDK lib64 directory, got {candidates:?}"
+    );
 }
 
 #[test]

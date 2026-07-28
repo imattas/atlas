@@ -3,7 +3,7 @@
 use ash::{vk, Entry};
 use std::ffi::CString;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::ptr;
 
 const SPIRV_MAGIC: u32 = 0x0723_0203;
@@ -271,6 +271,66 @@ pub fn compile_glsl_to_spirv(source: &str) -> Result<Vec<u32>, String> {
     Ok(artifact.as_binary().to_vec())
 }
 
+/// Returns Vulkan loader library candidates under explicit SDK root paths.
+///
+/// The Vulkan loader is often present under `VULKAN_SDK` even when the process
+/// environment has not been configured so the system dynamic loader can find it.
+pub fn vulkan_loader_candidates_from_roots(
+    roots: impl IntoIterator<Item = PathBuf>,
+) -> Vec<PathBuf> {
+    roots
+        .into_iter()
+        .flat_map(|root| {
+            vulkan_loader_dirs(&root).into_iter().flat_map(|dir| {
+                vulkan_loader_names()
+                    .into_iter()
+                    .map(move |name| dir.join(name))
+            })
+        })
+        .collect()
+}
+
+fn vulkan_loader_candidates_from_env() -> Vec<PathBuf> {
+    let roots = ["VULKAN_SDK", "VK_SDK_PATH"]
+        .into_iter()
+        .filter_map(std::env::var_os)
+        .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>());
+    vulkan_loader_candidates_from_roots(roots)
+}
+
+fn vulkan_loader_dirs(root: &Path) -> Vec<PathBuf> {
+    vec![
+        root.join("Bin"),
+        root.join("Bin32"),
+        root.join("bin"),
+        root.join("lib"),
+        root.join("lib64"),
+    ]
+}
+
+fn vulkan_loader_names() -> Vec<&'static str> {
+    if cfg!(target_os = "windows") {
+        vec!["vulkan-1.dll"]
+    } else if cfg!(target_os = "macos") {
+        vec!["libvulkan.dylib", "libMoltenVK.dylib"]
+    } else {
+        vec!["libvulkan.so.1", "libvulkan.so"]
+    }
+}
+
+fn load_vulkan_entry() -> Result<Entry, String> {
+    for candidate in vulkan_loader_candidates_from_env() {
+        if !candidate.is_file() {
+            continue;
+        }
+        match unsafe { Entry::load_from(&candidate) } {
+            Ok(entry) => return Ok(entry),
+            Err(_) => continue,
+        }
+    }
+    unsafe { Entry::load().map_err(|error| error.to_string()) }
+}
+
 struct VulkanRuntime {
     _entry: Entry,
     instance: ash::Instance,
@@ -282,7 +342,7 @@ struct VulkanRuntime {
 
 impl VulkanRuntime {
     fn new() -> Result<Self, String> {
-        let entry = unsafe { Entry::load().map_err(|error| error.to_string())? };
+        let entry = load_vulkan_entry()?;
         let app_name = CString::new("atlas-gpu-vulkan-run").map_err(|error| error.to_string())?;
         let app_info = vk::ApplicationInfo::default()
             .application_name(&app_name)
