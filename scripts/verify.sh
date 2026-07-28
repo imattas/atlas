@@ -28,6 +28,30 @@ run_hardware_step() {
   fi
 }
 
+run_forced_gpu_benchmark() {
+  local name="$1"
+  local sdk="$2"
+  local expected_actual_gpu_sdk="$3"
+  run_hardware_step "$name" bash -c '
+    set -euo pipefail
+    output=$(cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk "$1")
+    printf "%s\n" "$output"
+    EXPECTED_ACTUAL_GPU_SDK="$2" BENCHMARK_JSON="$output" python - <<'"'"'PY'"'"'
+import json
+import os
+
+expected_actual_gpu_sdk = os.environ["EXPECTED_ACTUAL_GPU_SDK"]
+document = json.loads(os.environ["BENCHMARK_JSON"])
+accelerator = document["accelerator"]
+if accelerator["mode"] != "DeviceValidated":
+    raise SystemExit(f"expected DeviceValidated, got {accelerator['mode']}")
+actual_gpu_sdk = accelerator.get("actual_gpu_sdk")
+if actual_gpu_sdk != expected_actual_gpu_sdk:
+    raise SystemExit(f"expected actual_gpu_sdk {expected_actual_gpu_sdk}, got {actual_gpu_sdk}")
+PY
+  ' _ "$sdk" "$expected_actual_gpu_sdk"
+}
+
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-targets
@@ -118,10 +142,10 @@ fi
 if [[ "$profile" == "hardware" ]]; then
   run_hardware_step "GPU doctor diagnostics" cargo run -q -p atlas-cli -- doctor
   run_hardware_step "Forced-GPU benchmark" cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu
-  run_hardware_step "Forced-GPU OpenCL benchmark" cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk opencl
-  run_hardware_step "Forced-GPU Vulkan benchmark" cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk vulkan
-  run_hardware_step "Forced-GPU CUDA benchmark" cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk cuda
-  run_hardware_step "Forced-GPU HIP benchmark" cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk hip
+  run_forced_gpu_benchmark "Forced-GPU OpenCL benchmark" opencl OpenCL
+  run_forced_gpu_benchmark "Forced-GPU Vulkan benchmark" vulkan Vulkan
+  run_forced_gpu_benchmark "Forced-GPU CUDA benchmark" cuda CUDA
+  run_forced_gpu_benchmark "Forced-GPU HIP benchmark" hip HIP
   run_hardware_step "OpenCL real-device search" cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
   run_hardware_step "CUDA real-device search" cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
   run_hardware_step "HIP real-device search" cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture

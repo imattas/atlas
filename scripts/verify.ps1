@@ -39,9 +39,39 @@ $HardwareFailures = @()
 function Invoke-HardwareStep {
     param([string]$Name, [scriptblock]$Command)
     Write-Host "==> $Name"
-    & $Command
-    if ($LASTEXITCODE -ne 0) {
-        $script:HardwareFailures += "$Name exited with $LASTEXITCODE"
+    try {
+        & $Command
+        if ($LASTEXITCODE -ne 0) {
+            $script:HardwareFailures += "$Name exited with $LASTEXITCODE"
+        }
+    } catch {
+        $script:HardwareFailures += "$Name failed: $($_.Exception.Message)"
+        $global:LASTEXITCODE = 0
+    }
+}
+
+function Invoke-ForcedGpuBenchmark {
+    param(
+        [string]$Name,
+        [string]$Sdk,
+        [string]$ExpectedActualGpuSdk
+    )
+    Invoke-HardwareStep $Name {
+        $Output = cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk $Sdk
+        $Status = $LASTEXITCODE
+        if ($Status -ne 0) {
+            $global:LASTEXITCODE = $Status
+            return
+        }
+        Write-Host $Output
+        $Benchmark = $Output | ConvertFrom-Json
+        if ($Benchmark.accelerator.mode -ne "DeviceValidated") {
+            throw "expected DeviceValidated, got $($Benchmark.accelerator.mode)"
+        }
+        if ($Benchmark.accelerator.actual_gpu_sdk -ne $ExpectedActualGpuSdk) {
+            throw "expected actual_gpu_sdk $ExpectedActualGpuSdk, got $($Benchmark.accelerator.actual_gpu_sdk)"
+        }
+        $global:LASTEXITCODE = 0
     }
 }
 
@@ -116,18 +146,10 @@ if ($Profile -eq "hardware") {
     Invoke-HardwareStep "Forced-GPU benchmark" {
         cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu
     }
-    Invoke-HardwareStep "Forced-GPU OpenCL benchmark" {
-        cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk opencl
-    }
-    Invoke-HardwareStep "Forced-GPU Vulkan benchmark" {
-        cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk vulkan
-    }
-    Invoke-HardwareStep "Forced-GPU CUDA benchmark" {
-        cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk cuda
-    }
-    Invoke-HardwareStep "Forced-GPU HIP benchmark" {
-        cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk hip
-    }
+    Invoke-ForcedGpuBenchmark "Forced-GPU OpenCL benchmark" "opencl" "OpenCL"
+    Invoke-ForcedGpuBenchmark "Forced-GPU Vulkan benchmark" "vulkan" "Vulkan"
+    Invoke-ForcedGpuBenchmark "Forced-GPU CUDA benchmark" "cuda" "CUDA"
+    Invoke-ForcedGpuBenchmark "Forced-GPU HIP benchmark" "hip" "HIP"
     Invoke-HardwareStep "OpenCL real-device search" {
         cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
     }

@@ -77,12 +77,14 @@ class VerifyScriptTests(unittest.TestCase):
         for script in scripts:
             with self.subTest(script=script.name):
                 text = script.read_text(encoding="utf-8")
-                doctor_index = text.find("cargo run -q -p atlas-cli -- doctor")
-                benchmark_index = text.find("cargo run -q -p atlas-cli -- benchmark")
-                force_gpu_index = text.find("--force-gpu")
+                hardware_block_index = text.find("GPU doctor diagnostics")
+                doctor_index = text.find("cargo run -q -p atlas-cli -- doctor", hardware_block_index)
+                benchmark_index = text.find("Forced-GPU benchmark", hardware_block_index)
+                force_gpu_index = text.find("--force-gpu", benchmark_index)
                 first_hardware_test_index = text.find(
                     "generated_opencl_kernel_runs_on_device_and_preserves_full_candidates"
                 )
+                self.assertNotEqual(-1, hardware_block_index)
                 self.assertNotEqual(-1, doctor_index)
                 self.assertNotEqual(-1, benchmark_index)
                 self.assertNotEqual(-1, force_gpu_index)
@@ -99,8 +101,31 @@ class VerifyScriptTests(unittest.TestCase):
         for script in scripts:
             with self.subTest(script=script.name):
                 text = script.read_text(encoding="utf-8")
+                self.assertIn("--gpu-sdk", text)
                 for sdk in ["opencl", "vulkan", "cuda", "hip"]:
-                    self.assertIn(f"--gpu-sdk {sdk}", text)
+                    self.assertIn(sdk, text)
+
+    def test_hardware_profile_validates_forced_gpu_benchmark_backend_identity(self):
+        expectations = {
+            "verify.ps1": [
+                "Invoke-ForcedGpuBenchmark",
+                "actual_gpu_sdk",
+                "DeviceValidated",
+                "expected actual_gpu_sdk",
+            ],
+            "verify.sh": [
+                "run_forced_gpu_benchmark",
+                "actual_gpu_sdk",
+                "DeviceValidated",
+                "expected actual_gpu_sdk",
+            ],
+        }
+
+        for script_name, required_tokens in expectations.items():
+            with self.subTest(script=script_name):
+                text = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+                for token in required_tokens:
+                    self.assertIn(token, text)
 
     def test_hardware_profile_attempts_every_backend_before_reporting_failure(self):
         expectations = {
