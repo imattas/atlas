@@ -512,6 +512,28 @@ fn detects_gpu_sdks_from_tool_names_without_touching_host_environment() {
 }
 
 #[test]
+fn detects_gpu_sdks_from_raw_windows_tool_names() {
+    let detected = GpuSdkDetector::detect_from_tools(&[
+        "clinfo.exe".to_owned(),
+        "glslc.cmd".to_owned(),
+        "nvidia-smi.exe".to_owned(),
+        "nvrtc64_120_0.dll".to_owned(),
+        "hipcc.bat".to_owned(),
+    ]);
+
+    assert!(detected
+        .iter()
+        .any(|sdk| matches!(sdk, GpuSdk::OpenCl { .. })));
+    assert!(detected
+        .iter()
+        .any(|sdk| matches!(sdk, GpuSdk::Vulkan { .. })));
+    assert!(detected
+        .iter()
+        .any(|sdk| matches!(sdk, GpuSdk::Cuda { .. })));
+    assert!(detected.iter().any(|sdk| matches!(sdk, GpuSdk::Hip { .. })));
+}
+
+#[test]
 fn detects_vulkan_shader_int64_capability_from_tool_inventory() {
     let detected =
         GpuSdkDetector::detect_from_tools(&["vulkaninfo.exe".to_owned(), "shaderInt64".to_owned()]);

@@ -1149,7 +1149,7 @@ impl GpuSdkDetector {
     #[must_use]
     pub fn detect_from_tools(tools: &[String]) -> Vec<GpuSdk> {
         let normalized: BTreeSet<String> =
-            tools.iter().map(|tool| tool.to_ascii_lowercase()).collect();
+            tools.iter().map(|tool| normalize_tool_name(tool)).collect();
         let mut detected = Vec::new();
         if normalized
             .iter()
