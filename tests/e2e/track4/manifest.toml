@@ -1,0 +1,19 @@
+[suite]
+name = "track4-advanced-automation"
+profile = "advanced"
+
+[[evidence]]
+name = "safe-learned-ranking"
+path = "models/model-card.md"
+
+[[evidence]]
+name = "function-summaries"
+path = "summaries/schema/summary-v1.toml"
+
+[[evidence]]
+name = "architecture-fixtures"
+path = "tests/fixtures/architectures/x86_32.toml"
+
+[[evidence]]
+name = "notebook-event-replay"
+path = "tests/fixtures/events/track1_stream.toml"

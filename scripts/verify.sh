@@ -43,12 +43,30 @@ if [[ "$profile" == "distributed" || "$profile" == "advanced" || "$profile" == "
   done
 fi
 
+if [[ "$profile" == "advanced" || "$profile" == "full" ]]; then
+  for required_path in \
+    notebook/atlas_widget/python/atlas_widget/__init__.py \
+    notebook/atlas_widget/tests/test_event_store.py \
+    notebook/atlas_widget/src/README.md \
+    tests/fixtures/events/track1_stream.toml \
+    tests/e2e/track4/manifest.toml
+  do
+    if [[ ! -e "$required_path" ]]; then
+      echo "missing advanced release artifact: $required_path" >&2
+      exit 1
+    fi
+  done
+fi
+
 if [[ -d python/tests ]]; then
   if python -m pytest --version >/dev/null 2>&1; then
     python -m pytest python/tests
   else
     python -m unittest discover python/tests
   fi
+fi
+if [[ -d notebook/atlas_widget/tests ]]; then
+  python -m unittest discover notebook/atlas_widget/tests
 fi
 if [[ -d backends ]]; then
   if python -m pytest --version >/dev/null 2>&1; then

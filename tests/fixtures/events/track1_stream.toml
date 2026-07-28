@@ -1,0 +1,7 @@
+# Golden event stream used by notebook replay tests.
+stream_id = "solve-track1"
+events = [
+  { sequence = 1, kind = "constraint", subject = "constraint:x", key = "expr", value = "x == 7" },
+  { sequence = 2, kind = "strategy", subject = "strategy:general-smt", key = "status", value = "validated" },
+  { sequence = 3, kind = "validation", subject = "validation:model", key = "status", value = "valid" },
+]

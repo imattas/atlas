@@ -51,6 +51,21 @@ if ($Profile -in @("distributed", "advanced", "full")) {
     }
 }
 
+if ($Profile -in @("advanced", "full")) {
+    foreach ($RequiredPath in @(
+        "notebook/atlas_widget/python/atlas_widget/__init__.py",
+        "notebook/atlas_widget/tests/test_event_store.py",
+        "notebook/atlas_widget/src/README.md",
+        "tests/fixtures/events/track1_stream.toml",
+        "tests/e2e/track4/manifest.toml"
+    )) {
+        if (!(Test-Path $RequiredPath)) {
+            Write-Error "missing advanced release artifact: $RequiredPath"
+            exit 1
+        }
+    }
+}
+
 if (Test-Path "python/tests") {
     $pytestAvailable = $false
     try {
@@ -64,6 +79,9 @@ if (Test-Path "python/tests") {
     } else {
         Invoke-Step "unittest python/tests" { python -m unittest discover python/tests }
     }
+}
+if (Test-Path "notebook/atlas_widget/tests") {
+    Invoke-Step "unittest notebook widget" { python -m unittest discover notebook/atlas_widget/tests }
 }
 if (Test-Path "backends") {
     $pytestAvailable = $false
