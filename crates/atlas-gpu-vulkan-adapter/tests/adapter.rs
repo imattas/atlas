@@ -8,6 +8,15 @@ use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::{SearchOp, SearchProgram};
 use std::cell::RefCell;
 use std::fs;
+use std::sync::{Mutex, OnceLock};
+
+fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    ENV_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
     if let Some(value) = original {
@@ -408,6 +417,7 @@ fn vulkan_loader_candidates_include_sdk_root_loader_directories() {
 #[cfg(windows)]
 #[test]
 fn vulkan_loader_candidates_include_standard_systemdrive_sdk_layout() {
+    let _env_guard = env_lock();
     let root = std::env::temp_dir().join(format!("atlas-vulkan-standard-{}", std::process::id()));
     let vulkan_sdk = root.join("VulkanSDK").join("1.3.290.0");
     fs::create_dir_all(vulkan_sdk.join("Bin")).unwrap();
@@ -429,6 +439,7 @@ fn vulkan_loader_candidates_include_standard_systemdrive_sdk_layout() {
 #[cfg(windows)]
 #[test]
 fn vulkan_loader_candidates_prefer_newest_standard_sdk_loader() {
+    let _env_guard = env_lock();
     let root = std::env::temp_dir().join(format!(
         "atlas-vulkan-standard-order-{}",
         std::process::id()

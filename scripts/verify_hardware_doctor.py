@@ -21,6 +21,13 @@ def validate_doctor(document: dict[str, Any], require_launch_abi: bool) -> list[
         return ["GPU doctor must report at least one successful GPU feature probe"]
 
     errors: list[str] = []
+    available_adapters = available_adapter_names(document)
+    for probe in successful_probes:
+        name = probe.get("name", "<unknown>")
+        if name not in available_adapters:
+            errors.append(
+                f"successful GPU feature probe {name} does not have an available adapter binary"
+            )
     if require_launch_abi:
         for probe in successful_probes:
             name = probe.get("name", "<unknown>")
@@ -32,6 +39,19 @@ def validate_doctor(document: dict[str, Any], require_launch_abi: bool) -> list[
                 if required not in features:
                     errors.append(f"GPU feature probe {name} missing {required}")
     return errors
+
+
+def available_adapter_names(document: dict[str, Any]) -> set[str]:
+    """Return GPU adapter names that doctor reported as available."""
+
+    adapters = document.get("adapter_binaries")
+    if not isinstance(adapters, list):
+        return set()
+    return {
+        adapter.get("name", "<unknown>")
+        for adapter in adapters
+        if isinstance(adapter, dict) and adapter.get("available") is True
+    }
 
 
 def main() -> int:
