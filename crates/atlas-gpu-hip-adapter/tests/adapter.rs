@@ -10,6 +10,9 @@ use std::cell::RefCell;
 use std::fs;
 use std::process::Command;
 
+#[cfg(windows)]
+static WINDOWS_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
     if let Some(value) = original {
         std::env::set_var(name, value);
@@ -197,6 +200,7 @@ fn hip_runtime_library_candidates_include_sdk_root_library_directories() {
 #[cfg(windows)]
 #[test]
 fn hip_runtime_library_candidates_include_standard_rocm_layout() {
+    let _env_lock = WINDOWS_ENV_LOCK.lock().unwrap();
     let root = std::env::temp_dir().join(format!("atlas-hip-standard-{}", std::process::id()));
     let rocm_root = root.join("AMD").join("ROCm").join("6.1");
     fs::create_dir_all(rocm_root.join("bin")).unwrap();
@@ -221,6 +225,7 @@ fn hip_runtime_library_candidates_include_standard_rocm_layout() {
 #[cfg(windows)]
 #[test]
 fn hip_runtime_library_candidates_prefer_newest_standard_rocm_runtime() {
+    let _env_lock = WINDOWS_ENV_LOCK.lock().unwrap();
     let root =
         std::env::temp_dir().join(format!("atlas-hip-standard-order-{}", std::process::id()));
     let rocm_base = root.join("AMD").join("ROCm");
@@ -251,6 +256,7 @@ fn hip_runtime_library_candidates_prefer_newest_standard_rocm_runtime() {
 #[cfg(windows)]
 #[test]
 fn hip_runtime_library_candidates_do_not_emit_duplicate_bin_segments() {
+    let _env_lock = WINDOWS_ENV_LOCK.lock().unwrap();
     let root =
         std::env::temp_dir().join(format!("atlas-hip-standard-clean-{}", std::process::id()));
     let rocm_root = root.join("AMD").join("ROCm").join("6.1");
@@ -273,6 +279,35 @@ fn hip_runtime_library_candidates_do_not_emit_duplicate_bin_segments() {
             .any(|components| components[0].as_os_str() == "bin"
                 && components[1].as_os_str() == "bin")),
         "expected HIP runtime candidates without duplicate bin segments, got {candidates:?}"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn hip_runtime_library_candidates_do_not_emit_duplicate_hip_segments() {
+    let _env_lock = WINDOWS_ENV_LOCK.lock().unwrap();
+    let root =
+        std::env::temp_dir().join(format!("atlas-hip-standard-clean-{}", std::process::id()));
+    let rocm_root = root.join("AMD").join("ROCm").join("6.1");
+    fs::create_dir_all(rocm_root.join("hip").join("bin")).unwrap();
+    let original_program_files = std::env::var_os("ProgramFiles");
+    let original_program_files_x86 = std::env::var_os("ProgramFiles(x86)");
+    std::env::set_var("ProgramFiles", &root);
+    std::env::remove_var("ProgramFiles(x86)");
+
+    let candidates = hip_runtime_library_candidates_from_host_roots();
+
+    restore_env("ProgramFiles", original_program_files);
+    restore_env("ProgramFiles(x86)", original_program_files_x86);
+    let _ = fs::remove_dir_all(root);
+    assert!(
+        !candidates.iter().any(|candidate| candidate
+            .components()
+            .collect::<Vec<_>>()
+            .windows(2)
+            .any(|components| components[0].as_os_str() == "hip"
+                && components[1].as_os_str() == "hip")),
+        "expected HIP runtime candidates without duplicate hip segments, got {candidates:?}"
     );
 }
 
