@@ -817,6 +817,7 @@ fn runtime_canonicalizes_validated_device_matches() {
     assert_eq!(report.mode, RuntimeMode::DeviceValidated);
     assert_eq!(report.matches, vec![3, 259]);
     assert!(report.telemetry.cpu_validated);
+    assert_eq!(report.telemetry.rejected_device_matches, 0);
 }
 
 #[test]

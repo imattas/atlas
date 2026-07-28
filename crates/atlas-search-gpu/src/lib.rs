@@ -460,7 +460,8 @@ impl AcceleratorRuntime {
                 },
             };
         }
-        let matches = validate_device_matches(program, domain, reported_device_matches);
+        let validation = validate_device_matches(program, domain, reported_device_matches);
+        let matches = validation.matches;
         if matches.is_empty() {
             return AcceleratorReport {
                 mode: RuntimeMode::CpuFallback,
@@ -472,7 +473,7 @@ impl AcceleratorRuntime {
                         plan.rationale
                     ),
                     cpu_validated: true,
-                    rejected_device_matches: reported_device_matches.len(),
+                    rejected_device_matches: validation.rejected,
                 },
             };
         }
@@ -482,9 +483,7 @@ impl AcceleratorRuntime {
                 launch,
                 rationale: plan.rationale,
                 cpu_validated: true,
-                rejected_device_matches: reported_device_matches
-                    .len()
-                    .saturating_sub(matches.len()),
+                rejected_device_matches: validation.rejected,
             },
             matches,
         }
@@ -637,7 +636,8 @@ impl AcceleratorRuntime {
                 },
             };
         }
-        let matches = validate_device_matches(program, domain, &output.reported_matches);
+        let validation = validate_device_matches(program, domain, &output.reported_matches);
+        let matches = validation.matches;
         if matches.is_empty() {
             return AcceleratorReport {
                 mode: RuntimeMode::CpuFallback,
@@ -646,7 +646,7 @@ impl AcceleratorRuntime {
                     launch,
                     rationale: format!("{base_rationale}; no valid device matches"),
                     cpu_validated: true,
-                    rejected_device_matches: output.reported_matches.len(),
+                    rejected_device_matches: validation.rejected,
                 },
             };
         }
@@ -656,10 +656,7 @@ impl AcceleratorRuntime {
                 launch,
                 rationale: base_rationale,
                 cpu_validated: true,
-                rejected_device_matches: output
-                    .reported_matches
-                    .len()
-                    .saturating_sub(matches.len()),
+                rejected_device_matches: validation.rejected,
             },
             matches,
         }
@@ -697,20 +694,29 @@ fn compile_command_for(
     command
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DeviceValidation {
+    matches: Vec<u64>,
+    rejected: usize,
+}
+
 fn validate_device_matches(
     program: &SearchProgram,
     domain: SearchDomain,
     reported: &[u64],
-) -> Vec<u64> {
-    let mut matches = reported
-        .iter()
-        .copied()
-        .filter(|candidate| *candidate >= domain.start && *candidate < domain.end)
-        .filter(|candidate| program.accepts(*candidate))
-        .collect::<Vec<_>>();
+) -> DeviceValidation {
+    let mut rejected = 0;
+    let mut matches = Vec::new();
+    for candidate in reported.iter().copied() {
+        if candidate >= domain.start && candidate < domain.end && program.accepts(candidate) {
+            matches.push(candidate);
+        } else {
+            rejected += 1;
+        }
+    }
     matches.sort_unstable();
     matches.dedup();
-    matches
+    DeviceValidation { matches, rejected }
 }
 
 fn join_path(output_dir: &str, artifact_name: &str) -> String {
