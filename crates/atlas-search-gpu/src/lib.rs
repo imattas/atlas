@@ -133,6 +133,26 @@ fn feature_token_is_negated(tokens: &[String], index: usize) -> bool {
     index > 0 && matches!(tokens[index - 1].as_str(), "no" | "non" | "without")
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{append_sdk_feature, sdk_has_feature, GpuSdk};
+
+    #[test]
+    fn adapter_feature_append_overrides_negated_identity_text() {
+        let mut sdk = GpuSdk::OpenCl {
+            sdk: "OpenCL runtime no-int64".to_owned(),
+        };
+
+        append_sdk_feature(&mut sdk, "int64");
+
+        let GpuSdk::OpenCl { sdk } = sdk else {
+            panic!("expected OpenCL SDK");
+        };
+        assert!(sdk.ends_with(" int64"));
+        assert!(sdk_has_feature(&sdk, "int64"));
+    }
+}
+
 /// GPU SDK selection result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GpuSdkPlan {
@@ -1286,9 +1306,7 @@ fn append_sdk_feature(sdk: &mut GpuSdk, feature: &str) {
         | GpuSdk::Cuda { sdk }
         | GpuSdk::Hip { sdk } => sdk,
     };
-    let normalized_identity = identity.to_ascii_lowercase();
-    let normalized_feature = feature.to_ascii_lowercase();
-    if !normalized_identity.contains(&normalized_feature) {
+    if !sdk_has_feature(identity, feature) {
         identity.push(' ');
         identity.push_str(feature);
     }
