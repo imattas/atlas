@@ -591,6 +591,24 @@ fn detects_cuda_from_standard_program_files_toolkit_layout() {
 }
 
 #[test]
+fn detects_cuda_from_uppercase_windows_tool_suffixes() {
+    let root =
+        std::env::temp_dir().join(format!("atlas-gpu-uppercase-tool-{}", std::process::id()));
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("NVCC.EXE"), []).unwrap();
+
+    let detected = GpuSdkDetector::detect_from_path_dirs([root.clone()]);
+
+    let _ = fs::remove_dir_all(root);
+    assert!(
+        detected
+            .iter()
+            .any(|sdk| matches!(sdk, GpuSdk::Cuda { .. })),
+        "expected CUDA detection from uppercase NVCC.EXE, got {detected:?}"
+    );
+}
+
+#[test]
 fn detects_hip_from_standard_program_files_rocm_layout() {
     let _env_guard = env_lock();
     let root = std::env::temp_dir().join(format!("atlas-gpu-amd-files-{}", std::process::id()));

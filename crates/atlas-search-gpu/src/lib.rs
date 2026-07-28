@@ -1060,9 +1060,10 @@ fn push_existing_dir(paths: &mut Vec<PathBuf>, path: PathBuf) {
 }
 
 fn normalize_tool_name(name: &str) -> String {
+    let name = name.to_ascii_lowercase();
     name.strip_suffix(".exe")
         .or_else(|| name.strip_suffix(".dll"))
-        .unwrap_or(name)
+        .unwrap_or(&name)
         .to_owned()
 }
 
