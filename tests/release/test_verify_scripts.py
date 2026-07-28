@@ -28,6 +28,8 @@ class VerifyScriptTests(unittest.TestCase):
             "crates/atlas-gpu-hip-adapter/src/main.rs",
             "crates/atlas-gpu-vulkan-adapter/src/lib.rs",
             "crates/atlas-gpu-vulkan-adapter/src/main.rs",
+            "crates/atlas-gpu-wgpu-adapter/src/lib.rs",
+            "crates/atlas-gpu-wgpu-adapter/src/main.rs",
         ]
         scripts = [
             ROOT / "scripts" / "verify.ps1",
@@ -54,6 +56,8 @@ class VerifyScriptTests(unittest.TestCase):
             ("atlas-gpu-vulkan-adapter", "generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates"),
             ("atlas-gpu-vulkan-adapter", "generated_vulkan_dense_kernel_retains_full_device_buffer"),
             ("atlas-gpu-vulkan-adapter", "generated_vulkan_64_bit_kernel_runs_on_device"),
+            ("atlas-gpu-wgpu-adapter", "generated_wgpu_kernel_runs_on_device_and_preserves_full_candidates"),
+            ("atlas-gpu-wgpu-adapter", "generated_wgpu_dense_kernel_retains_full_device_buffer"),
         ]
 
         scripts = [

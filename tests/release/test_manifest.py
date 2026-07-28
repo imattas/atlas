@@ -68,6 +68,8 @@ class ReleaseManifestTest(unittest.TestCase):
             "crates/atlas-gpu-hip-adapter/src/main.rs",
             "crates/atlas-gpu-vulkan-adapter/src/lib.rs",
             "crates/atlas-gpu-vulkan-adapter/src/main.rs",
+            "crates/atlas-gpu-wgpu-adapter/src/lib.rs",
+            "crates/atlas-gpu-wgpu-adapter/src/main.rs",
         }
 
         for path in required_paths:

@@ -1,0 +1,24 @@
+[package]
+name = "atlas-gpu-wgpu-adapter"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+naga = { version = "30.0.0", features = ["wgsl-in"] }
+pollster = "1.0.1"
+wgpu = "30.0.0"
+
+[dev-dependencies]
+atlas-search-gpu = { path = "../atlas-search-gpu" }
+atlas-search-ir = { path = "../atlas-search-ir" }
+
+[[bin]]
+name = "atlas-gpu-wgpu-run"
+path = "src/main.rs"
+
+[lib]
+name = "atlas_gpu_wgpu_adapter"
+path = "src/lib.rs"

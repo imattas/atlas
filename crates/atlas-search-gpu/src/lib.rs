@@ -2970,7 +2970,7 @@ struct Matches {{
 }};
 
 @group(0) @binding(0) var<storage, read_write> matches: Matches;
-@group(0) @binding(1) var<uniform> params: SearchParams;
+@group(0) @binding(1) var<storage, read> params: SearchParams;
 
 fn rotate_left_width(value_input: u32, amount_input: u32, width: u32) -> u32 {{
   let mask_value = select((1u << width) - 1u, 4294967295u, width == 32u);

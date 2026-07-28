@@ -25,6 +25,7 @@ GPU_KERNEL_EVIDENCE = {
     "gpu/hip/atlas_search.hip",
     "gpu/opencl/atlas_search.cl",
     "gpu/vulkan/atlas_search.comp",
+    "gpu/wgpu/atlas_search.wgsl",
 }
 GPU_ADAPTER_EVIDENCE = {
     "crates/atlas-gpu-opencl-adapter/src/lib.rs",
@@ -35,6 +36,8 @@ GPU_ADAPTER_EVIDENCE = {
     "crates/atlas-gpu-hip-adapter/src/main.rs",
     "crates/atlas-gpu-vulkan-adapter/src/lib.rs",
     "crates/atlas-gpu-vulkan-adapter/src/main.rs",
+    "crates/atlas-gpu-wgpu-adapter/src/lib.rs",
+    "crates/atlas-gpu-wgpu-adapter/src/main.rs",
 }
 TRACK3_BENCHMARK_EVIDENCE = {"benchmarks/track3/manifest.toml"}
 
@@ -136,10 +139,13 @@ def render_manifest() -> str:
         "crates/atlas-gpu-hip-adapter/src/main.rs",
         "crates/atlas-gpu-vulkan-adapter/src/lib.rs",
         "crates/atlas-gpu-vulkan-adapter/src/main.rs",
+        "crates/atlas-gpu-wgpu-adapter/src/lib.rs",
+        "crates/atlas-gpu-wgpu-adapter/src/main.rs",
         "gpu/cuda/atlas_search.cu",
         "gpu/hip/atlas_search.hip",
         "gpu/opencl/atlas_search.cl",
         "gpu/vulkan/atlas_search.comp",
+        "gpu/wgpu/atlas_search.wgsl",
         "docs/hardware-acceleration.md",
     ]
     body = [
@@ -172,6 +178,7 @@ def render_manifest() -> str:
         ("cuda-device-adapter", "crates/atlas-gpu-cuda-adapter"),
         ("hip-device-adapter", "crates/atlas-gpu-hip-adapter"),
         ("vulkan-device-adapter", "crates/atlas-gpu-vulkan-adapter"),
+        ("wgpu-device-adapter", "crates/atlas-gpu-wgpu-adapter"),
     ]:
         body.extend(["[[capabilities]]", f'name = "{name}"', 'status = "supported"', f'evidence = "{evidence}"', ""])
     for path in evidence_paths:

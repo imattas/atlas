@@ -133,7 +133,11 @@ function Assert-GpuFeatureProbeHasLaunchAbi {
         if (![bool]$Probe.ok) {
             continue
         }
-        foreach ($RequiredFeature in @("launchAbiU32", "launchAbiU64")) {
+        $RequiredFeatures = @("launchAbiU32", "launchAbiU64")
+        if ($Probe.name -eq "WGPU") {
+            $RequiredFeatures = @("launchAbiU32")
+        }
+        foreach ($RequiredFeature in $RequiredFeatures) {
             if ($Probe.features -notcontains $RequiredFeature) {
                 throw "GPU feature probe $($Probe.name) missing $RequiredFeature"
             }
@@ -316,10 +320,13 @@ if ($Profile -in @("distributed", "advanced", "full")) {
         "crates/atlas-gpu-hip-adapter/src/main.rs",
         "crates/atlas-gpu-vulkan-adapter/src/lib.rs",
         "crates/atlas-gpu-vulkan-adapter/src/main.rs",
+        "crates/atlas-gpu-wgpu-adapter/src/lib.rs",
+        "crates/atlas-gpu-wgpu-adapter/src/main.rs",
         "gpu/cuda/atlas_search.cu",
         "gpu/hip/atlas_search.hip",
         "gpu/opencl/atlas_search.cl",
-        "gpu/vulkan/atlas_search.comp"
+        "gpu/vulkan/atlas_search.comp",
+        "gpu/wgpu/atlas_search.wgsl"
     )) {
         if (!(Test-Path $RequiredPath)) {
             Write-Error "missing distributed release artifact: $RequiredPath"
@@ -451,6 +458,21 @@ if ($Profile -eq "hardware") {
         Skip-HardwareStep "Vulkan dense real-device search" "Vulkan runtime feature probe unavailable"
         Skip-HardwareStep "Vulkan real-device search" "Vulkan runtime feature probe unavailable"
         Skip-HardwareStep "Vulkan shaderInt64 real-device search" "Vulkan runtime feature probe unavailable"
+    }
+    if (Get-GpuFeatureProbeOk $HardwareDoctor "WGPU") {
+        Invoke-ForcedGpuBenchmark "Forced-GPU WGPU benchmark" "wgpu" "WGPU"
+        Invoke-ForcedGpuBenchmark "Forced-GPU WGPU dense benchmark" "wgpu" "WGPU" "dense" "0" "1500" 1500
+        Invoke-HardwareStep "WGPU dense real-device search" {
+            cargo test -p atlas-gpu-wgpu-adapter --test adapter generated_wgpu_dense_kernel_retains_full_device_buffer -- --ignored --nocapture
+        }
+        Invoke-HardwareStep "WGPU real-device search" {
+            cargo test -p atlas-gpu-wgpu-adapter --test adapter generated_wgpu_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+        }
+    } else {
+        Skip-HardwareStep "Forced-GPU WGPU benchmark" "WGPU runtime feature probe unavailable"
+        Skip-HardwareStep "Forced-GPU WGPU dense benchmark" "WGPU runtime feature probe unavailable"
+        Skip-HardwareStep "WGPU dense real-device search" "WGPU runtime feature probe unavailable"
+        Skip-HardwareStep "WGPU real-device search" "WGPU runtime feature probe unavailable"
     }
     if (Get-GpuFeatureProbeOk $HardwareDoctor "CUDA") {
         Invoke-ForcedGpuBenchmark "Forced-GPU CUDA benchmark" "cuda" "CUDA"

@@ -136,7 +136,8 @@ for probe in document.get("gpu_feature_probes", []):
     if not probe.get("ok"):
         continue
     features = set(probe.get("features", []))
-    for required in ["launchAbiU32", "launchAbiU64"]:
+    required_features = ["launchAbiU32"] if probe.get("name") == "WGPU" else ["launchAbiU32", "launchAbiU64"]
+    for required in required_features:
         if required not in features:
             raise SystemExit(f"GPU feature probe {probe.get('name')} missing {required}")
 PY
@@ -333,10 +334,13 @@ if [[ "$profile" == "distributed" || "$profile" == "advanced" || "$profile" == "
     crates/atlas-gpu-hip-adapter/src/main.rs \
     crates/atlas-gpu-vulkan-adapter/src/lib.rs \
     crates/atlas-gpu-vulkan-adapter/src/main.rs \
+    crates/atlas-gpu-wgpu-adapter/src/lib.rs \
+    crates/atlas-gpu-wgpu-adapter/src/main.rs \
     gpu/cuda/atlas_search.cu \
     gpu/hip/atlas_search.hip \
     gpu/opencl/atlas_search.cl \
-    gpu/vulkan/atlas_search.comp
+    gpu/vulkan/atlas_search.comp \
+    gpu/wgpu/atlas_search.wgsl
   do
     if [[ ! -e "$required_path" ]]; then
       echo "missing distributed release artifact: $required_path" >&2
@@ -446,6 +450,17 @@ if [[ "$profile" == "hardware" ]]; then
     skip_hardware_step "Vulkan dense real-device search" "Vulkan runtime feature probe unavailable"
     skip_hardware_step "Vulkan real-device search" "Vulkan runtime feature probe unavailable"
     skip_hardware_step "Vulkan shaderInt64 real-device search" "Vulkan runtime feature probe unavailable"
+  fi
+  if gpu_feature_probe_ok "$hardware_doctor_json" WGPU; then
+    run_forced_gpu_benchmark "Forced-GPU WGPU benchmark" wgpu WGPU
+    run_forced_gpu_benchmark "Forced-GPU WGPU dense benchmark" wgpu WGPU dense 0 1500 1500
+    run_hardware_step "WGPU dense real-device search" "$cargo_cmd" test -p atlas-gpu-wgpu-adapter --test adapter generated_wgpu_dense_kernel_retains_full_device_buffer -- --ignored --nocapture
+    run_hardware_step "WGPU real-device search" "$cargo_cmd" test -p atlas-gpu-wgpu-adapter --test adapter generated_wgpu_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+  else
+    skip_hardware_step "Forced-GPU WGPU benchmark" "WGPU runtime feature probe unavailable"
+    skip_hardware_step "Forced-GPU WGPU dense benchmark" "WGPU runtime feature probe unavailable"
+    skip_hardware_step "WGPU dense real-device search" "WGPU runtime feature probe unavailable"
+    skip_hardware_step "WGPU real-device search" "WGPU runtime feature probe unavailable"
   fi
   if gpu_feature_probe_ok "$hardware_doctor_json" CUDA; then
     run_forced_gpu_benchmark "Forced-GPU CUDA benchmark" cuda CUDA

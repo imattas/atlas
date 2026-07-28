@@ -74,6 +74,11 @@ name = "vulkan-device-adapter"
 status = "supported"
 evidence = "crates/atlas-gpu-vulkan-adapter"
 
+[[capabilities]]
+name = "wgpu-device-adapter"
+status = "supported"
+evidence = "crates/atlas-gpu-wgpu-adapter"
+
 [[artifacts]]
 name = "lib"
 path = "crates/atlas-protocol/src/lib.rs"
@@ -165,6 +170,16 @@ path = "crates/atlas-gpu-vulkan-adapter/src/main.rs"
 digest = "4a5f9c3434a693ded5befa9f359c6a4eb6f615cf281fb12b5d70085c33719fe5"
 
 [[artifacts]]
+name = "lib"
+path = "crates/atlas-gpu-wgpu-adapter/src/lib.rs"
+digest = "fdc88f711abe03771f75ee5b9ab5d3a99bb52285f896990e11cc112d0c3f451b"
+
+[[artifacts]]
+name = "main"
+path = "crates/atlas-gpu-wgpu-adapter/src/main.rs"
+digest = "1e5dcb24d274d74444b09113ee31b538c026f6805d80ed7279562cfedeaa7c7b"
+
+[[artifacts]]
 name = "atlas_search"
 path = "gpu/cuda/atlas_search.cu"
 digest = "7e9cb61fc50f0e2e7e76ae7b25862945903fee13bdbf0a251ae31163f6bc44f7"
@@ -183,6 +198,11 @@ digest = "f640e0edadbb17f11035ab9d2a003cf37375de18fc9c5498112dae52b9db882b"
 name = "atlas_search"
 path = "gpu/vulkan/atlas_search.comp"
 digest = "f1862ac33eac661bddcd5eae9c4d3351e6fc36ee7e94613dc74b59c5d064cfda"
+
+[[artifacts]]
+name = "atlas_search"
+path = "gpu/wgpu/atlas_search.wgsl"
+digest = "380a0dd843505416682afecea398dcb7caa1c0d43f394ebb30ea7f889dcf2b15"
 
 [[artifacts]]
 name = "hardware-acceleration"

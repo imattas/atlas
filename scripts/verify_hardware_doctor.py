@@ -35,7 +35,10 @@ def validate_doctor(document: dict[str, Any], require_launch_abi: bool) -> list[
             if not isinstance(features, list):
                 errors.append(f"GPU feature probe {name} did not report a feature list")
                 continue
-            for required in ["launchAbiU32", "launchAbiU64"]:
+            required_features = (
+                ["launchAbiU32"] if name == "WGPU" else ["launchAbiU32", "launchAbiU64"]
+            )
+            for required in required_features:
                 if required not in features:
                     errors.append(f"GPU feature probe {name} missing {required}")
     return errors
