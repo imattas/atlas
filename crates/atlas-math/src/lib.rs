@@ -1,5 +1,14 @@
 //! Native Atlas math kernel.
 
+#![allow(
+    clippy::cast_lossless,
+    clippy::cast_possible_truncation,
+    clippy::format_collect,
+    clippy::missing_panics_doc,
+    clippy::many_single_char_names,
+    clippy::unreadable_literal
+)]
+
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
