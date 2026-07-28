@@ -471,7 +471,8 @@ impl AcceleratorRuntime {
                 },
             };
         }
-        let validation = validate_device_matches(program, domain, reported_device_matches);
+        let validation =
+            validate_device_matches(program, domain, reported_device_matches, launch.max_matches);
         let matches = validation.matches;
         if matches.is_empty() {
             return AcceleratorReport {
@@ -703,7 +704,12 @@ impl AcceleratorRuntime {
                 },
             };
         }
-        let validation = validate_device_matches(program, domain, &output.reported_matches);
+        let validation = validate_device_matches(
+            program,
+            domain,
+            &output.reported_matches,
+            launch.max_matches,
+        );
         let matches = validation.matches;
         if matches.is_empty() {
             return AcceleratorReport {
@@ -771,6 +777,7 @@ fn validate_device_matches(
     program: &SearchProgram,
     domain: SearchDomain,
     reported: &[u64],
+    max_matches: usize,
 ) -> DeviceValidation {
     let mut rejected = 0;
     let mut matches = Vec::new();
@@ -783,6 +790,10 @@ fn validate_device_matches(
     }
     matches.sort_unstable();
     matches.dedup();
+    if matches.len() > max_matches {
+        rejected += matches.len() - max_matches;
+        matches.truncate(max_matches);
+    }
     DeviceValidation { matches, rejected }
 }
 

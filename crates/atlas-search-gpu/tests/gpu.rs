@@ -1469,6 +1469,44 @@ fn runtime_executes_driver_output_and_cpu_validates_matches() {
 }
 
 #[test]
+fn runtime_enforces_launch_output_capacity_after_cpu_validation() {
+    let program = SearchProgram::new(
+        16,
+        vec![SearchOp::ChecksumEq {
+            modulus: 1,
+            target: 0,
+        }],
+    )
+    .unwrap();
+    let token = CancellationToken::new();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "test OpenCL".to_owned(),
+    };
+    let runner = FixtureDriverRunner {
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: (0..1_500).collect(),
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_driver(
+        &program,
+        SearchDomain::new(0, 2_000),
+        &sdk,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    assert_eq!(report.matches.len(), report.telemetry.launch.max_matches);
+    assert_eq!(report.matches[0], 0);
+    assert_eq!(report.matches[1023], 1023);
+    assert_eq!(report.telemetry.rejected_device_matches, 476);
+}
+
+#[test]
 fn runtime_falls_back_when_driver_reports_only_invalid_matches() {
     let program = SearchProgram::try_from_fixture("add").unwrap();
     let token = CancellationToken::new();
