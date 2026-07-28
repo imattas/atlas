@@ -42,7 +42,7 @@ fn write_feature_adapter(dir: &Path, command: &str, line: &str) -> std::io::Resu
             .map(|line| format!("'{}\\n'", line.replace('\'', "'\\''")))
             .collect::<Vec<_>>()
             .join(" ");
-        format!("#!/bin/sh\nprintf %s {printf_args}\n")
+        format!("#!/bin/sh\nprintf %b {printf_args}\n")
     };
     fs::write(&path, script)?;
     #[cfg(unix)]
@@ -540,9 +540,9 @@ fn benchmark_dense_fixture_uses_scaled_forced_gpu_retained_buffer() {
     fs::write(
         &adapter_path,
         if cfg!(windows) {
-            "@echo off\r\nif \"%1\"==\"--features\" (\r\n  echo hardware=Fixture OpenCL Accelerator via OpenCL\r\n  echo feature=int64\r\n  echo feature=launchAbiU32\r\n  echo feature=launchAbiU64\r\n  exit /b 0\r\n)\r\nfor /l %%i in (0,1,1499) do echo match=%%i\r\nexit /b 0\r\n"
+            "@echo off\r\nif \"%1\"==\"--features\" (\r\n  echo hardware=Fixture OpenCL Accelerator via OpenCL\r\n  echo feature=int64\r\n  echo feature=launchAbiU32\r\n  echo feature=launchAbiU64\r\n  exit /b 0\r\n)\r\necho match_count=1500\r\nfor /l %%i in (0,1,1499) do echo match=%%i\r\nexit /b 0\r\n"
         } else {
-            "#!/bin/sh\nif [ \"$1\" = \"--features\" ]; then\n  echo hardware=Fixture OpenCL Accelerator via OpenCL\n  echo feature=int64\n  echo feature=launchAbiU32\n  echo feature=launchAbiU64\n  exit 0\nfi\ni=0\nwhile [ \"$i\" -lt 1500 ]; do echo match=$i; i=$((i + 1)); done\nexit 0\n"
+            "#!/bin/sh\nif [ \"$1\" = \"--features\" ]; then\n  echo hardware=Fixture OpenCL Accelerator via OpenCL\n  echo feature=int64\n  echo feature=launchAbiU32\n  echo feature=launchAbiU64\n  exit 0\nfi\necho match_count=1500\ni=0\nwhile [ \"$i\" -lt 1500 ]; do echo match=$i; i=$((i + 1)); done\nexit 0\n"
         },
     )
     .unwrap();
@@ -570,7 +570,7 @@ fn benchmark_dense_fixture_uses_scaled_forced_gpu_retained_buffer() {
     std::env::set_var("PATH", original_path);
     let _ = fs::remove_dir_all(tool_dir);
     assert!(output.contains("\"fixture\":\"dense\""));
-    assert!(output.contains("\"mode\":\"DeviceValidated\""));
+    assert!(output.contains("\"mode\":\"DeviceValidated\""), "{output}");
     assert!(output.contains("\"max_matches\":1500"));
     assert!(output.contains("\"output_buffer_bytes\":12000"));
     assert!(output.contains("\"matches\":[0,1,2"));
@@ -686,7 +686,7 @@ fn doctor_reports_gpu_adapter_runtime_features() {
     let _ = fs::remove_dir_all(tool_dir);
     assert!(output.contains("\"gpu_features\""));
     assert!(output.contains("\"name\":\"OpenCL\""));
-    assert!(output.contains("\"features\":[\"int64\"]"));
+    assert!(output.contains("\"features\":[\"int64\"]"), "{output}");
     assert!(output.contains("\"hardware\":\"Khronos OpenCL-compatible toolchain\""));
     assert!(output.contains("\"name\":\"Vulkan\""));
     assert!(output.contains("\"features\":[\"shaderInt64\"]"));
