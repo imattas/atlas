@@ -666,6 +666,27 @@ fn process_driver_runner_writes_generated_source_before_compile() {
 }
 
 #[test]
+fn process_driver_runner_reuses_cached_compiled_artifact_without_recompile() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let sdk = GpuSdk::Vulkan {
+        sdk: "Vulkan runtime".to_owned(),
+    };
+    let output_dir =
+        std::env::temp_dir().join(format!("atlas-gpu-cache-hit-{}", std::process::id()));
+    let output_dir_text = output_dir.to_string_lossy().into_owned();
+    let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
+    fs::create_dir_all(Path::new(&plan.artifact_file).parent().unwrap()).unwrap();
+    fs::write(&plan.artifact_file, [0x03, 0x02, 0x23, 0x07]).unwrap();
+    let runner = RecordingCommandRunner::new();
+
+    let output = ProcessDriverRunner::run_with_command_runner(&plan, &runner);
+
+    assert_eq!(output.exit_code, 0);
+    assert_eq!(runner.commands.borrow().as_slice(), &[plan.launch_command]);
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
 fn driver_launch_plan_carries_domain_and_output_capacity() {
     let program = SearchProgram::try_from_fixture("xor").unwrap();
     let launch = AcceleratorRuntime::plan_launch(SearchDomain::new(10, 99), 128, 17);

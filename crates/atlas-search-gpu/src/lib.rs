@@ -333,10 +333,20 @@ impl ProcessDriverRunner {
                 stderr: error,
             };
         }
-        let compile = runner.run_command(&plan.compile_command);
-        if compile.exit_code != 0 {
-            return compile;
-        }
+        let compile = if can_reuse_compiled_artifact(plan) {
+            DriverRunOutput {
+                exit_code: 0,
+                reported_matches: Vec::new(),
+                stdout: String::new(),
+                stderr: String::new(),
+            }
+        } else {
+            let compile = runner.run_command(&plan.compile_command);
+            if compile.exit_code != 0 {
+                return compile;
+            }
+            compile
+        };
         let mut launch = runner.run_command(&plan.launch_command);
         launch.stdout = [compile.stdout, launch.stdout].join("");
         launch.stderr = [compile.stderr, launch.stderr].join("");
@@ -654,6 +664,13 @@ fn write_generated_source(plan: &DriverCommandPlan) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
     fs::write(source_path, &plan.kernel_source).map_err(|error| error.to_string())
+}
+
+fn can_reuse_compiled_artifact(plan: &DriverCommandPlan) -> bool {
+    plan.launch_command
+        .get(1)
+        .is_some_and(|launch_input| launch_input == &plan.artifact_file)
+        && Path::new(&plan.artifact_file).is_file()
 }
 
 fn run_command(command: &[String]) -> DriverRunOutput {
