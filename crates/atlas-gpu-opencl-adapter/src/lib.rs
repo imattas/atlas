@@ -185,7 +185,7 @@ pub struct OpenClLauncher;
 impl Launcher for OpenClLauncher {
     fn features(&self) -> Result<FeatureReport, String> {
         let device = Device::new(select_device()?);
-        let hardware = opencl_device_identity(&device);
+        let hardware = opencl_device_identity(&device)?;
         let context = Context::from_device(&device).map_err(|error| error.to_string())?;
         let int64_probe =
             Program::create_and_build_from_source(&context, opencl_int64_probe_source(), "")
@@ -245,14 +245,18 @@ fn format_features(report: &FeatureReport) -> String {
     text
 }
 
-fn opencl_device_identity(device: &Device) -> String {
-    let name = device
-        .name()
-        .ok()
-        .map(|name| name.trim().to_owned())
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| "OpenCL device".to_owned());
-    format!("{name} via OpenCL")
+fn opencl_device_identity(device: &Device) -> Result<String, String> {
+    let name = device.name().map_err(|error| error.to_string())?;
+    format_hardware_identity(&name, "OpenCL")
+}
+
+fn format_hardware_identity(name: &str, backend: &str) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        Err(format!("{backend} device name is empty"))
+    } else {
+        Ok(format!("{name} via {backend}"))
+    }
 }
 
 fn format_launch_output(output: &LaunchOutput) -> String {
@@ -627,7 +631,7 @@ fn opencl_loader_names() -> Vec<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{features_from_int64_probe, uses_u32_launch_abi};
+    use super::{features_from_int64_probe, format_hardware_identity, uses_u32_launch_abi};
 
     #[test]
     fn opencl_source_marker_selects_u32_launch_abi() {
@@ -644,5 +648,14 @@ mod tests {
             features_from_int64_probe(Err("build failed".to_owned())),
             Vec::<String>::new()
         );
+    }
+
+    #[test]
+    fn hardware_identity_requires_concrete_device_name() {
+        assert_eq!(
+            format_hardware_identity("gfx1100", "OpenCL").unwrap(),
+            "gfx1100 via OpenCL"
+        );
+        assert!(format_hardware_identity("   ", "OpenCL").is_err());
     }
 }

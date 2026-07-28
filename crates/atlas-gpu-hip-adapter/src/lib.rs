@@ -198,7 +198,7 @@ impl Launcher for HipModuleLauncher {
         runtime.init()?;
         runtime.set_device(0)?;
         Ok(FeatureReport {
-            hardware: runtime.device_identity(0),
+            hardware: runtime.device_identity(0)?,
             features: features_from_int64_probe(probe_hip_int64(&runtime)),
         })
     }
@@ -271,6 +271,15 @@ fn format_features(report: &FeatureReport) -> String {
     );
     text.push_str("feature=launchAbiU32\nfeature=launchAbiU64\n");
     text
+}
+
+fn format_hardware_identity(name: &str, backend: &str) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        Err(format!("{backend} device name is empty"))
+    } else {
+        Ok(format!("{name} via {backend}"))
+    }
 }
 
 fn format_launch_output(output: &LaunchOutput) -> String {
@@ -640,7 +649,7 @@ impl HipRuntime {
         self.check(unsafe { (self.api.hip_set_device)(device) }, "hipSetDevice")
     }
 
-    fn device_identity(&self, device: c_int) -> String {
+    fn device_identity(&self, device: c_int) -> Result<String, String> {
         let mut name = [0 as c_char; 256];
         let result = unsafe {
             (self.api.hip_device_get_name)(
@@ -650,18 +659,12 @@ impl HipRuntime {
             )
         };
         if result != HIP_SUCCESS {
-            return "HIP runtime device via HIP".to_owned();
+            return Err(format!("hipDeviceGetName failed with HIP error {result}"));
         }
         let name = unsafe { CStr::from_ptr(name.as_ptr()) }
             .to_string_lossy()
-            .trim()
-            .to_owned();
-        let name = if name.is_empty() {
-            "HIP runtime device"
-        } else {
-            name.as_str()
-        };
-        format!("{name} via HIP")
+            .into_owned();
+        format_hardware_identity(&name, "HIP")
     }
 
     fn load_module(&self, artifact: &str) -> Result<LoadedModule<'_>, String> {
@@ -1117,7 +1120,10 @@ unsafe fn platform_close(handle: *mut c_void) {
 
 #[cfg(test)]
 mod tests {
-    use super::{artifact_uses_u32_launch_abi, features_from_int64_probe, hip_int64_probe_source};
+    use super::{
+        artifact_uses_u32_launch_abi, features_from_int64_probe, format_hardware_identity,
+        hip_int64_probe_source,
+    };
 
     #[test]
     fn hip_artifact_marker_selects_u32_launch_abi() {
@@ -1139,6 +1145,15 @@ mod tests {
             features_from_int64_probe(Err("build failed".to_owned())),
             Vec::<String>::new()
         );
+    }
+
+    #[test]
+    fn hardware_identity_requires_concrete_device_name() {
+        assert_eq!(
+            format_hardware_identity("AMD Radeon RX 7900 XTX", "HIP").unwrap(),
+            "AMD Radeon RX 7900 XTX via HIP"
+        );
+        assert!(format_hardware_identity("", "HIP").is_err());
     }
 
     #[test]

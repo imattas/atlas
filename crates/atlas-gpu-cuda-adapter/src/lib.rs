@@ -201,7 +201,7 @@ impl Launcher for CudaPtxLauncher {
     fn features(&self) -> Result<FeatureReport, String> {
         let driver = CudaDriver::load()?;
         let device = driver.first_device()?;
-        let hardware = driver.device_identity(device);
+        let hardware = driver.device_identity(device)?;
         let _context = driver.create_context_for(device)?;
         Ok(FeatureReport {
             hardware,
@@ -278,6 +278,15 @@ fn format_features(report: &FeatureReport) -> String {
     );
     text.push_str("feature=launchAbiU32\nfeature=launchAbiU64\n");
     text
+}
+
+fn format_hardware_identity(name: &str, backend: &str) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        Err(format!("{backend} device name is empty"))
+    } else {
+        Ok(format!("{name} via {backend}"))
+    }
 }
 
 fn format_launch_output(output: &LaunchOutput) -> String {
@@ -972,7 +981,7 @@ impl CudaDriver {
         })
     }
 
-    fn device_identity(&self, device: CuDevice) -> String {
+    fn device_identity(&self, device: CuDevice) -> Result<String, String> {
         let mut name = [0 as c_char; 256];
         let result = unsafe {
             (self.api.cu_device_get_name)(
@@ -982,18 +991,12 @@ impl CudaDriver {
             )
         };
         if result != CUDA_SUCCESS {
-            return "CUDA driver device via CUDA".to_owned();
+            return Err(format!("cuDeviceGetName failed with CUDA error {result}"));
         }
         let name = unsafe { CStr::from_ptr(name.as_ptr()) }
             .to_string_lossy()
-            .trim()
-            .to_owned();
-        let name = if name.is_empty() {
-            "CUDA driver device"
-        } else {
-            name.as_str()
-        };
-        format!("{name} via CUDA")
+            .into_owned();
+        format_hardware_identity(&name, "CUDA")
     }
 
     fn load_module(&self, ptx: &CStr) -> Result<CudaModule<'_>, String> {
@@ -1763,6 +1766,15 @@ mod tests {
             features_from_int64_probe(Err("module load failed".to_owned())),
             Vec::<String>::new()
         );
+    }
+
+    #[test]
+    fn hardware_identity_requires_concrete_device_name() {
+        assert_eq!(
+            format_hardware_identity("NVIDIA GeForce RTX 4090", "CUDA").unwrap(),
+            "NVIDIA GeForce RTX 4090 via CUDA"
+        );
+        assert!(format_hardware_identity("\t", "CUDA").is_err());
     }
 
     #[test]

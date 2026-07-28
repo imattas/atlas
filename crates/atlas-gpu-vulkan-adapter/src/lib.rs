@@ -193,7 +193,7 @@ impl Launcher for VulkanSpirvLauncher {
     fn features(&self) -> Result<FeatureReport, String> {
         let runtime = VulkanRuntime::new(vk::PhysicalDeviceFeatures::default())?;
         Ok(FeatureReport {
-            hardware: runtime.hardware_identity(),
+            hardware: runtime.hardware_identity()?,
             features: runtime.features(),
         })
     }
@@ -254,6 +254,15 @@ fn format_features(report: &FeatureReport) -> String {
     );
     text.push_str("feature=launchAbiU32\nfeature=launchAbiU64\n");
     text
+}
+
+fn format_hardware_identity(name: &str, backend: &str) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        Err(format!("{backend} device name is empty"))
+    } else {
+        Ok(format!("{name} via {backend}"))
+    }
 }
 
 fn format_launch_output(output: &LaunchOutput) -> String {
@@ -583,21 +592,15 @@ impl VulkanRuntime {
         features
     }
 
-    fn hardware_identity(&self) -> String {
+    fn hardware_identity(&self) -> Result<String, String> {
         let properties = unsafe {
             self.instance
                 .get_physical_device_properties(self.physical_device)
         };
         let name = unsafe { CStr::from_ptr(properties.device_name.as_ptr()) }
             .to_string_lossy()
-            .trim()
-            .to_owned();
-        let name = if name.is_empty() {
-            "Vulkan compute device"
-        } else {
-            name.as_str()
-        };
-        format!("{name} via Vulkan")
+            .into_owned();
+        format_hardware_identity(&name, "Vulkan")
     }
 
     fn create_shader_module(&self, code: &[u32]) -> Result<ShaderModule<'_>, String> {
@@ -1137,5 +1140,14 @@ mod tests {
             required_device_features_for_spirv(&with_int64).shader_int64,
             vk::TRUE
         );
+    }
+
+    #[test]
+    fn hardware_identity_requires_concrete_device_name() {
+        assert_eq!(
+            format_hardware_identity("AMD Radeon RX 7900 XTX", "Vulkan").unwrap(),
+            "AMD Radeon RX 7900 XTX via Vulkan"
+        );
+        assert!(format_hardware_identity("", "Vulkan").is_err());
     }
 }
