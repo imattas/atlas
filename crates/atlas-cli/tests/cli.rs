@@ -34,6 +34,30 @@ fn write_feature_adapter(dir: &Path, command: &str, line: &str) -> std::io::Resu
     Ok(())
 }
 
+fn write_failing_feature_adapter(dir: &Path, command: &str, stderr: &str) -> std::io::Result<()> {
+    let path = dir.join(if cfg!(windows) {
+        format!("{command}.cmd")
+    } else {
+        command.to_owned()
+    });
+    fs::write(
+        &path,
+        if cfg!(windows) {
+            format!("@echo off\r\necho {stderr} 1>&2\r\nexit /b 7\r\n")
+        } else {
+            format!("#!/bin/sh\necho '{stderr}' >&2\nexit 7\n")
+        },
+    )?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(&path)?.permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&path, permissions)?;
+    }
+    Ok(())
+}
+
 #[test]
 fn cli_supports_required_commands() {
     for command in ["solve", "inspect", "benchmark", "worker", "doctor"] {
@@ -357,6 +381,35 @@ fn doctor_reports_gpu_adapter_runtime_features() {
     assert!(output.contains("\"name\":\"Vulkan\""));
     assert!(output.contains("\"features\":[\"shaderInt64\"]"));
     assert!(output.contains("\"name\":\"HIP\""));
+}
+
+#[test]
+fn doctor_reports_gpu_adapter_runtime_feature_probe_errors() {
+    let _env_guard = env_lock();
+    let tool_dir = std::env::temp_dir().join(format!(
+        "atlas-cli-doctor-feature-errors-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&tool_dir).unwrap();
+    write_failing_feature_adapter(
+        &tool_dir,
+        "atlas-gpu-cuda-run",
+        "missing nvcuda.dll or CUDA driver",
+    )
+    .unwrap();
+    let original_path = std::env::var_os("PATH").unwrap_or_default();
+    let joined_path = std::env::join_paths(std::iter::once(tool_dir.clone())).unwrap();
+    std::env::set_var("PATH", &joined_path);
+
+    let output = run(&["doctor".to_owned()]).unwrap();
+
+    std::env::set_var("PATH", original_path);
+    let _ = fs::remove_dir_all(tool_dir);
+    assert!(output.contains("\"gpu_feature_probes\""));
+    assert!(output.contains("\"name\":\"CUDA\""));
+    assert!(output.contains("\"ok\":false"));
+    assert!(output.contains("\"exit_code\":7"));
+    assert!(output.contains("missing nvcuda.dll or CUDA driver"));
 }
 
 #[test]

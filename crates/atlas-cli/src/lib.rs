@@ -51,23 +51,52 @@ fn doctor() -> String {
         })
         .collect::<Vec<_>>()
         .join(",");
-    let gpu_features = gpu_adapter_commands()
+    let feature_probes = gpu_adapter_commands()
         .iter()
         .map(|adapter| {
-            let features = adapter_runtime_features(adapter.command)
-                .into_iter()
-                .map(|feature| format!("\"{}\"", json_escape(&feature)))
+            let probe = adapter_runtime_feature_probe(adapter.command);
+            (adapter.name, probe)
+        })
+        .collect::<Vec<_>>();
+    let gpu_features = feature_probes
+        .iter()
+        .map(|(name, probe)| {
+            let features = probe
+                .features
+                .iter()
+                .map(|feature| format!("\"{}\"", json_escape(feature)))
                 .collect::<Vec<_>>()
                 .join(",");
+            format!("{{\"name\":\"{name}\",\"features\":[{features}]}}")
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    let gpu_feature_probes = feature_probes
+        .iter()
+        .map(|(name, probe)| {
+            let features = probe
+                .features
+                .iter()
+                .map(|feature| format!("\"{}\"", json_escape(feature)))
+                .collect::<Vec<_>>()
+                .join(",");
+            let stderr = probe
+                .stderr
+                .as_deref()
+                .map(json_escape)
+                .map_or_else(|| "null".to_owned(), |value| format!("\"{value}\""));
+            let exit_code = probe
+                .exit_code
+                .map_or_else(|| "null".to_owned(), |code| code.to_string());
             format!(
-                "{{\"name\":\"{}\",\"features\":[{}]}}",
-                adapter.name, features
+                "{{\"name\":\"{}\",\"ok\":{},\"exit_code\":{},\"stderr\":{},\"features\":[{}]}}",
+                name, probe.ok, exit_code, stderr, features
             )
         })
         .collect::<Vec<_>>()
         .join(",");
     format!(
-        "{{\"schema_major\":1,\"kind\":\"doctor\",\"gpu_sdks\":[{sdk_names}],\"adapter_binaries\":[{adapter_binaries}],\"gpu_features\":[{gpu_features}]}}\n"
+        "{{\"schema_major\":1,\"kind\":\"doctor\",\"gpu_sdks\":[{sdk_names}],\"adapter_binaries\":[{adapter_binaries}],\"gpu_features\":[{gpu_features}],\"gpu_feature_probes\":[{gpu_feature_probes}]}}\n"
     )
 }
 
@@ -297,20 +326,54 @@ fn command_available(command: &str) -> bool {
     adapter_command_path(command).is_some()
 }
 
-fn adapter_runtime_features(command: &str) -> Vec<String> {
+struct AdapterRuntimeFeatureProbe {
+    ok: bool,
+    exit_code: Option<i32>,
+    stderr: Option<String>,
+    features: Vec<String>,
+}
+
+fn adapter_runtime_feature_probe(command: &str) -> AdapterRuntimeFeatureProbe {
     let Some(path) = adapter_command_path(command) else {
-        return Vec::new();
+        return AdapterRuntimeFeatureProbe {
+            ok: false,
+            exit_code: None,
+            stderr: Some("adapter binary not found".to_owned()),
+            features: Vec::new(),
+        };
     };
     let Ok(output) = Command::new(path).arg("--features").output() else {
-        return Vec::new();
+        return AdapterRuntimeFeatureProbe {
+            ok: false,
+            exit_code: None,
+            stderr: Some("failed to execute adapter feature probe".to_owned()),
+            features: Vec::new(),
+        };
     };
     if !output.status.success() {
-        return Vec::new();
+        let stderr = trimmed_utf8(&output.stderr);
+        return AdapterRuntimeFeatureProbe {
+            ok: false,
+            exit_code: output.status.code(),
+            stderr,
+            features: Vec::new(),
+        };
     }
-    String::from_utf8_lossy(&output.stdout)
+    let features = String::from_utf8_lossy(&output.stdout)
         .lines()
         .filter_map(|line| line.trim().strip_prefix("feature=").map(str::to_owned))
-        .collect()
+        .collect();
+    AdapterRuntimeFeatureProbe {
+        ok: true,
+        exit_code: output.status.code(),
+        stderr: trimmed_utf8(&output.stderr),
+        features,
+    }
+}
+
+fn trimmed_utf8(bytes: &[u8]) -> Option<String> {
+    let trimmed = String::from_utf8_lossy(bytes).trim().to_owned();
+    (!trimmed.is_empty()).then_some(trimmed)
 }
 
 fn adapter_command_path(command: &str) -> Option<PathBuf> {

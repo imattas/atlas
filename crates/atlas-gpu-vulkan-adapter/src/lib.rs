@@ -1035,24 +1035,8 @@ mod tests {
 
     #[test]
     fn vulkan_device_features_enable_shader_int64_only_when_spirv_declares_int64() {
-        let without_int64 = [
-            SPIRV_MAGIC,
-            0x0001_0000,
-            0,
-            1,
-            0,
-            (2 << 16) | 17,
-            1,
-        ];
-        let with_int64 = [
-            SPIRV_MAGIC,
-            0x0001_0000,
-            0,
-            1,
-            0,
-            (2 << 16) | 17,
-            11,
-        ];
+        let without_int64 = [SPIRV_MAGIC, 0x0001_0000, 0, 1, 0, (2 << 16) | 17, 1];
+        let with_int64 = [SPIRV_MAGIC, 0x0001_0000, 0, 1, 0, (2 << 16) | 17, 11];
 
         assert_eq!(
             required_device_features_for_spirv(&without_int64).shader_int64,
