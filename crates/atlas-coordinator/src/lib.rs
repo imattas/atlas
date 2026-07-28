@@ -81,6 +81,33 @@ impl WorkerResult {
     }
 }
 
+/// Content-addressed artifact stored by the coordinator for worker fetches.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactEnvelope {
+    /// Stable content hash.
+    pub content_hash: String,
+    /// Artifact bytes.
+    pub bytes: Vec<u8>,
+}
+
+impl ArtifactEnvelope {
+    /// Creates a content-addressed artifact envelope.
+    #[must_use]
+    pub fn new(bytes: Vec<u8>) -> Self {
+        let content_hash = artifact_hash(&bytes);
+        Self {
+            content_hash,
+            bytes,
+        }
+    }
+
+    /// Verifies that the stored hash matches the artifact bytes.
+    #[must_use]
+    pub fn verify(&self) -> bool {
+        self.content_hash == artifact_hash(&self.bytes)
+    }
+}
+
 /// Coordinator error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CoordinatorError {
@@ -94,6 +121,14 @@ pub enum CoordinatorError {
     DuplicateResult,
     /// No worker satisfies required capabilities.
     NoCapableWorker,
+    /// Worker is not registered.
+    UnknownWorker,
+    /// Requested artifact was not found.
+    ArtifactNotFound,
+    /// Requested artifact exceeds the transfer bound.
+    ArtifactTooLarge,
+    /// Artifact content does not match its content hash.
+    ArtifactHashMismatch,
 }
 
 /// Coordinator state.
@@ -104,6 +139,8 @@ pub struct Coordinator {
     accepted_results: BTreeSet<String>,
     cancelled_jobs: BTreeSet<String>,
     active_leases: BTreeMap<String, String>,
+    last_heartbeats: BTreeMap<String, u64>,
+    artifacts: BTreeMap<String, ArtifactEnvelope>,
 }
 
 /// Durable coordinator snapshot used for restart recovery.
@@ -119,6 +156,10 @@ pub struct CoordinatorSnapshot {
     pub cancelled_jobs: BTreeSet<String>,
     /// Active job leases keyed by job id with worker id values.
     pub active_leases: BTreeMap<String, String>,
+    /// Last heartbeat tick keyed by worker id.
+    pub last_heartbeats: BTreeMap<String, u64>,
+    /// Content-addressed artifacts keyed by content hash.
+    pub artifacts: BTreeMap<String, ArtifactEnvelope>,
 }
 
 impl Coordinator {
@@ -131,6 +172,8 @@ impl Coordinator {
             accepted_results: BTreeSet::new(),
             cancelled_jobs: BTreeSet::new(),
             active_leases: BTreeMap::new(),
+            last_heartbeats: BTreeMap::new(),
+            artifacts: BTreeMap::new(),
         }
     }
 
@@ -143,6 +186,8 @@ impl Coordinator {
             accepted_results: snapshot.accepted_results,
             cancelled_jobs: snapshot.cancelled_jobs,
             active_leases: snapshot.active_leases,
+            last_heartbeats: snapshot.last_heartbeats,
+            artifacts: snapshot.artifacts,
         }
     }
 
@@ -155,6 +200,8 @@ impl Coordinator {
             accepted_results: self.accepted_results.clone(),
             cancelled_jobs: self.cancelled_jobs.clone(),
             active_leases: self.active_leases.clone(),
+            last_heartbeats: self.last_heartbeats.clone(),
+            artifacts: self.artifacts.clone(),
         }
     }
 
@@ -173,6 +220,31 @@ impl Coordinator {
         self.workers
             .insert(registration.worker_id.clone(), registration);
         Ok(())
+    }
+
+    /// Records a worker heartbeat and updates advertised capabilities.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the worker is not registered.
+    pub fn heartbeat(
+        &mut self,
+        worker_id: &str,
+        capabilities: WorkerCapabilities,
+        tick: u64,
+    ) -> Result<(), CoordinatorError> {
+        let Some(worker) = self.workers.get_mut(worker_id) else {
+            return Err(CoordinatorError::UnknownWorker);
+        };
+        worker.capabilities = capabilities;
+        self.last_heartbeats.insert(worker_id.to_owned(), tick);
+        Ok(())
+    }
+
+    /// Returns the last heartbeat tick for a worker.
+    #[must_use]
+    pub fn last_heartbeat(&self, worker_id: &str) -> Option<u64> {
+        self.last_heartbeats.get(worker_id).copied()
     }
 
     /// Picks the least-capability worker satisfying a job.
@@ -212,6 +284,7 @@ impl Coordinator {
     #[must_use]
     pub fn worker_disconnected(&mut self, worker_id: &str) -> Vec<String> {
         self.workers.remove(worker_id);
+        self.last_heartbeats.remove(worker_id);
         let released = self
             .active_leases
             .iter()
@@ -222,6 +295,44 @@ impl Coordinator {
             self.active_leases.remove(job_id);
         }
         released
+    }
+
+    /// Adds a content-addressed artifact for bounded worker fetches.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the content hash does not match the artifact bytes.
+    pub fn add_artifact(&mut self, artifact: ArtifactEnvelope) -> Result<(), CoordinatorError> {
+        if !artifact.verify() {
+            return Err(CoordinatorError::ArtifactHashMismatch);
+        }
+        self.artifacts
+            .insert(artifact.content_hash.clone(), artifact);
+        Ok(())
+    }
+
+    /// Fetches a content-addressed artifact subject to a transfer byte limit.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the artifact is absent, too large, or fails hash
+    /// validation.
+    pub fn fetch_artifact(
+        &self,
+        content_hash: &str,
+        max_bytes: usize,
+    ) -> Result<Vec<u8>, CoordinatorError> {
+        let artifact = self
+            .artifacts
+            .get(content_hash)
+            .ok_or(CoordinatorError::ArtifactNotFound)?;
+        if artifact.bytes.len() > max_bytes {
+            return Err(CoordinatorError::ArtifactTooLarge);
+        }
+        if !artifact.verify() {
+            return Err(CoordinatorError::ArtifactHashMismatch);
+        }
+        Ok(artifact.bytes.clone())
     }
 
     /// Accepts a signed result if lease and integrity checks pass.
@@ -268,6 +379,15 @@ pub fn sign_parts(parts: &[&str], secret: &str) -> String {
         for byte in part.bytes() {
             state = state.wrapping_mul(131).wrapping_add(u64::from(byte));
         }
+    }
+    format!("{state:016x}")
+}
+
+fn artifact_hash(bytes: &[u8]) -> String {
+    let mut state = 0xcbf2_9ce4_8422_2325_u64;
+    for byte in bytes {
+        state ^= u64::from(*byte);
+        state = state.wrapping_mul(0x0100_0000_01b3);
     }
     format!("{state:016x}")
 }

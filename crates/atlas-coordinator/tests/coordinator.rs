@@ -1,6 +1,8 @@
 //! Coordinator/worker integration tests.
 
-use atlas_coordinator::{caps, Coordinator, CoordinatorError, JobEnvelope, WorkerResult};
+use atlas_coordinator::{
+    caps, ArtifactEnvelope, Coordinator, CoordinatorError, JobEnvelope, WorkerResult,
+};
 use atlas_worker::{SandboxControl, SandboxPolicy, WorkerRegistration};
 
 fn registration(id: &str, cert: &str, labels: &[&str]) -> WorkerRegistration {
@@ -87,6 +89,52 @@ fn coordinator_snapshot_restores_workers_cancellations_leases_and_results() {
     assert_eq!(
         restored.submit_result(&duplicate_job, &duplicate_result, "secret", 1),
         Err(CoordinatorError::DuplicateResult)
+    );
+}
+
+#[test]
+fn worker_heartbeat_updates_capabilities_and_records_liveness_tick() {
+    let mut coordinator = Coordinator::new(["trusted".to_owned()]);
+    coordinator
+        .register(registration("worker-1", "trusted", &["cpu"]))
+        .unwrap();
+    let gpu_job = JobEnvelope::new("job", "hash", ["gpu".to_owned()], "secret", 10);
+
+    assert_eq!(
+        coordinator.schedule(&gpu_job),
+        Err(CoordinatorError::NoCapableWorker)
+    );
+
+    coordinator
+        .heartbeat("worker-1", caps(&["cpu", "gpu"]), 42)
+        .unwrap();
+
+    assert_eq!(coordinator.last_heartbeat("worker-1"), Some(42));
+    assert_eq!(coordinator.schedule(&gpu_job).unwrap(), "worker-1");
+}
+
+#[test]
+fn artifact_fetch_is_content_addressed_and_bounded() {
+    let mut coordinator = Coordinator::new(Vec::<String>::new());
+    let artifact = ArtifactEnvelope::new(b"kernel-bytes".to_vec());
+    let content_hash = artifact.content_hash.clone();
+
+    coordinator.add_artifact(artifact).unwrap();
+
+    assert_eq!(
+        coordinator.fetch_artifact(&content_hash, 64).unwrap(),
+        b"kernel-bytes".to_vec()
+    );
+    assert_eq!(
+        coordinator.fetch_artifact(&content_hash, 4),
+        Err(CoordinatorError::ArtifactTooLarge)
+    );
+
+    let mut tampered = ArtifactEnvelope::new(b"trusted".to_vec());
+    tampered.bytes = b"modified".to_vec();
+    assert_eq!(
+        coordinator.add_artifact(tampered),
+        Err(CoordinatorError::ArtifactHashMismatch)
     );
 }
 
