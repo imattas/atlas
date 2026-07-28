@@ -118,7 +118,19 @@ fn sdk_supports_program(sdk: &GpuSdk, program: &SearchProgram) -> bool {
 }
 
 fn sdk_has_feature(sdk: &str, feature: &str) -> bool {
-    sdk.to_ascii_lowercase().contains(feature)
+    let normalized_feature = feature.to_ascii_lowercase();
+    let tokens = sdk
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>();
+    tokens.iter().enumerate().any(|(index, token)| {
+        token == &normalized_feature && !feature_token_is_negated(&tokens, index)
+    })
+}
+
+fn feature_token_is_negated(tokens: &[String], index: usize) -> bool {
+    index > 0 && matches!(tokens[index - 1].as_str(), "no" | "non" | "without")
 }
 
 /// GPU SDK selection result.

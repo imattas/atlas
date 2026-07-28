@@ -2088,6 +2088,42 @@ fn runtime_skips_opencl_without_int64_for_64_bit_programs() {
 }
 
 #[test]
+fn runtime_does_not_treat_negated_int64_text_as_capability() {
+    let program = SearchProgram::new(64, vec![SearchOp::XorEq { mask: 0, target: 0 }]).unwrap();
+    let token = CancellationToken::new();
+    let sdks = [
+        GpuSdk::OpenCl {
+            sdk: "OpenCL runtime no-int64".to_owned(),
+        },
+        GpuSdk::Hip {
+            sdk: "HIP runtime int64".to_owned(),
+        },
+    ];
+    let runner = FixtureDriverRunner {
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![0],
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_detected_driver_and_policy(
+        &program,
+        SearchDomain::new(0, 1_000_000),
+        &sdks,
+        &token,
+        RuntimePolicy { force_gpu: false },
+        &[],
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    assert!(report.telemetry.rationale.contains("HIP"));
+    assert!(!report.telemetry.rationale.contains("OpenCL"));
+}
+
+#[test]
 fn runtime_force_gpu_rejects_plain_vulkan_for_64_bit_programs() {
     let program = SearchProgram::new(64, vec![SearchOp::XorEq { mask: 0, target: 0 }]).unwrap();
     let token = CancellationToken::new();
