@@ -6,6 +6,14 @@ if [[ "${1:-}" == "--profile" ]]; then
   profile="${2:-core}"
 fi
 
+case "$profile" in
+  core|analysis|distributed|advanced|full|hardware) ;;
+  *)
+    echo "unknown profile: $profile" >&2
+    exit 2
+    ;;
+esac
+
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-targets
@@ -91,6 +99,14 @@ if [[ "$profile" == "full" ]]; then
   done
   python release/write_manifest.py --validate release/manifest.toml
   python -m unittest discover tests/release
+fi
+
+if [[ "$profile" == "hardware" ]]; then
+  cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+  cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+  cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+  cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+  cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_64_bit_kernel_runs_on_device -- --ignored --nocapture
 fi
 
 if [[ -d python/tests ]]; then

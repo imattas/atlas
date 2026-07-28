@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("core", "analysis", "distributed", "advanced", "full")]
+    [ValidateSet("core", "analysis", "distributed", "advanced", "full", "hardware")]
     [string]$Profile = "core"
 )
 
@@ -99,6 +99,24 @@ if ($Profile -eq "full") {
     }
     Invoke-Step "release manifest validation" { python release/write_manifest.py --validate release/manifest.toml }
     Invoke-Step "release manifest tests" { python -m unittest discover tests/release }
+}
+
+if ($Profile -eq "hardware") {
+    Invoke-Step "OpenCL real-device search" {
+        cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+    }
+    Invoke-Step "CUDA real-device search" {
+        cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+    }
+    Invoke-Step "HIP real-device search" {
+        cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+    }
+    Invoke-Step "Vulkan real-device search" {
+        cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+    }
+    Invoke-Step "Vulkan shaderInt64 real-device search" {
+        cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_64_bit_kernel_runs_on_device -- --ignored --nocapture
+    }
 }
 
 if (Test-Path "python/tests") {
