@@ -92,8 +92,24 @@ function Assert-BenchmarkEquivalence {
 
 function Assert-BenchmarkAcceleratorHardware {
     param($Benchmark, [string]$Context)
-    if ([string]::IsNullOrEmpty([string]$Benchmark.accelerator.hardware)) {
+    $Hardware = [string]$Benchmark.accelerator.hardware
+    if ([string]::IsNullOrEmpty($Hardware)) {
         throw "expected $Context to report accelerator hardware"
+    }
+    $GenericHardwareIdentities = @(
+        "OpenCL runtime/device",
+        "OpenCL device via OpenCL",
+        "Vulkan compute device",
+        "Vulkan compute device via Vulkan",
+        "CUDA driver device",
+        "CUDA driver device via CUDA",
+        "HIP runtime device",
+        "HIP runtime device via HIP",
+        "WGPU adapter",
+        "WGPU adapter runtime"
+    )
+    if ($GenericHardwareIdentities -contains $Hardware.Trim()) {
+        throw "expected $Context to reject generic accelerator hardware"
     }
 }
 

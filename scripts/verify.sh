@@ -92,8 +92,23 @@ import os
 context = os.environ["BENCHMARK_CONTEXT"]
 document = json.loads(os.environ["BENCHMARK_JSON"])
 accelerator = document["accelerator"]
-if not accelerator.get("hardware"):
+generic_hardware_identities = {
+    "OpenCL runtime/device",
+    "OpenCL device via OpenCL",
+    "Vulkan compute device",
+    "Vulkan compute device via Vulkan",
+    "CUDA driver device",
+    "CUDA driver device via CUDA",
+    "HIP runtime device",
+    "HIP runtime device via HIP",
+    "WGPU adapter",
+    "WGPU adapter runtime",
+}
+hardware = accelerator.get("hardware")
+if not hardware:
     raise SystemExit(f"expected {context} to report accelerator hardware")
+if str(hardware).strip() in generic_hardware_identities:
+    raise SystemExit(f"expected {context} to reject generic accelerator hardware")
 PY
 }
 export -f validate_benchmark_hardware_identity
