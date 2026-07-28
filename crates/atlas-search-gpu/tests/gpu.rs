@@ -67,6 +67,43 @@ impl DriverRunner for CountingDriverRunner {
     }
 }
 
+#[derive(Debug)]
+struct RecordingPlanRunner {
+    launch_domains: RefCell<Vec<SearchDomain>>,
+}
+
+impl RecordingPlanRunner {
+    fn new() -> Self {
+        Self {
+            launch_domains: RefCell::new(Vec::new()),
+        }
+    }
+}
+
+impl DriverRunner for RecordingPlanRunner {
+    fn run(&self, plan: &DriverCommandPlan) -> DriverRunOutput {
+        let start = plan
+            .launch_command
+            .windows(2)
+            .find_map(|args| (args[0] == "--start").then(|| args[1].parse::<u64>().unwrap()))
+            .unwrap();
+        let end = plan
+            .launch_command
+            .windows(2)
+            .find_map(|args| (args[0] == "--end").then(|| args[1].parse::<u64>().unwrap()))
+            .unwrap();
+        self.launch_domains
+            .borrow_mut()
+            .push(SearchDomain::new(start, end));
+        DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![start],
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        }
+    }
+}
+
 #[test]
 fn gpu_boundary_matches_native_without_hardware() {
     let token = CancellationToken::new();
@@ -1479,6 +1516,42 @@ fn runtime_executes_driver_output_and_cpu_validates_matches() {
     assert_eq!(report.matches, vec![3]);
     assert!(report.telemetry.rationale.contains("driver exit 0"));
     assert_eq!(report.telemetry.rejected_device_matches, 1);
+}
+
+#[test]
+fn runtime_splits_driver_launches_that_exceed_single_dispatch_capacity() {
+    let program = SearchProgram::new(
+        64,
+        vec![SearchOp::ChecksumEq {
+            modulus: 1,
+            target: 0,
+        }],
+    )
+    .unwrap();
+    let token = CancellationToken::new();
+    let sdk = GpuSdk::Vulkan {
+        sdk: "test Vulkan".to_owned(),
+    };
+    let runner = RecordingPlanRunner::new();
+    let single_dispatch_capacity = u64::from(u32::MAX) * 256;
+
+    let report = AcceleratorRuntime::execute_with_driver(
+        &program,
+        SearchDomain::new(0, single_dispatch_capacity + 2),
+        &sdk,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    assert_eq!(
+        runner.launch_domains.borrow().as_slice(),
+        &[
+            SearchDomain::new(0, single_dispatch_capacity),
+            SearchDomain::new(single_dispatch_capacity, single_dispatch_capacity + 2),
+        ]
+    );
+    assert_eq!(report.matches, vec![0, single_dispatch_capacity]);
 }
 
 #[test]

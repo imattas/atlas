@@ -5,7 +5,7 @@ use atlas_gpu_vulkan_adapter::{
     AdapterCommand, LaunchArgs, Launcher, VulkanSpirvLauncher,
 };
 use atlas_search_gpu::GpuSearcher;
-use atlas_search_ir::SearchProgram;
+use atlas_search_ir::{SearchOp, SearchProgram};
 use std::cell::RefCell;
 use std::fs;
 
@@ -389,5 +389,38 @@ fn generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates() {
     let matches = VulkanSpirvLauncher.launch(&args).unwrap();
 
     assert_eq!(matches, vec![0x55, 0x155]);
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+#[ignore = "requires Vulkan runtime with shaderInt64 support and a Vulkan compute-capable device"]
+fn generated_vulkan_64_bit_kernel_runs_on_device() {
+    let program = SearchProgram::new(
+        64,
+        vec![SearchOp::XorEq {
+            mask: 1,
+            target: 0x8000_0000_0000_0001,
+        }],
+    )
+    .unwrap();
+    let source = GpuSearcher::compile_vulkan_glsl(&program);
+    let output_dir =
+        std::env::temp_dir().join(format!("atlas-vulkan-64-e2e-{}", std::process::id()));
+    fs::create_dir_all(&output_dir).unwrap();
+    let source_path = output_dir.join("atlas_search.comp");
+    fs::write(&source_path, source).unwrap();
+
+    let args = LaunchArgs {
+        artifact: source_path.to_string_lossy().into_owned(),
+        start: 0x8000_0000_0000_0000,
+        end: 0x8000_0000_0000_0002,
+        max_matches: 2,
+        global_size: 256,
+        local_size: 256,
+    };
+
+    let matches = VulkanSpirvLauncher.launch(&args).unwrap();
+
+    assert_eq!(matches, vec![0x8000_0000_0000_0000]);
     let _ = fs::remove_dir_all(output_dir);
 }

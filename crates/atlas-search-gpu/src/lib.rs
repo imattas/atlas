@@ -413,6 +413,9 @@ pub struct AcceleratorReport {
 /// Accelerator runtime boundary.
 pub struct AcceleratorRuntime;
 
+const DEFAULT_GPU_LOCAL_SIZE: u64 = 256;
+const MAX_DRIVER_LAUNCH_CANDIDATES: u64 = u32::MAX as u64 * DEFAULT_GPU_LOCAL_SIZE;
+
 impl AcceleratorRuntime {
     /// Plans a bounded GPU launch and transfer shape.
     #[must_use]
@@ -692,12 +695,39 @@ impl AcceleratorRuntime {
         if cancellation.is_cancelled() {
             return Self::cancelled_report(program, domain, cancellation);
         }
-        let launch = Self::plan_launch(domain, 256, 1024);
-        let command_plan =
-            DriverCommandPlan::for_launch(sdk, program, domain, launch, "target/atlas-gpu");
-        let output = runner.run(&command_plan);
-        let base_rationale = format!("{}; driver exit {}", sdk.name(), output.exit_code);
-        if output.exit_code != 0 || output.reported_matches.is_empty() {
+        let launch = Self::plan_launch(domain, DEFAULT_GPU_LOCAL_SIZE, 1024);
+        let launch_domains = driver_launch_domains(domain);
+        let mut reported_matches = Vec::new();
+        for launch_domain in launch_domains.iter().copied() {
+            if cancellation.is_cancelled() {
+                return Self::cancelled_report(program, domain, cancellation);
+            }
+            let chunk_launch = Self::plan_launch(launch_domain, DEFAULT_GPU_LOCAL_SIZE, 1024);
+            let command_plan = DriverCommandPlan::for_launch(
+                sdk,
+                program,
+                launch_domain,
+                chunk_launch,
+                "target/atlas-gpu",
+            );
+            let output = runner.run(&command_plan);
+            if output.exit_code != 0 {
+                let base_rationale = format!("{}; driver exit {}", sdk.name(), output.exit_code);
+                return AcceleratorReport {
+                    mode: RuntimeMode::CpuFallback,
+                    matches: NativeSearcher::search(program, domain, cancellation),
+                    telemetry: RuntimeTelemetry {
+                        launch,
+                        rationale: base_rationale,
+                        cpu_validated: true,
+                        rejected_device_matches: 0,
+                    },
+                };
+            }
+            reported_matches.extend(output.reported_matches);
+        }
+        let base_rationale = format!("{}; driver exit 0", sdk.name());
+        if reported_matches.is_empty() {
             return AcceleratorReport {
                 mode: RuntimeMode::CpuFallback,
                 matches: NativeSearcher::search(program, domain, cancellation),
@@ -709,12 +739,8 @@ impl AcceleratorRuntime {
                 },
             };
         }
-        let validation = validate_device_matches(
-            program,
-            domain,
-            &output.reported_matches,
-            launch.max_matches,
-        );
+        let validation =
+            validate_device_matches(program, domain, &reported_matches, launch.max_matches);
         let matches = validation.matches;
         if matches.is_empty() {
             return AcceleratorReport {
@@ -800,6 +826,19 @@ fn validate_device_matches(
         matches.truncate(max_matches);
     }
     DeviceValidation { matches, rejected }
+}
+
+fn driver_launch_domains(domain: SearchDomain) -> Vec<SearchDomain> {
+    let mut domains = Vec::new();
+    let mut start = domain.start;
+    while start < domain.end {
+        let remaining = domain.end - start;
+        let chunk_len = remaining.min(MAX_DRIVER_LAUNCH_CANDIDATES);
+        let end = start + chunk_len;
+        domains.push(SearchDomain::new(start, end));
+        start = end;
+    }
+    domains
 }
 
 fn join_path(output_dir: &str, artifact_name: &str) -> String {
