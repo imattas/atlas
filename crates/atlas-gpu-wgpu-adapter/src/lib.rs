@@ -32,6 +32,15 @@ pub struct LaunchOutput {
     pub match_count: usize,
 }
 
+/// Runtime/device feature report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FeatureReport {
+    /// Concrete adapter identity selected by WGPU.
+    pub hardware: String,
+    /// Feature labels supported by the adapter protocol.
+    pub features: Vec<String>,
+}
+
 /// Adapter CLI command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdapterCommand {
@@ -119,7 +128,7 @@ pub trait Launcher {
     /// # Errors
     ///
     /// Returns an error when feature discovery fails.
-    fn features(&self) -> Result<Vec<String>, String>;
+    fn features(&self) -> Result<FeatureReport, String>;
 
     /// Validates generated WGSL.
     ///
@@ -141,9 +150,12 @@ pub trait Launcher {
 pub struct WgpuLauncher;
 
 impl Launcher for WgpuLauncher {
-    fn features(&self) -> Result<Vec<String>, String> {
-        pollster::block_on(check_wgpu_runtime())?;
-        Ok(vec!["launchAbiU32".to_owned()])
+    fn features(&self) -> Result<FeatureReport, String> {
+        let hardware = pollster::block_on(wgpu_adapter_identity())?;
+        Ok(FeatureReport {
+            hardware,
+            features: vec!["launchAbiU32".to_owned()],
+        })
     }
 
     fn compile_check(&self, source: &str, output: Option<&str>) -> Result<(), String> {
@@ -169,8 +181,8 @@ impl Launcher for WgpuLauncher {
 pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, String> {
     match AdapterCommand::parse(args)? {
         AdapterCommand::Features => {
-            let features = launcher.features()?;
-            Ok(format_features(&features))
+            let report = launcher.features()?;
+            Ok(format_features(&report))
         }
         AdapterCommand::CompileCheck { source, output } => {
             launcher.compile_check(&source, output.as_deref())?;
@@ -210,7 +222,7 @@ async fn launch_wgpu(args: &LaunchArgs) -> Result<LaunchOutput, String> {
         .map_err(|error| format!("cannot read WGSL artifact {}: {error}", args.artifact))?;
     validate_wgsl_launch_shape(&source, args.local_size)?;
 
-    let (device, queue) = create_wgpu_device().await?;
+    let (_adapter, device, queue) = create_wgpu_device().await?;
 
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("atlas-search-wgsl"),
@@ -332,12 +344,19 @@ async fn launch_wgpu(args: &LaunchArgs) -> Result<LaunchOutput, String> {
     )
 }
 
-async fn check_wgpu_runtime() -> Result<(), String> {
-    let (_device, _queue) = create_wgpu_device().await?;
-    Ok(())
+async fn wgpu_adapter_identity() -> Result<String, String> {
+    let (adapter, _device, _queue) = create_wgpu_device().await?;
+    let info = adapter.get_info();
+    let name = info.name.trim();
+    let identity = if name.is_empty() {
+        "WGPU adapter".to_owned()
+    } else {
+        name.to_owned()
+    };
+    Ok(format!("{identity} via WGPU"))
 }
 
-async fn create_wgpu_device() -> Result<(wgpu::Device, wgpu::Queue), String> {
+async fn create_wgpu_device() -> Result<(wgpu::Adapter, wgpu::Device, wgpu::Queue), String> {
     let instance = wgpu::Instance::default();
     let adapter = instance
         .request_adapter(&wgpu::RequestAdapterOptions {
@@ -348,10 +367,11 @@ async fn create_wgpu_device() -> Result<(wgpu::Device, wgpu::Queue), String> {
         })
         .await
         .map_err(|error| format!("no compatible WGPU adapter: {error}"))?;
-    adapter
+    let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor::default())
         .await
-        .map_err(|error| format!("cannot create WGPU device: {error}"))
+        .map_err(|error| format!("cannot create WGPU device: {error}"))?;
+    Ok((adapter, device, queue))
 }
 
 fn encode_params(args: &LaunchArgs) -> Result<Vec<u8>, String> {
@@ -460,10 +480,11 @@ fn extract_wgsl_workgroup_size_x(source: &str) -> Result<usize, String> {
         .map_err(|_| "WGPU WGSL @workgroup_size x dimension is invalid".to_owned())
 }
 
-fn format_features(features: &[String]) -> String {
-    let mut text = "hardware=WGPU adapter\n".to_owned();
+fn format_features(report: &FeatureReport) -> String {
+    let mut text = format!("hardware={}\n", report.hardware);
     text.push_str(
-        &features
+        &report
+            .features
             .iter()
             .map(|feature| format!("feature={feature}\n"))
             .collect::<String>(),

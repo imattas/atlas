@@ -1,7 +1,8 @@
 //! WGPU adapter CLI tests.
 
 use atlas_gpu_wgpu_adapter::{
-    run_cli, validate_wgsl_launch_shape, AdapterCommand, LaunchArgs, LaunchOutput, Launcher,
+    run_cli, validate_wgsl_launch_shape, AdapterCommand, FeatureReport, LaunchArgs, LaunchOutput,
+    Launcher,
 };
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::SearchProgram;
@@ -12,8 +13,11 @@ use std::fs;
 struct FixtureLauncher;
 
 impl Launcher for FixtureLauncher {
-    fn features(&self) -> Result<Vec<String>, String> {
-        Ok(vec!["launchAbiU32".to_owned()])
+    fn features(&self) -> Result<FeatureReport, String> {
+        Ok(FeatureReport {
+            hardware: "NVIDIA RTX 4090 via WGPU".to_owned(),
+            features: vec!["launchAbiU32".to_owned()],
+        })
     }
 
     fn compile_check(&self, _source: &str, _output: Option<&str>) -> Result<(), String> {
@@ -48,8 +52,11 @@ impl RecordingLauncher {
 }
 
 impl Launcher for RecordingLauncher {
-    fn features(&self) -> Result<Vec<String>, String> {
-        Ok(Vec::new())
+    fn features(&self) -> Result<FeatureReport, String> {
+        Ok(FeatureReport {
+            hardware: "Recording WGPU adapter".to_owned(),
+            features: Vec::new(),
+        })
     }
 
     fn compile_check(&self, source: &str, output: Option<&str>) -> Result<(), String> {
@@ -115,7 +122,10 @@ fn parses_compile_check_source_and_output_command() {
 fn cli_features_emits_launcher_capabilities() {
     let output = run_cli(&["--features".to_owned()], &FixtureLauncher).unwrap();
 
-    assert_eq!(output, "hardware=WGPU adapter\nfeature=launchAbiU32\n");
+    assert_eq!(
+        output,
+        "hardware=NVIDIA RTX 4090 via WGPU\nfeature=launchAbiU32\n"
+    );
 }
 
 #[test]
