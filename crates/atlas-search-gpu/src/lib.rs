@@ -565,6 +565,7 @@ pub struct AcceleratorRuntime;
 
 const DEFAULT_GPU_LOCAL_SIZE: u64 = 256;
 const MAX_DRIVER_LAUNCH_GLOBAL_SIZE: u64 = u32::MAX as u64;
+const ATLAS_SEARCH_ENTRY_BYTES: &[u8] = b"atlas_search";
 const ELF_MAGIC_BYTES: [u8; 4] = [0x7f, b'E', b'L', b'F'];
 const SPIRV_MAGIC_BYTES: [u8; 4] = [0x03, 0x02, 0x23, 0x07];
 
@@ -1672,9 +1673,13 @@ fn artifact_file_is_reusable_for_sdk(sdk: &GpuSdk, path: &Path) -> bool {
     }
     match sdk {
         GpuSdk::OpenCl { .. } => artifact_text_contains(path, "__kernel void atlas_search"),
-        GpuSdk::Vulkan { .. } => artifact_has_spirv_magic(path),
+        GpuSdk::Vulkan { .. } => {
+            artifact_has_spirv_magic(path) && artifact_bytes_contain(path, ATLAS_SEARCH_ENTRY_BYTES)
+        }
         GpuSdk::Cuda { .. } => artifact_text_contains(path, ".entry atlas_search"),
-        GpuSdk::Hip { .. } => artifact_has_elf_magic(path),
+        GpuSdk::Hip { .. } => {
+            artifact_has_elf_magic(path) && artifact_bytes_contain(path, ATLAS_SEARCH_ENTRY_BYTES)
+        }
     }
 }
 
@@ -1689,6 +1694,10 @@ fn artifact_has_elf_magic(path: &Path) -> bool {
 
 fn artifact_text_contains(path: &Path, needle: &str) -> bool {
     fs::read_to_string(path).is_ok_and(|text| text.contains(needle))
+}
+
+fn artifact_bytes_contain(path: &Path, needle: &[u8]) -> bool {
+    fs::read(path).is_ok_and(|bytes| bytes.windows(needle.len()).any(|window| window == needle))
 }
 
 fn persisted_kernel_cache_keys(

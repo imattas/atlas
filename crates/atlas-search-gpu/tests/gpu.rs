@@ -1986,7 +1986,7 @@ fn process_driver_runner_reuses_cached_compiled_artifact_without_recompile() {
     let output_dir_text = output_dir.to_string_lossy().into_owned();
     let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
     fs::create_dir_all(Path::new(&plan.artifact_file).parent().unwrap()).unwrap();
-    fs::write(&plan.artifact_file, [0x03, 0x02, 0x23, 0x07]).unwrap();
+    fs::write(&plan.artifact_file, b"\x03\x02\x23\x07atlas_search").unwrap();
     let runner = RecordingCommandRunner::new();
 
     let output = ProcessDriverRunner::run_with_command_runner(&plan, &runner);
@@ -2034,6 +2034,32 @@ fn process_driver_runner_recompiles_invalid_vulkan_cached_artifact() {
     let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
     fs::create_dir_all(Path::new(&plan.artifact_file).parent().unwrap()).unwrap();
     fs::write(&plan.artifact_file, b"not spirv").unwrap();
+    let runner = RecordingCommandRunner::new();
+
+    let output = ProcessDriverRunner::run_with_command_runner(&plan, &runner);
+
+    assert_eq!(output.exit_code, 0);
+    assert_eq!(
+        runner.commands.borrow().as_slice(),
+        &[plan.compile_command, plan.launch_command]
+    );
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+fn process_driver_runner_recompiles_vulkan_cached_artifact_without_kernel_entry() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let sdk = GpuSdk::Vulkan {
+        sdk: "Vulkan runtime".to_owned(),
+    };
+    let output_dir = std::env::temp_dir().join(format!(
+        "atlas-gpu-vulkan-cache-missing-entry-{}",
+        std::process::id()
+    ));
+    let output_dir_text = output_dir.to_string_lossy().into_owned();
+    let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
+    fs::create_dir_all(Path::new(&plan.artifact_file).parent().unwrap()).unwrap();
+    fs::write(&plan.artifact_file, [0x03, 0x02, 0x23, 0x07, 0, 0, 0, 0]).unwrap();
     let runner = RecordingCommandRunner::new();
 
     let output = ProcessDriverRunner::run_with_command_runner(&plan, &runner);
@@ -2112,6 +2138,32 @@ fn process_driver_runner_recompiles_invalid_hip_cached_artifact() {
     let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
     fs::create_dir_all(Path::new(&plan.artifact_file).parent().unwrap()).unwrap();
     fs::write(&plan.artifact_file, b"not hsaco").unwrap();
+    let runner = RecordingCommandRunner::new();
+
+    let output = ProcessDriverRunner::run_with_command_runner(&plan, &runner);
+
+    assert_eq!(output.exit_code, 0);
+    assert_eq!(
+        runner.commands.borrow().as_slice(),
+        &[plan.compile_command, plan.launch_command]
+    );
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+fn process_driver_runner_recompiles_hip_cached_artifact_without_kernel_entry() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let sdk = GpuSdk::Hip {
+        sdk: "HIP runtime".to_owned(),
+    };
+    let output_dir = std::env::temp_dir().join(format!(
+        "atlas-gpu-hip-cache-missing-entry-{}",
+        std::process::id()
+    ));
+    let output_dir_text = output_dir.to_string_lossy().into_owned();
+    let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
+    fs::create_dir_all(Path::new(&plan.artifact_file).parent().unwrap()).unwrap();
+    fs::write(&plan.artifact_file, [0x7f, b'E', b'L', b'F', 0, 0, 0, 0]).unwrap();
     let runner = RecordingCommandRunner::new();
 
     let output = ProcessDriverRunner::run_with_command_runner(&plan, &runner);
@@ -3366,7 +3418,11 @@ fn host_runtime_uses_persisted_kernel_cache_for_warmed_gpu_threshold() {
     let cached_plan =
         DriverCommandPlan::for_launch(&sdk, &program, domain, launch, "target/atlas-gpu");
     fs::create_dir_all(Path::new(&cached_plan.artifact_file).parent().unwrap()).unwrap();
-    fs::write(&cached_plan.artifact_file, [0xCA, 0xFE]).unwrap();
+    fs::write(
+        &cached_plan.artifact_file,
+        b"__kernel void atlas_search(__global uint* out_words) {}",
+    )
+    .unwrap();
     let artifact_root = Path::new(&cached_plan.artifact_file)
         .parent()
         .unwrap()
