@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/atlas-protocol",
+    "crates/atlas-ucir",
 ]
 resolver = "2"
 
