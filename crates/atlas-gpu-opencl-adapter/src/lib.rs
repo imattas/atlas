@@ -26,6 +26,17 @@ pub struct LaunchArgs {
     pub global_size: usize,
     /// Local OpenCL workgroup size.
     pub local_size: usize,
+    /// Optional explicit host/kernel launch ABI.
+    pub launch_abi: Option<OpenClLaunchAbi>,
+}
+
+/// Host/kernel launch ABI used by generated OpenCL kernels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpenClLaunchAbi {
+    /// Split 64-bit launch bounds and match output into 32-bit words.
+    U32,
+    /// Use native 64-bit OpenCL kernel parameters and match output.
+    U64,
 }
 
 /// Device launch output.
@@ -119,6 +130,9 @@ impl LaunchArgs {
         if u64::try_from(global_size).unwrap_or(u64::MAX) < end.saturating_sub(start) {
             return Err("global-size must cover launch domain".to_owned());
         }
+        let launch_abi = optional_flag_value(args, "--abi")?
+            .map(parse_launch_abi)
+            .transpose()?;
         Ok(Self {
             artifact: artifact.clone(),
             start,
@@ -126,6 +140,7 @@ impl LaunchArgs {
             max_matches,
             global_size,
             local_size,
+            launch_abi,
         })
     }
 }
@@ -250,6 +265,24 @@ fn optional_output_path(args: &[String]) -> Result<Option<String>, String> {
         .ok_or_else(|| "missing output path after -o".to_owned())
 }
 
+fn optional_flag_value<'a>(args: &'a [String], flag: &str) -> Result<Option<&'a str>, String> {
+    let Some(index) = args.iter().position(|arg| arg == flag) else {
+        return Ok(None);
+    };
+    args.get(index + 1)
+        .map(String::as_str)
+        .map(Some)
+        .ok_or_else(|| format!("missing {flag} value"))
+}
+
+fn parse_launch_abi(value: &str) -> Result<OpenClLaunchAbi, String> {
+    match value {
+        "u32" => Ok(OpenClLaunchAbi::U32),
+        "u64" => Ok(OpenClLaunchAbi::U64),
+        _ => Err(format!("unsupported --abi '{value}'; expected u32 or u64")),
+    }
+}
+
 fn write_opencl_source(path: &str, source: &str) -> Result<(), String> {
     if let Some(parent) = Path::new(path).parent() {
         fs::create_dir_all(parent)
@@ -261,7 +294,12 @@ fn write_opencl_source(path: &str, source: &str) -> Result<(), String> {
 fn launch_opencl(args: &LaunchArgs) -> Result<LaunchOutput, String> {
     let source = fs::read_to_string(&args.artifact).map_err(|error| error.to_string())?;
     let (context, queue, program) = build_opencl_program(&source)?;
-    if uses_u32_launch_abi(&source) {
+    let uses_u32_abi = match args.launch_abi {
+        Some(OpenClLaunchAbi::U32) => true,
+        Some(OpenClLaunchAbi::U64) => false,
+        None => uses_u32_launch_abi(&source),
+    };
+    if uses_u32_abi {
         return launch_opencl_u32(args, &context, &queue, &program);
     }
     let out_buffer = unsafe {
