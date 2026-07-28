@@ -146,6 +146,29 @@ impl DriverCommandPlan {
     /// Builds a deterministic driver command plan for an SDK.
     #[must_use]
     pub fn for_sdk(sdk: &GpuSdk, program: &SearchProgram, output_dir: &str) -> Self {
+        Self::for_launch(
+            sdk,
+            program,
+            SearchDomain::new(0, 0),
+            LaunchConfig {
+                global_size: 1,
+                local_size: 1,
+                max_matches: 0,
+                output_buffer_bytes: 0,
+            },
+            output_dir,
+        )
+    }
+
+    /// Builds a deterministic driver command plan for one bounded launch.
+    #[must_use]
+    pub fn for_launch(
+        sdk: &GpuSdk,
+        program: &SearchProgram,
+        domain: SearchDomain,
+        launch: LaunchConfig,
+        output_dir: &str,
+    ) -> Self {
         let (source_file, artifact_name, compiler, options) = match sdk {
             GpuSdk::OpenCl { .. } => (
                 "gpu/opencl/atlas_search.cl",
@@ -177,6 +200,16 @@ impl DriverCommandPlan {
         let launch_command = vec![
             format!("atlas-gpu-{}-run", sdk.name().to_ascii_lowercase()),
             artifact_file.clone(),
+            "--start".to_owned(),
+            domain.start.to_string(),
+            "--end".to_owned(),
+            domain.end.to_string(),
+            "--max-matches".to_owned(),
+            launch.max_matches.to_string(),
+            "--global-size".to_owned(),
+            launch.global_size.to_string(),
+            "--local-size".to_owned(),
+            launch.local_size.to_string(),
         ];
         Self {
             sdk: sdk.clone(),
@@ -356,7 +389,8 @@ impl AcceleratorRuntime {
         runner: &dyn DriverRunner,
     ) -> AcceleratorReport {
         let launch = Self::plan_launch(domain, 256, 1024);
-        let command_plan = DriverCommandPlan::for_sdk(sdk, program, "target/atlas-gpu");
+        let command_plan =
+            DriverCommandPlan::for_launch(sdk, program, domain, launch, "target/atlas-gpu");
         let output = runner.run(&command_plan);
         let base_rationale = format!("{}; driver exit {}", sdk.name(), output.exit_code);
         if output.exit_code != 0 || output.reported_matches.is_empty() {

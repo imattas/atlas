@@ -239,6 +239,40 @@ fn driver_command_plans_reference_checked_in_kernel_artifacts() {
 }
 
 #[test]
+fn driver_launch_plan_carries_domain_and_output_capacity() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let launch = AcceleratorRuntime::plan_launch(SearchDomain::new(10, 99), 128, 17);
+    let sdk = GpuSdk::OpenCl {
+        sdk: "Khronos OpenCL SDK".to_owned(),
+    };
+
+    let plan = DriverCommandPlan::for_launch(
+        &sdk,
+        &program,
+        SearchDomain::new(10, 99),
+        launch,
+        "target/atlas-gpu",
+    );
+
+    assert!(plan
+        .launch_command
+        .windows(2)
+        .any(|args| args == ["--start", "10"]));
+    assert!(plan
+        .launch_command
+        .windows(2)
+        .any(|args| args == ["--end", "99"]));
+    assert!(plan
+        .launch_command
+        .windows(2)
+        .any(|args| args == ["--max-matches", "17"]));
+    assert!(plan
+        .launch_command
+        .windows(2)
+        .any(|args| args == ["--global-size", "128"]));
+}
+
+#[test]
 fn runtime_executes_driver_output_and_cpu_validates_matches() {
     let program = SearchProgram::try_from_fixture("add").unwrap();
     let token = CancellationToken::new();
