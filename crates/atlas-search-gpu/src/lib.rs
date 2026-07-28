@@ -565,6 +565,7 @@ pub struct AcceleratorRuntime;
 
 const DEFAULT_GPU_LOCAL_SIZE: u64 = 256;
 const MAX_DRIVER_LAUNCH_GLOBAL_SIZE: u64 = u32::MAX as u64;
+const SPIRV_MAGIC_BYTES: [u8; 4] = [0x03, 0x02, 0x23, 0x07];
 
 impl AcceleratorRuntime {
     /// Plans a bounded GPU launch and transfer shape.
@@ -1658,12 +1659,25 @@ fn can_reuse_compiled_artifact(plan: &DriverCommandPlan) -> bool {
     plan.launch_command
         .get(1)
         .is_some_and(|launch_input| launch_input == &plan.artifact_file)
-        && artifact_file_is_reusable(Path::new(&plan.artifact_file))
+        && artifact_file_is_reusable_for_sdk(&plan.sdk, Path::new(&plan.artifact_file))
 }
 
-fn artifact_file_is_reusable(path: &Path) -> bool {
-    path.metadata()
+fn artifact_file_is_reusable_for_sdk(sdk: &GpuSdk, path: &Path) -> bool {
+    if !path
+        .metadata()
         .is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
+    {
+        return false;
+    }
+    match sdk {
+        GpuSdk::Vulkan { .. } => artifact_has_spirv_magic(path),
+        GpuSdk::OpenCl { .. } | GpuSdk::Cuda { .. } | GpuSdk::Hip { .. } => true,
+    }
+}
+
+fn artifact_has_spirv_magic(path: &Path) -> bool {
+    fs::read(path)
+        .is_ok_and(|bytes| bytes.get(..SPIRV_MAGIC_BYTES.len()) == Some(&SPIRV_MAGIC_BYTES))
 }
 
 fn persisted_kernel_cache_keys(
@@ -1677,7 +1691,8 @@ fn persisted_kernel_cache_keys(
         .iter()
         .filter_map(|sdk| {
             let plan = DriverCommandPlan::for_launch(sdk, program, domain, launch, output_dir);
-            artifact_file_is_reusable(Path::new(&plan.artifact_file)).then_some(plan.cache_key)
+            artifact_file_is_reusable_for_sdk(sdk, Path::new(&plan.artifact_file))
+                .then_some(plan.cache_key)
         })
         .collect()
 }
