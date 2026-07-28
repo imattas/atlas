@@ -54,6 +54,7 @@ dependencies = [
  "atlas-search-gpu",
  "atlas-search-ir",
  "atlas-search-native",
+ "atlas-search-simd",
  "atlas-validator",
 ]
 

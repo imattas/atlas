@@ -8,6 +8,7 @@ use atlas_search_gpu::{
 };
 use atlas_search_ir::{SearchDomain, SearchProgram};
 use atlas_search_native::NativeSearcher;
+use atlas_search_simd::SimdSearcher;
 use atlas_validator::ResultLevel;
 use std::path::PathBuf;
 use std::process::Command;
@@ -142,13 +143,18 @@ fn benchmark(args: &[String]) -> Result<String, String> {
     let request = SolveRequest::parse(args)?;
     let token = CancellationToken::new();
     let mut native_samples_ns = Vec::with_capacity(request.samples);
+    let mut simd_samples_ns = Vec::with_capacity(request.samples);
     let mut accelerator_samples_ns = Vec::with_capacity(request.samples);
     let mut native_matches = Vec::new();
+    let mut simd_matches = Vec::new();
     let mut accelerator = None;
     for _ in 0..request.samples {
         let native_start = Instant::now();
         native_matches = NativeSearcher::search(&request.program, request.domain, &token);
         native_samples_ns.push(native_start.elapsed().as_nanos());
+        let simd_start = Instant::now();
+        simd_matches = SimdSearcher::search(&request.program, request.domain, &token, 4);
+        simd_samples_ns.push(simd_start.elapsed().as_nanos());
         let accelerator_start = Instant::now();
         accelerator = Some(execute_accelerator(
             &request.program,
@@ -160,21 +166,25 @@ fn benchmark(args: &[String]) -> Result<String, String> {
         accelerator_samples_ns.push(accelerator_start.elapsed().as_nanos());
     }
     let native_elapsed_ns = *native_samples_ns.iter().min().unwrap_or(&0);
+    let simd_elapsed_ns = *simd_samples_ns.iter().min().unwrap_or(&0);
     let accelerator_elapsed_ns = *accelerator_samples_ns.iter().min().unwrap_or(&0);
     let accelerator = accelerator.expect("benchmark samples must be nonzero");
     let speedup_ratio = format_speedup_ratio(native_elapsed_ns, accelerator_elapsed_ns);
     let requested_gpu_sdk = requested_gpu_sdk_json(request.gpu_sdk);
     let actual_gpu_sdk = optional_string_json(accelerator.telemetry.selected_gpu_sdk.as_deref());
     Ok(format!(
-        "{{\"schema_major\":1,\"kind\":\"benchmark\",\"fixture\":\"{}\",\"domain\":{{\"start\":{},\"end\":{}}},\"sample_count\":{},\"native_samples_ns\":{},\"accelerator_samples_ns\":{},\"native\":{{\"elapsed_ns\":{},\"matches\":{}}},\"accelerator\":{{\"elapsed_ns\":{},\"requested_gpu_sdk\":{},\"actual_gpu_sdk\":{},\"speedup_ratio\":{},\"mode\":\"{}\",\"matches\":{},\"launch\":{{\"global_size\":{},\"local_size\":{},\"max_matches\":{},\"output_buffer_bytes\":{}}},\"telemetry\":\"{}\"}}}}\n",
+        "{{\"schema_major\":1,\"kind\":\"benchmark\",\"fixture\":\"{}\",\"domain\":{{\"start\":{},\"end\":{}}},\"sample_count\":{},\"native_samples_ns\":{},\"simd_samples_ns\":{},\"accelerator_samples_ns\":{},\"native\":{{\"elapsed_ns\":{},\"matches\":{}}},\"simd\":{{\"elapsed_ns\":{},\"matches\":{}}},\"accelerator\":{{\"elapsed_ns\":{},\"requested_gpu_sdk\":{},\"actual_gpu_sdk\":{},\"speedup_ratio\":{},\"mode\":\"{}\",\"matches\":{},\"launch\":{{\"global_size\":{},\"local_size\":{},\"max_matches\":{},\"output_buffer_bytes\":{}}},\"telemetry\":\"{}\"}}}}\n",
         json_escape(&request.fixture),
         request.domain.start,
         request.domain.end,
         request.samples,
         format_duration_samples(&native_samples_ns),
+        format_duration_samples(&simd_samples_ns),
         format_duration_samples(&accelerator_samples_ns),
         native_elapsed_ns,
         format_matches(&native_matches),
+        simd_elapsed_ns,
+        format_matches(&simd_matches),
         accelerator_elapsed_ns,
         requested_gpu_sdk,
         actual_gpu_sdk,

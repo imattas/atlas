@@ -408,7 +408,11 @@ fn benchmark_reports_native_and_forced_gpu_runtime() {
     std::env::set_var("PATH", original_path);
     let _ = fs::remove_dir_all(tool_dir);
     assert!(output.contains("\"kind\":\"benchmark\""));
+    assert!(output.contains("\"native_samples_ns\""));
+    assert!(output.contains("\"simd_samples_ns\""));
+    assert!(output.contains("\"accelerator_samples_ns\""));
     assert!(output.contains("\"native\""));
+    assert!(output.contains("\"simd\""));
     assert!(output.contains("\"accelerator\""));
     assert!(output.contains("\"requested_gpu_sdk\":\"opencl\""));
     assert!(output.contains("\"actual_gpu_sdk\":\"OpenCL\""));

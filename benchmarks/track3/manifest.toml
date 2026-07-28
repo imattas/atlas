@@ -4,7 +4,7 @@ schema_major = 1
 [[case]]
 id = "bounded-scalar-simd-gpu-equivalence"
 expected = "identical-matches"
-targets = ["scalar", "simd", "gpu-fallback"]
+targets = ["scalar", "simd", "gpu-device"]
 
 [[case]]
 id = "two-worker-equivalence"
@@ -12,10 +12,16 @@ expected = "deduplicated-results"
 workers = 2
 
 [[sample]]
-id = "break-even-generic-ci"
-hardware = "generic-ci"
+id = "opencl-device-xor-100k-2026-07-28"
+hardware = "OpenCL GPU device probe on Windows host"
+gpu_backend = "OpenCL"
+fixture = "xor"
+domain_start = 0
+domain_end = 100000
+mode = "DeviceValidated"
 samples = 3
-scalar_ms = [1, 1, 1]
-simd_ms = [1, 1, 1]
-gpu_compile_ms = [0, 0, 0]
-distributed_overhead_ms = [1, 1, 1]
+scalar_ms = [0.0314, 0.0105, 0.0131]
+simd_ms = [10.7640, 10.6730, 11.1838]
+gpu_compile_ms = [0.0, 0.0, 0.0]
+gpu_device_ms = [2122.2657, 1848.8946, 1824.9714]
+distributed_overhead_ms = [1.0, 1.0, 1.0]
