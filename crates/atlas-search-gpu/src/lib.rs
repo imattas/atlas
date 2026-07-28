@@ -2229,8 +2229,11 @@ impl GpuSdkDetector {
     /// pass PATH-discovered tool names through this function.
     #[must_use]
     pub fn detect_from_tools(tools: &[String]) -> Vec<GpuSdk> {
-        let normalized: BTreeSet<String> =
-            tools.iter().map(|tool| normalize_tool_name(tool)).collect();
+        let normalized: BTreeSet<String> = tools
+            .iter()
+            .map(|tool| normalize_tool_name(tool))
+            .filter(|tool| !is_atlas_gpu_adapter_tool(tool))
+            .collect();
         let mut detected = Vec::new();
         if normalized
             .iter()
@@ -2290,6 +2293,16 @@ impl GpuSdkDetector {
         detect_from_adapter_features(&mut detected, runner);
         detected
     }
+}
+
+fn is_atlas_gpu_adapter_tool(tool: &str) -> bool {
+    matches!(
+        tool,
+        "atlas-gpu-opencl-run"
+            | "atlas-gpu-vulkan-run"
+            | "atlas-gpu-cuda-run"
+            | "atlas-gpu-hip-run"
+    )
 }
 
 fn detect_from_adapter_features(detected: &mut Vec<GpuSdk>, runner: &dyn CommandRunner) {

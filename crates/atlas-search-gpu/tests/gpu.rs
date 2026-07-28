@@ -1234,6 +1234,18 @@ fn detects_gpu_sdks_from_tool_names_without_touching_host_environment() {
 }
 
 #[test]
+fn sdk_tool_detection_ignores_atlas_adapter_binary_names() {
+    let detected = GpuSdkDetector::detect_from_tools(&[
+        "atlas-gpu-opencl-run".to_owned(),
+        "atlas-gpu-vulkan-run".to_owned(),
+        "atlas-gpu-cuda-run".to_owned(),
+        "atlas-gpu-hip-run".to_owned(),
+    ]);
+
+    assert_eq!(detected, Vec::new());
+}
+
+#[test]
 fn detects_gpu_sdks_from_raw_windows_tool_names() {
     let detected = GpuSdkDetector::detect_from_tools(&[
         "clinfo.exe".to_owned(),
