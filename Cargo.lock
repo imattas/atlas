@@ -45,6 +45,13 @@ name = "atlas-program"
 version = "0.1.0"
 
 [[package]]
+name = "atlas-program-analysis"
+version = "0.1.0"
+dependencies = [
+ "atlas-program",
+]
+
+[[package]]
 name = "atlas-protocol"
 version = "0.1.0"
 

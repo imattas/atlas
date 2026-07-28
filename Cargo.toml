@@ -12,6 +12,7 @@ members = [
     "crates/atlas-cli",
     "crates/atlas-program",
     "crates/atlas-executor",
+    "crates/atlas-program-analysis",
 ]
 resolver = "2"
 
