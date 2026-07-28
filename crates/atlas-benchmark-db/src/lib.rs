@@ -14,6 +14,17 @@ pub enum CorpusSplit {
     Test,
 }
 
+/// Hardware accelerator evidence attached to a benchmark record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AcceleratorEvidence {
+    /// Accelerator backend observed during the run, for example `WGPU` or `OpenCL`.
+    pub backend: String,
+    /// Execution mode observed during the run, for example `DeviceValidated`.
+    pub mode: String,
+    /// Human-readable hardware/probe description.
+    pub hardware: String,
+}
+
 /// Historical benchmark record.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BenchmarkRecord {
@@ -29,6 +40,8 @@ pub struct BenchmarkRecord {
     pub runtime_ms: u64,
     /// Corpus split.
     pub split: CorpusSplit,
+    /// Optional hardware accelerator evidence for GPU/device-backed runs.
+    pub accelerator: Option<AcceleratorEvidence>,
 }
 
 /// Ingestion error.
@@ -71,6 +84,21 @@ impl BenchmarkWarehouse {
         if record.features.is_empty() {
             return Err(BenchmarkError::MissingField("features".to_owned()));
         }
+        if let Some(accelerator) = &record.accelerator {
+            if accelerator.backend.is_empty() {
+                return Err(BenchmarkError::MissingField(
+                    "accelerator.backend".to_owned(),
+                ));
+            }
+            if accelerator.mode.is_empty() {
+                return Err(BenchmarkError::MissingField("accelerator.mode".to_owned()));
+            }
+            if accelerator.hardware.is_empty() {
+                return Err(BenchmarkError::MissingField(
+                    "accelerator.hardware".to_owned(),
+                ));
+            }
+        }
         self.records.push(record);
         Ok(())
     }
@@ -81,6 +109,34 @@ impl BenchmarkWarehouse {
         self.records
             .iter()
             .filter(|record| record.split == split)
+            .collect()
+    }
+
+    /// Returns records with accelerator evidence for a backend.
+    #[must_use]
+    pub fn accelerator_backend(&self, backend: &str) -> Vec<&BenchmarkRecord> {
+        self.records
+            .iter()
+            .filter(|record| {
+                record
+                    .accelerator
+                    .as_ref()
+                    .is_some_and(|accelerator| accelerator.backend == backend)
+            })
+            .collect()
+    }
+
+    /// Returns records whose accelerator run was validated on a real device.
+    #[must_use]
+    pub fn device_validated_accelerators(&self) -> Vec<&BenchmarkRecord> {
+        self.records
+            .iter()
+            .filter(|record| {
+                record
+                    .accelerator
+                    .as_ref()
+                    .is_some_and(|accelerator| accelerator.mode == "DeviceValidated")
+            })
             .collect()
     }
 }

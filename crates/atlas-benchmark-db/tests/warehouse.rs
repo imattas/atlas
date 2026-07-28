@@ -14,6 +14,7 @@ fn record(split: CorpusSplit) -> BenchmarkRecord {
         features: BTreeMap::from([("vars".to_owned(), 32.0)]),
         runtime_ms: 10,
         split,
+        accelerator: None,
     }
 }
 
@@ -43,4 +44,29 @@ fn rejects_incompatible_schema_and_missing_features() {
         warehouse.ingest(missing),
         Err(BenchmarkError::MissingField("features".to_owned()))
     );
+}
+
+#[test]
+fn indexes_device_validated_accelerator_evidence_by_backend() {
+    let mut warehouse = BenchmarkWarehouse::new();
+    let mut wgpu = record(CorpusSplit::Test);
+    wgpu.accelerator = Some(atlas_benchmark_db::AcceleratorEvidence {
+        backend: "WGPU".to_owned(),
+        mode: "DeviceValidated".to_owned(),
+        hardware: "WGPU device probe on Windows host".to_owned(),
+    });
+    warehouse.ingest(wgpu).unwrap();
+    warehouse.ingest(record(CorpusSplit::Test)).unwrap();
+
+    let records = warehouse.accelerator_backend("WGPU");
+
+    assert_eq!(records.len(), 1);
+    assert_eq!(
+        records[0]
+            .accelerator
+            .as_ref()
+            .map(|evidence| evidence.mode.as_str()),
+        Some("DeviceValidated")
+    );
+    assert_eq!(warehouse.device_validated_accelerators().len(), 1);
 }
