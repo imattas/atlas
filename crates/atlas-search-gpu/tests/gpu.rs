@@ -61,12 +61,20 @@ struct VulkanFeaturesCommandRunner {
 
 impl CommandRunner for VulkanFeaturesCommandRunner {
     fn run_command(&self, command: &[String]) -> DriverRunOutput {
-        assert_eq!(command, ["atlas-gpu-vulkan-run", "--features"]);
-        DriverRunOutput {
-            exit_code: 0,
-            reported_matches: Vec::new(),
-            stdout: self.stdout.to_owned(),
-            stderr: String::new(),
+        if command == ["atlas-gpu-vulkan-run", "--features"] {
+            DriverRunOutput {
+                exit_code: 0,
+                reported_matches: Vec::new(),
+                stdout: self.stdout.to_owned(),
+                stderr: String::new(),
+            }
+        } else {
+            DriverRunOutput {
+                exit_code: 1,
+                reported_matches: Vec::new(),
+                stdout: String::new(),
+                stderr: "adapter unavailable".to_owned(),
+            }
         }
     }
 }
@@ -580,6 +588,38 @@ fn adapter_feature_detection_queries_all_detected_backend_adapters() {
     assert_eq!(
         runner.commands.borrow().as_slice(),
         &[
+            vec!["atlas-gpu-opencl-run".to_owned(), "--features".to_owned()],
+            vec!["atlas-gpu-vulkan-run".to_owned(), "--features".to_owned()],
+            vec!["atlas-gpu-cuda-run".to_owned(), "--features".to_owned()],
+            vec!["atlas-gpu-hip-run".to_owned(), "--features".to_owned()],
+        ]
+    );
+    assert!(detected.iter().any(|sdk| matches!(
+        sdk,
+        GpuSdk::OpenCl { sdk } if sdk.contains("int64")
+    )));
+    assert!(detected.iter().any(|sdk| matches!(
+        sdk,
+        GpuSdk::Vulkan { sdk } if sdk.contains("shaderInt64")
+    )));
+    assert!(detected.iter().any(|sdk| matches!(
+        sdk,
+        GpuSdk::Cuda { sdk } if sdk.contains("int64")
+    )));
+    assert!(detected.iter().any(|sdk| matches!(
+        sdk,
+        GpuSdk::Hip { sdk } if sdk.contains("int64")
+    )));
+}
+
+#[test]
+fn adapter_feature_detection_discovers_runtimes_without_path_tools() {
+    let runner = AdapterFeaturesCommandRunner::new();
+    let detected = GpuSdkDetector::detect_from_tools_with_adapter_features(&[], &runner);
+
+    assert_eq!(
+        runner.commands.borrow().clone(),
+        vec![
             vec!["atlas-gpu-opencl-run".to_owned(), "--features".to_owned()],
             vec!["atlas-gpu-vulkan-run".to_owned(), "--features".to_owned()],
             vec!["atlas-gpu-cuda-run".to_owned(), "--features".to_owned()],

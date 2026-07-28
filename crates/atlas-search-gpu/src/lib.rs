@@ -1105,6 +1105,7 @@ impl GpuSdkDetector {
     pub fn detect_from_host_path_with_adapter_features(runner: &dyn CommandRunner) -> Vec<GpuSdk> {
         let mut detected = Self::detect_from_host_path();
         augment_with_adapter_features(&mut detected, runner);
+        detect_from_adapter_features(&mut detected, runner);
         detected
     }
 
@@ -1202,8 +1203,44 @@ impl GpuSdkDetector {
     ) -> Vec<GpuSdk> {
         let mut detected = Self::detect_from_tools(tools);
         augment_with_adapter_features(&mut detected, runner);
+        detect_from_adapter_features(&mut detected, runner);
         detected
     }
+}
+
+fn detect_from_adapter_features(detected: &mut Vec<GpuSdk>, runner: &dyn CommandRunner) {
+    for mut sdk in adapter_backed_sdk_candidates() {
+        if detected.iter().any(|detected_sdk| {
+            std::mem::discriminant(detected_sdk) == std::mem::discriminant(&sdk)
+        }) {
+            continue;
+        }
+        let (adapter, feature) = adapter_feature_probe(&sdk);
+        let output = runner.run_command(&[adapter.to_owned(), "--features".to_owned()]);
+        if output.exit_code == 0 {
+            if adapter_features_include(&output.stdout, feature) {
+                append_sdk_feature(&mut sdk, feature);
+            }
+            detected.push(sdk);
+        }
+    }
+}
+
+fn adapter_backed_sdk_candidates() -> Vec<GpuSdk> {
+    vec![
+        GpuSdk::OpenCl {
+            sdk: "OpenCL adapter runtime".to_owned(),
+        },
+        GpuSdk::Vulkan {
+            sdk: "Vulkan adapter runtime".to_owned(),
+        },
+        GpuSdk::Cuda {
+            sdk: "CUDA adapter runtime".to_owned(),
+        },
+        GpuSdk::Hip {
+            sdk: "HIP adapter runtime".to_owned(),
+        },
+    ]
 }
 
 fn augment_with_adapter_features(detected: &mut [GpuSdk], runner: &dyn CommandRunner) {
