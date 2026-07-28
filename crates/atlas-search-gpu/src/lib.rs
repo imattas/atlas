@@ -880,9 +880,10 @@ impl AcceleratorRuntime {
             failed_attempt_rationales.push(report.telemetry.rationale.clone());
             fallback_report = Some(report);
         }
-        fallback_report.unwrap_or_else(|| {
-            Self::execute_with_driver(program, domain, &selected, cancellation, runner)
-        })
+        fallback_report.map_or_else(
+            || Self::execute_with_driver(program, domain, &selected, cancellation, runner),
+            |report| with_all_failed_attempt_rationales(report, &failed_attempt_rationales),
+        )
     }
 
     /// Detects SDKs from supplied PATH directories, executes through the best
@@ -1580,6 +1581,17 @@ fn with_failed_attempt_rationales(
             failed_attempt_rationales.join(" | "),
             report.telemetry.rationale
         );
+    }
+    report
+}
+
+fn with_all_failed_attempt_rationales(
+    mut report: AcceleratorReport,
+    failed_attempt_rationales: &[String],
+) -> AcceleratorReport {
+    if failed_attempt_rationales.len() > 1 {
+        report.telemetry.rationale =
+            format!("failed attempts: {}", failed_attempt_rationales.join(" | "));
     }
     report
 }

@@ -308,6 +308,37 @@ impl DriverRunner for FailingThenSuccessfulSdkRunner {
 }
 
 #[derive(Debug)]
+struct AlwaysFailingSdkRunner {
+    attempted_sdks: RefCell<Vec<&'static str>>,
+}
+
+impl AlwaysFailingSdkRunner {
+    fn new() -> Self {
+        Self {
+            attempted_sdks: RefCell::new(Vec::new()),
+        }
+    }
+}
+
+impl DriverRunner for AlwaysFailingSdkRunner {
+    fn run(&self, plan: &DriverCommandPlan) -> DriverRunOutput {
+        let sdk = match &plan.sdk {
+            GpuSdk::OpenCl { .. } => "OpenCL",
+            GpuSdk::Vulkan { .. } => "Vulkan",
+            GpuSdk::Cuda { .. } => "CUDA",
+            GpuSdk::Hip { .. } => "HIP",
+        };
+        self.attempted_sdks.borrow_mut().push(sdk);
+        DriverRunOutput {
+            exit_code: 1,
+            reported_matches: Vec::new(),
+            stdout: String::new(),
+            stderr: format!("{sdk} runtime launch failed"),
+        }
+    }
+}
+
+#[derive(Debug)]
 struct SuccessfulSdkRecordingRunner {
     attempted_sdks: RefCell<Vec<&'static str>>,
 }
@@ -3092,6 +3123,48 @@ fn runtime_does_not_duplicate_failed_attempt_telemetry_when_every_backend_fails(
     assert!(report.telemetry.rationale.contains("nvcuda.dll"));
     assert!(!report.telemetry.rationale.contains("failed attempts:"));
     assert!(!report.telemetry.rationale.contains("selected:"));
+}
+
+#[test]
+fn runtime_reports_all_failed_gpu_attempts_when_every_backend_fails() {
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    let sdks = [
+        GpuSdk::OpenCl {
+            sdk: "test OpenCL".to_owned(),
+        },
+        GpuSdk::Vulkan {
+            sdk: "test Vulkan".to_owned(),
+        },
+    ];
+    let runner = AlwaysFailingSdkRunner::new();
+
+    let report = AcceleratorRuntime::execute_with_detected_driver_and_policy(
+        &program,
+        SearchDomain::new(0, 1_000_000),
+        &sdks,
+        &token,
+        RuntimePolicy { force_gpu: true },
+        &[],
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert_eq!(
+        runner.attempted_sdks.borrow().as_slice(),
+        ["OpenCL", "Vulkan"]
+    );
+    assert!(report.telemetry.rationale.contains("failed attempts:"));
+    assert!(report.telemetry.rationale.contains("OpenCL"));
+    assert!(report
+        .telemetry
+        .rationale
+        .contains("OpenCL runtime launch failed"));
+    assert!(report.telemetry.rationale.contains("Vulkan"));
+    assert!(report
+        .telemetry
+        .rationale
+        .contains("Vulkan runtime launch failed"));
 }
 
 #[test]
