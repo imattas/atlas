@@ -301,6 +301,31 @@ fn kernel_cache_key_changes_across_compiler_device_and_options() {
 }
 
 #[test]
+fn driver_cache_key_changes_across_detected_device_identity() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let first_runtime = DriverCommandPlan::for_sdk(
+        &GpuSdk::OpenCl {
+            sdk: "OpenCL AMD Radeon RX 7900 XTX driver 1".to_owned(),
+        },
+        &program,
+        "target/atlas-gpu",
+    );
+    let second_runtime = DriverCommandPlan::for_sdk(
+        &GpuSdk::OpenCl {
+            sdk: "OpenCL AMD Radeon RX 7900 XTX driver 2".to_owned(),
+        },
+        &program,
+        "target/atlas-gpu",
+    );
+
+    assert_eq!(
+        first_runtime.cache_key.device,
+        "OpenCL AMD Radeon RX 7900 XTX driver 1"
+    );
+    assert_ne!(first_runtime.cache_key, second_runtime.cache_key);
+}
+
+#[test]
 fn cpu_validation_rejects_injected_false_gpu_match() {
     let program = SearchProgram::try_from_fixture("add").unwrap();
     let validated = GpuSearcher::cpu_validate_matches(&program, &[3, 4]);

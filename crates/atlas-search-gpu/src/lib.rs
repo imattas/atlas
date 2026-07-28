@@ -93,6 +93,15 @@ impl GpuSdk {
             Self::Hip { .. } => "HIP",
         }
     }
+
+    fn runtime_identity(&self) -> &str {
+        match self {
+            Self::OpenCl { sdk }
+            | Self::Vulkan { sdk }
+            | Self::Cuda { sdk }
+            | Self::Hip { sdk } => sdk,
+        }
+    }
 }
 
 /// GPU SDK selection result.
@@ -246,7 +255,12 @@ impl DriverCommandPlan {
             artifact_file,
             compile_command,
             launch_command,
-            cache_key: KernelCacheKey::new(format!("{program:?}"), compiler, sdk.name(), options),
+            cache_key: KernelCacheKey::new(
+                format!("{program:?}"),
+                compiler,
+                sdk.runtime_identity(),
+                options,
+            ),
         }
     }
 }
