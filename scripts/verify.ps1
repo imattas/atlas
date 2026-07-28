@@ -90,6 +90,12 @@ function Invoke-ForcedGpuBenchmark {
         if ($Benchmark.accelerator.actual_gpu_sdk -ne $ExpectedActualGpuSdk) {
             throw "expected actual_gpu_sdk $ExpectedActualGpuSdk, got $($Benchmark.accelerator.actual_gpu_sdk)"
         }
+        $Telemetry = [string]$Benchmark.accelerator.telemetry
+        foreach ($RequiredTelemetry in @("driver exit 0", "driver launches", "launch abi")) {
+            if (!$Telemetry.Contains($RequiredTelemetry)) {
+                throw "expected benchmark telemetry to include '$RequiredTelemetry', got '$Telemetry'"
+            }
+        }
         $global:LASTEXITCODE = 0
     }
 }

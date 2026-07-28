@@ -134,12 +134,18 @@ class VerifyScriptTests(unittest.TestCase):
                 "actual_gpu_sdk",
                 "DeviceValidated",
                 "expected actual_gpu_sdk",
+                "driver exit 0",
+                "driver launches",
+                "launch abi",
             ],
             "verify.sh": [
                 "run_forced_gpu_benchmark",
                 "actual_gpu_sdk",
                 "DeviceValidated",
                 "expected actual_gpu_sdk",
+                "driver exit 0",
+                "driver launches",
+                "launch abi",
             ],
         }
 

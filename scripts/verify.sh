@@ -85,6 +85,10 @@ if accelerator["mode"] != "DeviceValidated":
 actual_gpu_sdk = accelerator.get("actual_gpu_sdk")
 if actual_gpu_sdk != expected_actual_gpu_sdk:
     raise SystemExit(f"expected actual_gpu_sdk {expected_actual_gpu_sdk}, got {actual_gpu_sdk}")
+telemetry = accelerator.get("telemetry") or ""
+for required in ["driver exit 0", "driver launches", "launch abi"]:
+    if required not in telemetry:
+        raise SystemExit(f"expected benchmark telemetry to include {required!r}, got {telemetry!r}")
 PY
   ' _ "$sdk" "$expected_actual_gpu_sdk" "$cargo_cmd"
 }
