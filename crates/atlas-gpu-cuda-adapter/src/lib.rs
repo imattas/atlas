@@ -180,12 +180,17 @@ impl Launcher for CudaPtxLauncher {
     fn launch(&self, args: &LaunchArgs) -> Result<Vec<u64>, String> {
         let ptx = read_cuda_artifact_as_ptx(&args.artifact)?;
         ensure_atlas_entry(&ptx)?;
+        let uses_u32_abi = uses_u32_launch_abi(&ptx);
         let driver = CudaDriver::load()?;
         let _context = driver.create_context()?;
         let ptx = CString::new(ptx).map_err(|_| "PTX contains interior NUL".to_owned())?;
         let module = driver.load_module(&ptx)?;
         let function = driver.get_function(module.raw, "atlas_search")?;
-        launch_cuda(&driver, function, args)
+        if uses_u32_abi {
+            launch_cuda_u32(&driver, function, args)
+        } else {
+            launch_cuda(&driver, function, args)
+        }
     }
 }
 
@@ -264,6 +269,10 @@ fn ensure_atlas_entry(ptx: &str) -> Result<(), String> {
     } else {
         Err("missing atlas_search kernel entry".to_owned())
     }
+}
+
+fn uses_u32_launch_abi(artifact: &str) -> bool {
+    artifact.contains("atlas_search_u32_abi")
 }
 
 fn parse_u64_flag(args: &[String], flag: &str) -> Result<u64, String> {
@@ -348,6 +357,88 @@ fn launch_cuda(
     matches.truncate(retained);
     matches.sort_unstable();
     Ok(matches)
+}
+
+fn launch_cuda_u32(
+    driver: &CudaDriver,
+    function: CuFunction,
+    args: &LaunchArgs,
+) -> Result<Vec<u64>, String> {
+    let out_len = driver.mem_alloc(std::mem::size_of::<u32>())?;
+    let out_words_len = args
+        .max_matches
+        .checked_mul(2)
+        .ok_or_else(|| "output word count overflow".to_owned())?;
+    let out_bytes = out_words_len
+        .checked_mul(std::mem::size_of::<u32>())
+        .ok_or_else(|| "output buffer size overflow".to_owned())?;
+    let out_words = driver.mem_alloc(out_bytes)?;
+    let _out_len_guard = DeviceAllocation {
+        driver,
+        ptr: out_len,
+    };
+    let _out_guard = DeviceAllocation {
+        driver,
+        ptr: out_words,
+    };
+    driver.memset_d32(out_len, 0, 1)?;
+
+    let mut start_lo = low_u32(args.start);
+    let mut start_hi = high_u32(args.start);
+    let mut end_lo = low_u32(args.end);
+    let mut end_hi = high_u32(args.end);
+    let mut out_param = out_words;
+    let mut out_len_param = out_len;
+    let mut max_matches =
+        u32::try_from(args.max_matches).map_err(|_| "max-matches exceeds CUDA uint".to_owned())?;
+    let mut params = [
+        (&mut start_lo as *mut u32).cast::<c_void>(),
+        (&mut start_hi as *mut u32).cast::<c_void>(),
+        (&mut end_lo as *mut u32).cast::<c_void>(),
+        (&mut end_hi as *mut u32).cast::<c_void>(),
+        (&mut out_param as *mut CuDevicePtr).cast::<c_void>(),
+        (&mut out_len_param as *mut CuDevicePtr).cast::<c_void>(),
+        (&mut max_matches as *mut u32).cast::<c_void>(),
+    ];
+    let block_x =
+        u32::try_from(args.local_size).map_err(|_| "local-size exceeds CUDA uint".to_owned())?;
+    let grid_x = args.global_size.div_ceil(args.local_size);
+    let grid_x = u32::try_from(grid_x).map_err(|_| "grid size exceeds CUDA uint".to_owned())?;
+    driver.launch_kernel(function, grid_x, block_x, params.as_mut_ptr())?;
+    driver.synchronize()?;
+
+    let mut retained = 0_u32;
+    driver.memcpy_dtoh(
+        (&mut retained as *mut u32).cast::<c_void>(),
+        out_len,
+        std::mem::size_of::<u32>(),
+    )?;
+    let retained = usize::try_from(retained)
+        .unwrap_or(args.max_matches)
+        .min(args.max_matches);
+    let mut out_words_host = vec![0_u32; out_words_len];
+    driver.memcpy_dtoh(
+        out_words_host.as_mut_ptr().cast::<c_void>(),
+        out_words,
+        out_bytes,
+    )?;
+    let mut matches = out_words_host
+        .chunks_exact(2)
+        .take(retained)
+        .map(|words| u64::from(words[0]) | (u64::from(words[1]) << 32))
+        .collect::<Vec<_>>();
+    matches.sort_unstable();
+    Ok(matches)
+}
+
+fn low_u32(value: u64) -> u32 {
+    let bytes = value.to_le_bytes();
+    u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+}
+
+fn high_u32(value: u64) -> u32 {
+    let bytes = value.to_le_bytes();
+    u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]])
 }
 
 #[derive(Debug)]
@@ -1309,6 +1400,19 @@ unsafe fn platform_close(handle: *mut c_void) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cuda_artifact_marker_selects_u32_launch_abi() {
+        assert!(uses_u32_launch_abi(
+            ".visible .global .u32 atlas_search_u32_abi;"
+        ));
+        assert!(uses_u32_launch_abi(
+            "extern \"C\" __device__ __constant__ unsigned int atlas_search_u32_abi = 1U;"
+        ));
+        assert!(!uses_u32_launch_abi(
+            ".visible .entry atlas_search(.param .u64 start)"
+        ));
+    }
 
     #[test]
     fn cuda_compiler_diagnostics_report_injected_sdk_candidates() {

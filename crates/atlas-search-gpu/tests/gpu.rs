@@ -187,7 +187,7 @@ fn cuda_codegen_is_hardware_independent_and_mentions_shape() {
 #[test]
 fn cuda_codegen_emits_restricted_ir_predicates_and_preserves_full_candidate() {
     let program = SearchProgram::new(
-        24,
+        64,
         vec![
             SearchOp::XorEq {
                 mask: 0xaa,
@@ -227,10 +227,56 @@ fn cuda_codegen_emits_restricted_ir_predicates_and_preserves_full_candidate() {
     assert!(cuda.contains("((candidate + 1ULL) & mask) == 4ULL"));
     assert!(cuda.contains("(candidate % 17ULL) == 3ULL"));
     assert!(cuda.contains("((candidate * 65537ULL + 4919ULL) & mask) == 12648430ULL"));
-    assert!(cuda.contains("rotate_left_width(candidate, 7U, 24U)"));
+    assert!(cuda.contains("rotate_left_width(candidate, 7U, 64U)"));
     assert!(cuda.contains("((candidate >> 8U) & 255ULL) == 84ULL"));
     assert!(cuda.contains("atomicAdd(out_len, 1U)"));
     assert!(cuda.contains("out[slot] = raw_candidate"));
+}
+
+#[test]
+fn cuda_32_bit_codegen_does_not_require_64_bit_device_integer_ops() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+
+    let cuda = GpuSearcher::compile_cuda(&program);
+
+    assert!(!cuda.contains("unsigned long long"));
+    assert!(!cuda.contains("ULL"));
+    assert!(cuda.contains("atlas_search_u32_abi"));
+    assert!(cuda.contains("unsigned int raw_candidate"));
+    assert!(cuda.contains("unsigned int candidate"));
+    assert!(cuda.contains("unsigned int* out_words"));
+    assert!(cuda.contains("out_words[word_index] = raw_low"));
+    assert!(cuda.contains("out_words[word_index + 1U] = raw_high"));
+}
+
+#[test]
+fn cuda_32_bit_codegen_keeps_literals_in_32_bit_range() {
+    let program = SearchProgram::new(
+        8,
+        vec![
+            SearchOp::XorEq {
+                mask: 0x1_0000_00aa,
+                target: 0xff,
+            },
+            SearchOp::AddEq {
+                addend: 0x1_0000_0001,
+                target: 4,
+            },
+            SearchOp::ChecksumEq {
+                modulus: 0x1_0000_0000,
+                target: 0xff,
+            },
+        ],
+    )
+    .unwrap();
+
+    let cuda = GpuSearcher::compile_cuda(&program);
+
+    assert!(cuda.contains("((candidate ^ 170U) & mask) == 255U"));
+    assert!(cuda.contains("((candidate + 1U) & mask) == 4U"));
+    assert!(cuda.contains("candidate == 255U"));
+    assert!(!cuda.contains("4294967296U"));
+    assert!(!cuda.contains("ULL"));
 }
 
 #[test]
