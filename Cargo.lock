@@ -10,8 +10,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "atlas-facts"
+version = "0.1.0"
+
+[[package]]
+name = "atlas-planner"
+version = "0.1.0"
+dependencies = [
+ "atlas-analysis",
+]
+
+[[package]]
 name = "atlas-protocol"
 version = "0.1.0"
+
+[[package]]
+name = "atlas-scheduler"
+version = "0.1.0"
+dependencies = [
+ "atlas-planner",
+]
 
 [[package]]
 name = "atlas-ucir"

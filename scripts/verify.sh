@@ -11,10 +11,18 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-targets
 
 if [[ -d python/tests ]]; then
-  python -m pytest python/tests
+  if python -m pytest --version >/dev/null 2>&1; then
+    python -m pytest python/tests
+  else
+    python -m unittest discover python/tests
+  fi
 fi
 if [[ -d backends ]]; then
-  python -m pytest backends
+  if python -m pytest --version >/dev/null 2>&1; then
+    python -m pytest backends
+  else
+    python -m unittest discover backends/tests
+  fi
 fi
 
 echo "Verification profile '${profile}' passed."
