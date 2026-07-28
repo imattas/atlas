@@ -731,6 +731,50 @@ fn runtime_uses_scalar_for_tiny_workloads_without_launching_gpu_driver() {
 }
 
 #[test]
+fn public_execute_uses_placement_before_process_gpu_launch() {
+    let tool_dir =
+        std::env::temp_dir().join(format!("atlas-gpu-public-path-{}", std::process::id()));
+    fs::create_dir_all(&tool_dir).unwrap();
+    let adapter_path = tool_dir.join(if cfg!(windows) {
+        "atlas-gpu-opencl-run.bat"
+    } else {
+        "atlas-gpu-opencl-run"
+    });
+    fs::write(&adapter_path, "exit 42").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(&adapter_path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&adapter_path, permissions).unwrap();
+    }
+    let original_path = std::env::var_os("PATH").unwrap_or_default();
+    let joined_path = std::env::join_paths(
+        std::iter::once(tool_dir.clone()).chain(std::env::split_paths(&original_path)),
+    )
+    .unwrap();
+    std::env::set_var("PATH", &joined_path);
+
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    let report = AcceleratorRuntime::execute(
+        &program,
+        SearchDomain::new(0, 64),
+        &[GpuSdk::OpenCl {
+            sdk: "test OpenCL".to_owned(),
+        }],
+        &token,
+        &[],
+    );
+
+    std::env::set_var("PATH", original_path);
+    let _ = fs::remove_dir_all(tool_dir);
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert!(report.telemetry.rationale.contains("Scalar"));
+    assert!(!report.telemetry.rationale.contains("driver exit 42"));
+}
+
+#[test]
 fn runtime_discovers_host_path_sdks_and_executes_driver_runner() {
     let tool_dir =
         std::env::temp_dir().join(format!("atlas-gpu-runtime-tools-{}", std::process::id()));

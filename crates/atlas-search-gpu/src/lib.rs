@@ -413,22 +413,10 @@ impl AcceleratorRuntime {
         let launch = Self::plan_launch(domain, 256, 1024);
         let plan = GpuSdkPlan::choose(detected_sdks, true);
         if reported_device_matches.is_empty() {
-            let Some(selected) = plan.selected else {
-                return AcceleratorReport {
-                    mode: RuntimeMode::CpuFallback,
-                    matches: NativeSearcher::search(program, domain, cancellation),
-                    telemetry: RuntimeTelemetry {
-                        launch,
-                        rationale: plan.rationale,
-                        cpu_validated: true,
-                        rejected_device_matches: 0,
-                    },
-                };
-            };
-            return Self::execute_with_driver(
+            return Self::execute_with_detected_driver(
                 program,
                 domain,
-                &selected,
+                detected_sdks,
                 cancellation,
                 &ProcessDriverRunner,
             );
