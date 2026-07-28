@@ -188,7 +188,9 @@ fn generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates() {
         .arg("-o")
         .arg(&spirv_path)
         .output()
-        .unwrap();
+        .unwrap_or_else(|error| {
+            panic!("glslc is required for this ignored Vulkan e2e test: {error}")
+        });
     assert!(
         compile.status.success(),
         "glslc failed: {}",

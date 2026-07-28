@@ -187,7 +187,7 @@ fn generated_cuda_kernel_runs_on_device_and_preserves_full_candidates() {
         .arg("-o")
         .arg(&ptx_path)
         .output()
-        .unwrap();
+        .unwrap_or_else(|error| panic!("nvcc is required for this ignored CUDA e2e test: {error}"));
     assert!(
         compile.status.success(),
         "nvcc failed: {}",

@@ -186,8 +186,9 @@ fn generated_hip_kernel_runs_on_device_and_preserves_full_candidates() {
         .output()
         .unwrap();
     assert!(
-        compile.status.success(),
-        "hipcc failed: {}",
+        compile.status.success() && code_object_path.exists(),
+        "hipcc failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&compile.stdout),
         String::from_utf8_lossy(&compile.stderr)
     );
     let args = LaunchArgs {
