@@ -6,6 +6,10 @@ members = [
     "crates/atlas-facts",
     "crates/atlas-planner",
     "crates/atlas-scheduler",
+    "crates/atlas-validator",
+    "crates/atlas-cache",
+    "crates/atlas-report",
+    "crates/atlas-cli",
 ]
 resolver = "2"
 

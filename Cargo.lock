@@ -10,6 +10,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "atlas-cache"
+version = "0.1.0"
+
+[[package]]
+name = "atlas-cli"
+version = "0.1.0"
+dependencies = [
+ "atlas-report",
+ "atlas-validator",
+]
+
+[[package]]
 name = "atlas-facts"
 version = "0.1.0"
 
@@ -25,6 +37,13 @@ name = "atlas-protocol"
 version = "0.1.0"
 
 [[package]]
+name = "atlas-report"
+version = "0.1.0"
+dependencies = [
+ "atlas-validator",
+]
+
+[[package]]
 name = "atlas-scheduler"
 version = "0.1.0"
 dependencies = [
@@ -34,3 +53,10 @@ dependencies = [
 [[package]]
 name = "atlas-ucir"
 version = "0.1.0"
+
+[[package]]
+name = "atlas-validator"
+version = "0.1.0"
+dependencies = [
+ "atlas-ucir",
+]

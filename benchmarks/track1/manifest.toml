@@ -1,0 +1,12 @@
+name = "atlas-track1-micro-benchmarks"
+schema_major = 1
+
+[[case]]
+id = "bv-equality"
+category = "bit-vector"
+expected = "MODEL_ONLY"
+
+[[case]]
+id = "constant-contradiction"
+category = "constraint"
+expected = "PROVEN_UNSAT"
