@@ -1764,7 +1764,7 @@ fn artifact_file_is_reusable_for_plan(plan: &DriverCommandPlan) -> bool {
     }
     match &plan.sdk {
         GpuSdk::OpenCl { .. } => {
-            artifact_text_contains(path, "__kernel void atlas_search")
+            artifact_text_has_opencl_kernel(path, "atlas_search")
                 && artifact_matches_opencl_launch_abi(path, plan)
         }
         GpuSdk::Vulkan { .. } => {
@@ -1798,6 +1798,27 @@ fn artifact_text_contains(path: &Path, needle: &str) -> bool {
 
 fn artifact_text_has_ptx_entry(path: &Path, entry: &str) -> bool {
     fs::read_to_string(path).is_ok_and(|text| ptx_text_has_entry(&text, entry))
+}
+
+fn artifact_text_has_opencl_kernel(path: &Path, kernel: &str) -> bool {
+    fs::read_to_string(path).is_ok_and(|text| opencl_text_has_kernel(&text, kernel))
+}
+
+fn opencl_text_has_kernel(text: &str, kernel: &str) -> bool {
+    text.split("__kernel")
+        .skip(1)
+        .any(|rest| opencl_kernel_name(rest) == Some(kernel))
+}
+
+fn opencl_kernel_name(text_after_kernel_qualifier: &str) -> Option<&str> {
+    let trimmed = text_after_kernel_qualifier.trim_start();
+    let trimmed = trimmed.strip_prefix("void")?.trim_start();
+    let end = trimmed
+        .find(|character: char| {
+            !(character.is_ascii_alphanumeric() || character == '_' || character == '$')
+        })
+        .unwrap_or(trimmed.len());
+    (end > 0).then_some(&trimmed[..end])
 }
 
 fn ptx_text_has_entry(text: &str, entry: &str) -> bool {
