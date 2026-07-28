@@ -41,6 +41,8 @@ pub struct LaunchArgs {
 /// Adapter CLI command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdapterCommand {
+    /// Report runtime/device features understood by this adapter.
+    Features,
     /// Build-check a PTX file without launching a search.
     CompileCheck {
         /// Generated CUDA source or PTX path.
@@ -59,6 +61,9 @@ impl AdapterCommand {
     ///
     /// Returns an error for malformed commands.
     pub fn parse(args: &[String]) -> Result<Self, String> {
+        if args.first().is_some_and(|arg| arg == "--features") {
+            return Ok(Self::Features);
+        }
         if args.first().is_some_and(|arg| arg == "--compile-check") {
             let Some(ptx) = args.get(1) else {
                 return Err("missing compile-check PTX".to_owned());
@@ -122,6 +127,13 @@ impl LaunchArgs {
 
 /// Launches one parsed CUDA request.
 pub trait Launcher {
+    /// Reports runtime/device features available to generated kernels.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when CUDA driver loading or context creation fails.
+    fn features(&self) -> Result<Vec<String>, String>;
+
     /// Checks generated PTX can provide the expected `atlas_search` kernel.
     ///
     /// # Errors
@@ -144,6 +156,12 @@ pub trait Launcher {
 pub struct CudaPtxLauncher;
 
 impl Launcher for CudaPtxLauncher {
+    fn features(&self) -> Result<Vec<String>, String> {
+        let driver = CudaDriver::load()?;
+        let _context = driver.create_context()?;
+        Ok(vec!["int64".to_owned()])
+    }
+
     fn compile_check(&self, artifact: &str, output: Option<&str>) -> Result<(), String> {
         let ptx = read_cuda_artifact_as_ptx(artifact)?;
         ensure_atlas_entry(&ptx)?;
@@ -178,6 +196,10 @@ impl Launcher for CudaPtxLauncher {
 /// Returns parse or launcher errors.
 pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, String> {
     match AdapterCommand::parse(args)? {
+        AdapterCommand::Features => {
+            let features = launcher.features()?;
+            Ok(format_features(&features))
+        }
         AdapterCommand::CompileCheck { input, output } => {
             launcher.compile_check(&input, output.as_deref())?;
             Ok(String::new())
@@ -187,6 +209,13 @@ pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, Strin
             Ok(format_matches(&matches))
         }
     }
+}
+
+fn format_features(features: &[String]) -> String {
+    features
+        .iter()
+        .map(|feature| format!("feature={feature}\n"))
+        .collect()
 }
 
 fn format_matches(matches: &[u64]) -> String {
