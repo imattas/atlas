@@ -710,6 +710,9 @@ fn run_command(command: &[String]) -> DriverRunOutput {
             stderr: "empty driver command".to_owned(),
         };
     };
+    if let Some(output) = run_resolved_sdk_tool_command(program, args) {
+        return output;
+    }
     match Command::new(program).args(args).output() {
         Ok(output) => DriverRunOutput {
             exit_code: output.status.code().unwrap_or(1),
@@ -729,8 +732,20 @@ fn run_command(command: &[String]) -> DriverRunOutput {
 }
 
 fn run_resolved_command(program: &str, args: &[String]) -> Option<DriverRunOutput> {
-    let program_path =
-        resolve_adjacent_adapter_program(program).or_else(|| resolve_sdk_tool_program(program))?;
+    let program_path = resolve_adjacent_adapter_program(program)?;
+    let output = Command::new(program_path).args(args).output().ok()?;
+    Some(DriverRunOutput {
+        exit_code: output.status.code().unwrap_or(1),
+        reported_matches: DriverRunOutput::parse_reported_matches(&String::from_utf8_lossy(
+            &output.stdout,
+        )),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    })
+}
+
+fn run_resolved_sdk_tool_command(program: &str, args: &[String]) -> Option<DriverRunOutput> {
+    let program_path = resolve_sdk_tool_program(program)?;
     let output = Command::new(program_path).args(args).output().ok()?;
     Some(DriverRunOutput {
         exit_code: output.status.code().unwrap_or(1),

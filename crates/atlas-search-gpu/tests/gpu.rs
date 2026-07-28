@@ -754,21 +754,15 @@ fn process_driver_runner_resolves_adjacent_adapter_command_when_not_on_path() {
 #[test]
 fn process_driver_runner_resolves_hipcc_from_hip_sdk_root_when_not_on_path() {
     let sdk_root = std::env::temp_dir().join(format!("atlas-hip-sdk-root-{}", std::process::id()));
-    let empty_path = std::env::temp_dir().join(format!("atlas-empty-path-{}", std::process::id()));
-    fs::create_dir_all(&empty_path).unwrap();
     let hipcc_path = write_sdk_tool(&sdk_root, "hipcc", "hipcc-ok", 9);
     let original_hip_path = std::env::var_os("HIP_PATH");
-    let original_path = std::env::var_os("PATH");
     std::env::set_var("HIP_PATH", &sdk_root);
-    std::env::set_var("PATH", &empty_path);
 
     let output = ProcessDriverRunner.run_command(&["hipcc".to_owned()]);
 
     restore_env("HIP_PATH", original_hip_path);
-    restore_env("PATH", original_path);
     let _ = fs::remove_file(hipcc_path);
     let _ = fs::remove_dir_all(sdk_root);
-    let _ = fs::remove_dir_all(empty_path);
     assert_eq!(output.exit_code, 9);
     assert!(output.stdout.contains("hipcc-ok"));
 }

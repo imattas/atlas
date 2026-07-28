@@ -678,14 +678,23 @@ impl DynamicLibrary {
     fn open_cuda() -> Result<Self, String> {
         #[cfg(windows)]
         {
+            if let Some(library) = find_cuda_root_driver_library() {
+                return Self::open(&library);
+            }
             Self::open("nvcuda.dll")
         }
         #[cfg(target_os = "linux")]
         {
+            if let Some(library) = find_cuda_root_driver_library() {
+                return Self::open(&library);
+            }
             Self::open("libcuda.so.1").or_else(|_| Self::open("libcuda.so"))
         }
         #[cfg(target_os = "macos")]
         {
+            if let Some(library) = find_cuda_root_driver_library() {
+                return Self::open(&library);
+            }
             Self::open("/usr/local/cuda/lib/libcuda.dylib").or_else(|_| Self::open("libcuda.dylib"))
         }
         #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
@@ -767,6 +776,60 @@ impl DynamicLibrary {
         } else {
             Ok(std::mem::transmute_copy::<*mut c_void, T>(&symbol))
         }
+    }
+}
+
+/// Returns candidate CUDA driver dynamic-library paths from CUDA SDK roots.
+#[must_use]
+pub fn cuda_driver_library_candidates_from_roots(
+    roots: impl IntoIterator<Item = PathBuf>,
+) -> Vec<PathBuf> {
+    roots
+        .into_iter()
+        .flat_map(|root| {
+            cuda_driver_library_dirs(&root).into_iter().flat_map(|dir| {
+                cuda_driver_library_names()
+                    .into_iter()
+                    .map(move |name| dir.join(name))
+            })
+        })
+        .collect()
+}
+
+fn find_cuda_root_driver_library() -> Option<String> {
+    cuda_driver_library_candidates_from_roots(cuda_root_dirs())
+        .into_iter()
+        .find(|path| path.is_file())
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
+fn cuda_driver_library_dirs(root: &Path) -> Vec<PathBuf> {
+    vec![
+        root.join("compat"),
+        root.join("lib64").join("stubs"),
+        root.join("lib64"),
+        root.join("lib").join("x64"),
+        root.join("lib"),
+        root.join("bin"),
+    ]
+}
+
+fn cuda_driver_library_names() -> Vec<&'static str> {
+    #[cfg(windows)]
+    {
+        vec!["nvcuda.dll"]
+    }
+    #[cfg(target_os = "linux")]
+    {
+        vec!["libcuda.so.1", "libcuda.so"]
+    }
+    #[cfg(target_os = "macos")]
+    {
+        vec!["libcuda.dylib"]
+    }
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+    {
+        Vec::new()
     }
 }
 
