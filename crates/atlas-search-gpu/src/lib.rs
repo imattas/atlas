@@ -794,17 +794,22 @@ impl AcceleratorRuntime {
                 };
             }
         }
+        let mut failed_attempt_rationales = Vec::new();
         let mut fallback_report = None;
         for sdk in execution_sdks {
             let report = Self::execute_with_driver(program, domain, &sdk, cancellation, runner);
             if report.mode == RuntimeMode::DeviceValidated || cancellation.is_cancelled() {
-                return report;
+                return with_failed_attempt_rationales(report, &failed_attempt_rationales);
             }
+            failed_attempt_rationales.push(report.telemetry.rationale.clone());
             fallback_report = Some(report);
         }
-        fallback_report.unwrap_or_else(|| {
-            Self::execute_with_driver(program, domain, &selected, cancellation, runner)
-        })
+        with_failed_attempt_rationales(
+            fallback_report.unwrap_or_else(|| {
+                Self::execute_with_driver(program, domain, &selected, cancellation, runner)
+            }),
+            &failed_attempt_rationales,
+        )
     }
 
     /// Detects SDKs from supplied PATH directories, executes through the best
@@ -1011,6 +1016,20 @@ fn driver_failure_rationale(sdk: &GpuSdk, output: &DriverRunOutput) -> String {
             single_line_summary(stderr)
         )
     }
+}
+
+fn with_failed_attempt_rationales(
+    mut report: AcceleratorReport,
+    failed_attempt_rationales: &[String],
+) -> AcceleratorReport {
+    if !failed_attempt_rationales.is_empty() {
+        report.telemetry.rationale = format!(
+            "failed attempts: {}; selected: {}",
+            failed_attempt_rationales.join(" | "),
+            report.telemetry.rationale
+        );
+    }
+    report
 }
 
 fn single_line_summary(text: &str) -> String {

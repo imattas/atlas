@@ -2381,6 +2381,12 @@ fn runtime_tries_next_compatible_gpu_sdk_when_selected_driver_fails() {
     );
     assert!(report.telemetry.rationale.contains("Vulkan"));
     assert!(report.telemetry.rationale.contains("driver exit 0"));
+    assert!(report.telemetry.rationale.contains("OpenCL"));
+    assert!(report.telemetry.rationale.contains("driver exit 1"));
+    assert!(report
+        .telemetry
+        .rationale
+        .contains("OpenCL runtime launch failed"));
 }
 
 #[test]
