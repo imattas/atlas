@@ -95,6 +95,21 @@ path = "tests/fixtures/events/track1_stream.toml"
 digest = "tracked-by-git"
 
 [[artifacts]]
+name = "cuda-kernel-fixture"
+path = "gpu/cuda/atlas_search.cu"
+digest = "tracked-by-git"
+
+[[artifacts]]
+name = "opencl-kernel-fixture"
+path = "gpu/opencl/atlas_search.cl"
+digest = "tracked-by-git"
+
+[[artifacts]]
+name = "vulkan-kernel-fixture"
+path = "gpu/vulkan/atlas_search.comp"
+digest = "tracked-by-git"
+
+[[artifacts]]
 name = "native-math-kernel"
 path = "crates/atlas-math/src/lib.rs"
 digest = "tracked-by-git"

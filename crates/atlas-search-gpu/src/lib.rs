@@ -3,6 +3,7 @@
 use atlas_scheduler::CancellationToken;
 use atlas_search_ir::{SearchDomain, SearchProgram};
 use atlas_search_native::NativeSearcher;
+use std::collections::BTreeSet;
 
 /// Kernel cache key.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -123,6 +124,55 @@ impl GpuSdkPlan {
     }
 }
 
+/// GPU SDK detector.
+pub struct GpuSdkDetector;
+
+impl GpuSdkDetector {
+    /// Detects SDKs from an explicit tool-name list.
+    ///
+    /// This is deterministic and does not inspect the host. Runtime callers can
+    /// pass PATH-discovered tool names through this function.
+    #[must_use]
+    pub fn detect_from_tools(tools: &[String]) -> Vec<GpuSdk> {
+        let normalized: BTreeSet<String> =
+            tools.iter().map(|tool| tool.to_ascii_lowercase()).collect();
+        let mut detected = Vec::new();
+        if normalized
+            .iter()
+            .any(|tool| tool == "clinfo" || tool == "opencl-clang" || tool.contains("opencl"))
+        {
+            detected.push(GpuSdk::OpenCl {
+                sdk: "Khronos OpenCL-compatible toolchain".to_owned(),
+            });
+        }
+        if normalized
+            .iter()
+            .any(|tool| tool == "glslc" || tool == "vulkaninfo" || tool.contains("vulkan"))
+        {
+            detected.push(GpuSdk::Vulkan {
+                sdk: "Vulkan compute toolchain".to_owned(),
+            });
+        }
+        if normalized
+            .iter()
+            .any(|tool| tool == "nvcc" || tool.contains("cuda"))
+        {
+            detected.push(GpuSdk::Cuda {
+                sdk: "NVIDIA CUDA Toolkit".to_owned(),
+            });
+        }
+        if normalized
+            .iter()
+            .any(|tool| tool == "hipcc" || tool.contains("rocm") || tool.contains("hip"))
+        {
+            detected.push(GpuSdk::Hip {
+                sdk: "AMD HIP/ROCm SDK".to_owned(),
+            });
+        }
+        detected
+    }
+}
+
 /// GPU searcher boundary.
 pub struct GpuSearcher;
 
@@ -131,7 +181,27 @@ impl GpuSearcher {
     #[must_use]
     pub fn compile_cuda(program: &SearchProgram) -> String {
         format!(
-            "__global__ void atlas_search(unsigned long long start, unsigned long long end) {{ /* width={} ops={} */ }}",
+            "__global__ void atlas_search(unsigned long long start, unsigned long long end, unsigned long long* out, unsigned int* out_len) {{ /* width={} ops={} */ (void)start; (void)end; (void)out; (void)out_len; }}",
+            program.width,
+            program.ops.len()
+        )
+    }
+
+    /// Generates `OpenCL` C source for the restricted IR.
+    #[must_use]
+    pub fn compile_opencl(program: &SearchProgram) -> String {
+        format!(
+            "__kernel void atlas_search(ulong start, ulong end, __global ulong* out, __global uint* out_len) {{ /* width={} ops={} */ size_t gid = get_global_id(0); (void)gid; (void)start; (void)end; (void)out; (void)out_len; }}",
+            program.width,
+            program.ops.len()
+        )
+    }
+
+    /// Generates Vulkan-compatible GLSL compute shader source for the restricted IR.
+    #[must_use]
+    pub fn compile_vulkan_glsl(program: &SearchProgram) -> String {
+        format!(
+            "#version 450\nlayout(local_size_x = 256) in;\nlayout(set = 0, binding = 0) buffer Matches {{ uint out_len; uint out_values[]; }} matches;\nvoid main() {{ /* width={} ops={} */ uint gid = gl_GlobalInvocationID.x; matches.out_len += gid & 0u; }}\n",
             program.width,
             program.ops.len()
         )

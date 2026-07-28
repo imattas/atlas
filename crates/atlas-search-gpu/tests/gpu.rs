@@ -1,7 +1,7 @@
 //! GPU boundary and differential tests.
 
 use atlas_scheduler::CancellationToken;
-use atlas_search_gpu::{GpuSdk, GpuSdkPlan, GpuSearcher, KernelCacheKey};
+use atlas_search_gpu::{GpuSdk, GpuSdkDetector, GpuSdkPlan, GpuSearcher, KernelCacheKey};
 use atlas_search_ir::{SearchDomain, SearchProgram};
 use atlas_search_native::NativeSearcher;
 
@@ -25,6 +25,19 @@ fn cuda_codegen_is_hardware_independent_and_mentions_shape() {
 
     assert!(cuda.contains("__global__"));
     assert!(cuda.contains("width=8"));
+}
+
+#[test]
+fn opencl_and_vulkan_codegen_are_hardware_independent_and_encode_shape() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let opencl = GpuSearcher::compile_opencl(&program);
+    let vulkan = GpuSearcher::compile_vulkan_glsl(&program);
+
+    assert!(opencl.contains("__kernel void atlas_search"));
+    assert!(opencl.contains("width=8"));
+    assert!(vulkan.contains("#version 450"));
+    assert!(vulkan.contains("layout(local_size_x"));
+    assert!(vulkan.contains("width=8"));
 }
 
 #[test]
@@ -76,4 +89,26 @@ fn reports_missing_gpu_sdk_without_claiming_hardware_acceleration() {
 
     assert_eq!(plan.selected, None);
     assert!(plan.rationale.contains("no GPU SDK"));
+}
+
+#[test]
+fn detects_gpu_sdks_from_tool_names_without_touching_host_environment() {
+    let detected = GpuSdkDetector::detect_from_tools(&[
+        "clang".to_owned(),
+        "clinfo".to_owned(),
+        "glslc".to_owned(),
+        "nvcc".to_owned(),
+        "hipcc".to_owned(),
+    ]);
+
+    assert!(detected
+        .iter()
+        .any(|sdk| matches!(sdk, GpuSdk::OpenCl { .. })));
+    assert!(detected
+        .iter()
+        .any(|sdk| matches!(sdk, GpuSdk::Vulkan { .. })));
+    assert!(detected
+        .iter()
+        .any(|sdk| matches!(sdk, GpuSdk::Cuda { .. })));
+    assert!(detected.iter().any(|sdk| matches!(sdk, GpuSdk::Hip { .. })));
 }

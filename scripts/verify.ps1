@@ -42,7 +42,9 @@ if ($Profile -in @("distributed", "advanced", "full")) {
         "benchmarks/track3/calibration.toml",
         "docs/guides/workers.md",
         "deploy/worker/README.md",
-        "gpu/cuda/atlas_search.cu"
+        "gpu/cuda/atlas_search.cu",
+        "gpu/opencl/atlas_search.cl",
+        "gpu/vulkan/atlas_search.comp"
     )) {
         if (!(Test-Path $RequiredPath)) {
             Write-Error "missing distributed release artifact: $RequiredPath"

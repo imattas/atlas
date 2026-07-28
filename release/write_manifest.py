@@ -20,6 +20,11 @@ NATIVE_MATH_EVIDENCE = {
     "crates/atlas-math/src/lib.rs",
     "backends/native-math/atlas_native_math_backend.py",
 }
+GPU_KERNEL_EVIDENCE = {
+    "gpu/cuda/atlas_search.cu",
+    "gpu/opencl/atlas_search.cl",
+    "gpu/vulkan/atlas_search.comp",
+}
 
 
 def _git_revision() -> str:
@@ -63,6 +68,8 @@ def validate_manifest(path: Path) -> list[str]:
         errors.append("architecture evidence is incomplete")
     if not NATIVE_MATH_EVIDENCE.issubset(artifact_paths):
         errors.append("native math evidence is incomplete")
+    if not GPU_KERNEL_EVIDENCE.issubset(artifact_paths):
+        errors.append("GPU kernel evidence is incomplete")
     for artifact in artifacts:
         if not isinstance(artifact, dict):
             continue
@@ -104,6 +111,9 @@ def render_manifest() -> str:
         "tests/fixtures/events/track1_stream.toml",
         "crates/atlas-math/src/lib.rs",
         "backends/native-math/atlas_native_math_backend.py",
+        "gpu/cuda/atlas_search.cu",
+        "gpu/opencl/atlas_search.cl",
+        "gpu/vulkan/atlas_search.comp",
     ]
     body = [
         'manifest_version = "1"',

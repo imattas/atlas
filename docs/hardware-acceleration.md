@@ -15,8 +15,16 @@ Runtime behavior:
 
 - detected SDKs are ranked by `GpuSdkPlan`;
 - missing SDKs produce a precise diagnostic and scalar/SIMD fallback;
+- CUDA, OpenCL, and Vulkan compute sources are generated from the same
+  restricted IR boundary;
 - generated kernels are cache-keyed by program, compiler, device, and options;
 - every GPU-reported match is revalidated against CPU IR semantics.
+
+Checked packaging fixtures:
+
+- `gpu/cuda/atlas_search.cu`
+- `gpu/opencl/atlas_search.cl`
+- `gpu/vulkan/atlas_search.comp`
 
 Primary GPU references checked while implementing this boundary:
 

@@ -1,0 +1,14 @@
+#version 450
+layout(local_size_x = 256) in;
+
+layout(set = 0, binding = 0) buffer Matches {
+    uint out_len;
+    uint out_values[];
+} matches;
+
+void main() {
+    // Generated kernels use the same restricted IR as CPU search. This static
+    // fixture exists for hardware-independent compile-path and packaging checks.
+    uint gid = gl_GlobalInvocationID.x;
+    matches.out_len += gid & 0u;
+}

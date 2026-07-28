@@ -34,7 +34,9 @@ if [[ "$profile" == "distributed" || "$profile" == "advanced" || "$profile" == "
     benchmarks/track3/calibration.toml \
     docs/guides/workers.md \
     deploy/worker/README.md \
-    gpu/cuda/atlas_search.cu
+    gpu/cuda/atlas_search.cu \
+    gpu/opencl/atlas_search.cl \
+    gpu/vulkan/atlas_search.comp
   do
     if [[ ! -e "$required_path" ]]; then
       echo "missing distributed release artifact: $required_path" >&2
