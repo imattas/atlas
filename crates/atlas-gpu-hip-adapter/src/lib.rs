@@ -249,10 +249,13 @@ pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, Strin
 }
 
 fn format_features(features: &[String]) -> String {
-    let mut text = features
-        .iter()
-        .map(|feature| format!("feature={feature}\n"))
-        .collect::<String>();
+    let mut text = "hardware=HIP runtime device\n".to_owned();
+    text.push_str(
+        &features
+            .iter()
+            .map(|feature| format!("feature={feature}\n"))
+            .collect::<String>(),
+    );
     text.push_str("feature=launchAbiU32\nfeature=launchAbiU64\n");
     text
 }

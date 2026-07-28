@@ -28,6 +28,9 @@ def validate_doctor(document: dict[str, Any], require_launch_abi: bool) -> list[
             errors.append(
                 f"successful GPU feature probe {name} does not have an available adapter binary"
             )
+        hardware = probe.get("hardware")
+        if not isinstance(hardware, str) or not hardware.strip():
+            errors.append(f"GPU feature probe {name} did not report hardware identity")
     if require_launch_abi:
         for probe in successful_probes:
             name = probe.get("name", "<unknown>")

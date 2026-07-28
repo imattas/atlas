@@ -140,7 +140,7 @@ fn cli_features_emits_launcher_capabilities() {
 
     assert_eq!(
         output,
-        "feature=shaderInt64\nfeature=launchAbiU32\nfeature=launchAbiU64\n"
+        "hardware=Vulkan compute device\nfeature=shaderInt64\nfeature=launchAbiU32\nfeature=launchAbiU64\n"
     );
 }
 

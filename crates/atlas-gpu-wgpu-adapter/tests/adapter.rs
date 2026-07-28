@@ -115,7 +115,7 @@ fn parses_compile_check_source_and_output_command() {
 fn cli_features_emits_launcher_capabilities() {
     let output = run_cli(&["--features".to_owned()], &FixtureLauncher).unwrap();
 
-    assert_eq!(output, "feature=launchAbiU32\n");
+    assert_eq!(output, "hardware=WGPU adapter\nfeature=launchAbiU32\n");
 }
 
 #[test]

@@ -69,7 +69,8 @@ fn doctor() -> String {
                 .map(|feature| format!("\"{}\"", json_escape(feature)))
                 .collect::<Vec<_>>()
                 .join(",");
-            format!("{{\"name\":\"{name}\",\"features\":[{features}]}}")
+            let hardware = optional_string_json(probe.hardware.as_deref());
+            format!("{{\"name\":\"{name}\",\"hardware\":{hardware},\"features\":[{features}]}}")
         })
         .collect::<Vec<_>>()
         .join(",");
@@ -90,9 +91,10 @@ fn doctor() -> String {
             let exit_code = probe
                 .exit_code
                 .map_or_else(|| "null".to_owned(), |code| code.to_string());
+            let hardware = optional_string_json(probe.hardware.as_deref());
             format!(
-                "{{\"name\":\"{}\",\"ok\":{},\"exit_code\":{},\"stderr\":{},\"features\":[{}]}}",
-                name, probe.ok, exit_code, stderr, features
+                "{{\"name\":\"{}\",\"ok\":{},\"exit_code\":{},\"stderr\":{},\"hardware\":{},\"features\":[{}]}}",
+                name, probe.ok, exit_code, stderr, hardware, features
             )
         })
         .collect::<Vec<_>>()
@@ -440,6 +442,7 @@ struct AdapterRuntimeFeatureProbe {
     ok: bool,
     exit_code: Option<i32>,
     stderr: Option<String>,
+    hardware: Option<String>,
     features: Vec<String>,
 }
 
@@ -449,6 +452,7 @@ fn adapter_runtime_feature_probe(command: &str) -> AdapterRuntimeFeatureProbe {
             ok: false,
             exit_code: None,
             stderr: Some("adapter binary not found".to_owned()),
+            hardware: None,
             features: Vec::new(),
         };
     };
@@ -457,6 +461,7 @@ fn adapter_runtime_feature_probe(command: &str) -> AdapterRuntimeFeatureProbe {
             ok: false,
             exit_code: None,
             stderr: Some("failed to execute adapter feature probe".to_owned()),
+            hardware: None,
             features: Vec::new(),
         };
     };
@@ -466,17 +471,23 @@ fn adapter_runtime_feature_probe(command: &str) -> AdapterRuntimeFeatureProbe {
             ok: false,
             exit_code: output.status.code(),
             stderr,
+            hardware: None,
             features: Vec::new(),
         };
     }
-    let features = String::from_utf8_lossy(&output.stdout)
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let features = stdout
         .lines()
         .filter_map(|line| line.trim().strip_prefix("feature=").map(str::to_owned))
         .collect();
+    let hardware = stdout
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("hardware=").map(str::to_owned));
     AdapterRuntimeFeatureProbe {
         ok: true,
         exit_code: output.status.code(),
         stderr: trimmed_utf8(&output.stderr),
+        hardware,
         features,
     }
 }

@@ -142,7 +142,7 @@ fn cli_features_emits_launcher_capabilities() {
 
     assert_eq!(
         output,
-        "feature=int64\nfeature=launchAbiU32\nfeature=launchAbiU64\n"
+        "hardware=CUDA driver device\nfeature=int64\nfeature=launchAbiU32\nfeature=launchAbiU64\n"
     );
 }
 

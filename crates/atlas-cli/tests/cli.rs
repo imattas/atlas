@@ -27,14 +27,24 @@ fn write_feature_adapter(dir: &Path, command: &str, line: &str) -> std::io::Resu
     } else {
         command.to_owned()
     });
-    fs::write(
-        &path,
-        if cfg!(windows) {
-            format!("@echo off\r\necho {line}\r\n")
-        } else {
-            format!("#!/bin/sh\necho '{line}'\n")
-        },
-    )?;
+    let lines = line.lines().collect::<Vec<_>>();
+    let script = if cfg!(windows) {
+        let mut echoes = String::new();
+        for line in &lines {
+            echoes.push_str("echo ");
+            echoes.push_str(line);
+            echoes.push_str("\r\n");
+        }
+        format!("@echo off\r\n{echoes}")
+    } else {
+        let printf_args = lines
+            .iter()
+            .map(|line| format!("'{}\\n'", line.replace('\'', "'\\''")))
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!("#!/bin/sh\nprintf %s {printf_args}\n")
+    };
+    fs::write(&path, script)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -602,7 +612,12 @@ fn doctor_reports_gpu_adapter_runtime_features() {
     for tool in ["clinfo.exe", "vulkaninfo.exe", "hipcc.exe"] {
         fs::write(tool_dir.join(tool), "").unwrap();
     }
-    write_feature_adapter(&tool_dir, "atlas-gpu-opencl-run", "feature=int64").unwrap();
+    write_feature_adapter(
+        &tool_dir,
+        "atlas-gpu-opencl-run",
+        "feature=int64\nhardware=Khronos OpenCL-compatible toolchain",
+    )
+    .unwrap();
     write_feature_adapter(&tool_dir, "atlas-gpu-vulkan-run", "feature=shaderInt64").unwrap();
     write_feature_adapter(&tool_dir, "atlas-gpu-hip-run", "feature=int64").unwrap();
     let original_path = std::env::var_os("PATH").unwrap_or_default();
@@ -616,6 +631,7 @@ fn doctor_reports_gpu_adapter_runtime_features() {
     assert!(output.contains("\"gpu_features\""));
     assert!(output.contains("\"name\":\"OpenCL\""));
     assert!(output.contains("\"features\":[\"int64\"]"));
+    assert!(output.contains("\"hardware\":\"Khronos OpenCL-compatible toolchain\""));
     assert!(output.contains("\"name\":\"Vulkan\""));
     assert!(output.contains("\"features\":[\"shaderInt64\"]"));
     assert!(output.contains("\"name\":\"HIP\""));

@@ -338,10 +338,15 @@ class VerifyScriptTests(unittest.TestCase):
             (
                 '{"schema_major":1,"kind":"doctor","gpu_feature_probes":[{"name":"OpenCL","ok":true,"features":["int64","launchAbiU32","launchAbiU64"]}]}',
                 1,
-                "does not have an available adapter binary",
+                "did not report hardware identity",
             ),
             (
                 '{"schema_major":1,"kind":"doctor","adapter_binaries":[{"name":"OpenCL","available":true}],"gpu_feature_probes":[{"name":"OpenCL","ok":true,"features":["int64","launchAbiU32","launchAbiU64"]}]}',
+                1,
+                "did not report hardware identity",
+            ),
+            (
+                '{"schema_major":1,"kind":"doctor","adapter_binaries":[{"name":"OpenCL","available":true}],"gpu_feature_probes":[{"name":"OpenCL","ok":true,"hardware":"OpenCL runtime/device","features":["int64","launchAbiU32","launchAbiU64"]}]}',
                 0,
                 "",
             ),

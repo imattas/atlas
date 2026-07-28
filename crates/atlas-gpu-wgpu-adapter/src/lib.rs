@@ -461,10 +461,14 @@ fn extract_wgsl_workgroup_size_x(source: &str) -> Result<usize, String> {
 }
 
 fn format_features(features: &[String]) -> String {
-    features
-        .iter()
-        .map(|feature| format!("feature={feature}\n"))
-        .collect()
+    let mut text = "hardware=WGPU adapter\n".to_owned();
+    text.push_str(
+        &features
+            .iter()
+            .map(|feature| format!("feature={feature}\n"))
+            .collect::<String>(),
+    );
+    text
 }
 
 fn format_launch_output(output: &LaunchOutput) -> String {
