@@ -23,8 +23,9 @@ Runtime behavior:
   device predicates with full-candidate output for CPU validation;
 - Vulkan GLSL code generation lowers the same restricted search operations into
   64-bit shader predicates with bounded atomic match output;
-- per-SDK command plans select checked-in kernel artifacts and compiler or
-  launcher frontends (`atlas-gpu-opencl-run`, `glslc`, `nvcc`, or `hipcc`);
+- per-SDK command plans select checked-in kernel artifacts, compilers
+  (`glslc`, `nvcc`, `hipcc`), and launcher frontends
+  (`atlas-gpu-opencl-run`, `atlas-gpu-cuda-run`, `atlas-gpu-hip-run`);
 - the OpenCL adapter uses dynamic OpenCL loading, build-checks generated source,
   launches the generated `atlas_search` kernel, and prints `match=<candidate>`
   lines for CPU validation by the runtime;
