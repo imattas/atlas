@@ -1807,7 +1807,13 @@ mod tests {
             std::env::temp_dir().join(format!("atlas-cuda-new-nvrtc-{}", std::process::id()));
         let bin_dir = cuda_root.join("bin");
         std::fs::create_dir_all(&bin_dir).unwrap();
-        let library = bin_dir.join("nvrtc64_999_0.dll");
+        let library = if cfg!(windows) {
+            bin_dir.join("nvrtc64_999_0.dll")
+        } else if cfg!(target_os = "macos") {
+            bin_dir.join("libnvrtc.dylib")
+        } else {
+            bin_dir.join("libnvrtc.so.999")
+        };
         std::fs::write(&library, []).unwrap();
 
         let found = find_cuda_root_nvrtc_library_from_roots([cuda_root.clone()]);
