@@ -95,6 +95,9 @@ fn solve_force_gpu_launches_adapter_for_tiny_domain() {
     let _ = fs::remove_dir_all(tool_dir);
     assert!(output.contains("mode=DeviceValidated"));
     assert!(output.contains("matches=[85]"));
+    assert!(output.contains(
+        "launch=global_size:256,local_size:256,max_matches:1024,output_buffer_bytes:8192"
+    ));
 }
 
 #[test]

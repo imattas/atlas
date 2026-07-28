@@ -72,11 +72,15 @@ fn solve(args: &[String]) -> Result<String, String> {
     };
     let mode = mode_name(report.mode);
     let explanation = format!(
-        "fixture={}; domain={}..{}; mode={mode}; matches={:?}; telemetry={}",
+        "fixture={}; domain={}..{}; mode={mode}; matches={:?}; launch=global_size:{},local_size:{},max_matches:{},output_buffer_bytes:{}; telemetry={}",
         request.fixture,
         request.domain.start,
         request.domain.end,
         report.matches,
+        report.telemetry.launch.global_size,
+        report.telemetry.launch.local_size,
+        report.telemetry.launch.max_matches,
+        report.telemetry.launch.output_buffer_bytes,
         report.telemetry.rationale
     );
     let solve_report = SolveReportV1::new(
