@@ -192,7 +192,7 @@ impl Launcher for CudaPtxLauncher {
     fn features(&self) -> Result<Vec<String>, String> {
         let driver = CudaDriver::load()?;
         let _context = driver.create_context()?;
-        Ok(vec!["int64".to_owned()])
+        Ok(features_from_int64_probe(probe_cuda_int64(&driver)))
     }
 
     fn compile_check(&self, artifact: &str, output: Option<&str>) -> Result<(), String> {
@@ -273,6 +273,83 @@ fn format_matches(matches: &[u64]) -> String {
         .iter()
         .map(|candidate| format!("match={candidate}\n"))
         .collect()
+}
+
+fn features_from_int64_probe(probe: Result<(), String>) -> Vec<String> {
+    if probe.is_ok() {
+        vec!["int64".to_owned()]
+    } else {
+        Vec::new()
+    }
+}
+
+fn probe_cuda_int64(driver: &CudaDriver) -> Result<(), String> {
+    let ptx = compile_cuda_probe_source_to_ptx(cuda_int64_probe_source())?;
+    let ptx =
+        CString::new(ptx).map_err(|_| "CUDA int64 probe PTX contains interior NUL".to_owned())?;
+    let module = driver.load_module(&ptx)?;
+    driver
+        .get_function(module.raw, "atlas_int64_probe")
+        .map(|_| ())
+}
+
+fn compile_cuda_probe_source_to_ptx(source: &str) -> Result<String, String> {
+    match NvrtcCompiler::load().and_then(|compiler| compiler.compile_source_to_ptx(source)) {
+        Ok(ptx) => Ok(ptx),
+        Err(nvrtc_error) => {
+            let source_path = write_cuda_probe_source(source)?;
+            let result = NvccCompiler::load()
+                .and_then(|compiler| compiler.compile_source_file_to_ptx(&source_path))
+                .or_else(|nvcc_error| {
+                    ClangCudaCompiler::load()
+                        .and_then(|compiler| compiler.compile_source_file_to_ptx(&source_path))
+                        .map_err(|clang_error| {
+                            format!(
+                                "failed to compile CUDA int64 probe with NVRTC, nvcc, or clang; NVRTC: {nvrtc_error}; nvcc: {nvcc_error}; clang: {clang_error}"
+                            )
+                        })
+                });
+            let _ = fs::remove_file(source_path);
+            result
+        }
+    }
+}
+
+fn write_cuda_probe_source(source: &str) -> Result<String, String> {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let path = std::env::temp_dir().join(format!(
+        "atlas-cuda-int64-probe-{}-{nonce}.cu",
+        std::process::id()
+    ));
+    fs::write(&path, source).map_err(|error| {
+        format!(
+            "cannot write CUDA int64 probe source {}: {error}",
+            path.display()
+        )
+    })?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+fn cuda_int64_probe_source() -> &'static str {
+    r#"#if defined(__clang__)
+#define __device__ __attribute__((device))
+#define __global__ __attribute__((global))
+#endif
+__device__ unsigned int atlas_probe_global_id_x() {
+#if defined(__clang__)
+  return __nvvm_read_ptx_sreg_ctaid_x() * __nvvm_read_ptx_sreg_ntid_x() + __nvvm_read_ptx_sreg_tid_x();
+#else
+  return blockIdx.x * blockDim.x + threadIdx.x;
+#endif
+}
+extern "C" __global__ void atlas_int64_probe(unsigned long long* out) {
+  unsigned long long candidate = (unsigned long long)(atlas_probe_global_id_x());
+  out[0] = (candidate << 32) ^ candidate;
+}
+"#
 }
 
 fn read_ptx(path: &str) -> Result<String, String> {
@@ -1591,6 +1668,25 @@ mod tests {
         assert!(!uses_u32_launch_abi(
             ".visible .entry atlas_search(.param .u64 start)"
         ));
+    }
+
+    #[test]
+    fn cuda_features_report_int64_only_after_successful_probe() {
+        assert_eq!(features_from_int64_probe(Ok(())), vec!["int64".to_owned()]);
+        assert_eq!(
+            features_from_int64_probe(Err("module load failed".to_owned())),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn cuda_int64_probe_source_uses_self_contained_64_bit_kernel() {
+        let source = cuda_int64_probe_source();
+
+        assert!(source.contains("atlas_int64_probe"));
+        assert!(source.contains("unsigned long long"));
+        assert!(source.contains("__nvvm_read_ptx_sreg_tid_x"));
+        assert!(source.contains("blockIdx.x"));
     }
 
     #[test]
