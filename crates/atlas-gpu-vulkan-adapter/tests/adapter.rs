@@ -1,16 +1,19 @@
 //! Vulkan adapter CLI tests.
 
+#[cfg(windows)]
+use atlas_gpu_vulkan_adapter::vulkan_loader_candidates_from_host_roots;
 use atlas_gpu_vulkan_adapter::{
-    run_cli, vulkan_loader_candidates_from_host_roots, vulkan_loader_candidates_from_roots,
-    AdapterCommand, FeatureReport, LaunchArgs, LaunchOutput, Launcher, VulkanLaunchAbi,
-    VulkanSpirvLauncher,
+    run_cli, vulkan_loader_candidates_from_roots, AdapterCommand, FeatureReport, LaunchArgs,
+    LaunchOutput, Launcher, VulkanLaunchAbi, VulkanSpirvLauncher,
 };
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::{SearchOp, SearchProgram};
 use std::cell::RefCell;
 use std::fs;
+#[cfg(windows)]
 use std::sync::{Mutex, OnceLock};
 
+#[cfg(windows)]
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     ENV_LOCK
@@ -19,6 +22,7 @@ fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+#[cfg(windows)]
 fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
     if let Some(value) = original {
         std::env::set_var(name, value);

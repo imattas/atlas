@@ -1,14 +1,17 @@
 //! OpenCL adapter CLI tests.
 
+#[cfg(windows)]
+use atlas_gpu_opencl_adapter::opencl_loader_candidates_from_host_roots;
 use atlas_gpu_opencl_adapter::{
-    opencl_loader_candidates_from_host_roots, opencl_loader_candidates_from_roots, run_cli,
-    AdapterCommand, FeatureReport, LaunchArgs, LaunchOutput, Launcher, OpenClLaunchAbi,
+    opencl_loader_candidates_from_roots, run_cli, AdapterCommand, FeatureReport, LaunchArgs,
+    LaunchOutput, Launcher, OpenClLaunchAbi,
 };
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::{SearchOp, SearchProgram};
 use std::cell::RefCell;
 use std::fs;
 
+#[cfg(windows)]
 fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
     if let Some(value) = original {
         std::env::set_var(name, value);
