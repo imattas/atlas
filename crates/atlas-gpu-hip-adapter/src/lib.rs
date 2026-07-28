@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::ptr;
 
+const HIP_MAX_THREADS_PER_BLOCK: usize = 1024;
+
 type HipModuleHandle = *mut c_void;
 type HipFunction = *mut c_void;
 type HipStream = *mut c_void;
@@ -92,6 +94,9 @@ impl LaunchArgs {
         let local_size = parse_usize_flag(args, "--local-size")?;
         if global_size == 0 || local_size == 0 {
             return Err("global-size and local-size must be nonzero".to_owned());
+        }
+        if local_size > HIP_MAX_THREADS_PER_BLOCK {
+            return Err("local-size exceeds HIP block limit".to_owned());
         }
         if global_size.div_ceil(local_size) > u32::MAX as usize {
             return Err("grid size exceeds HIP uint".to_owned());

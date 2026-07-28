@@ -199,6 +199,26 @@ fn rejects_grid_size_that_exceeds_cuda_uint() {
 }
 
 #[test]
+fn rejects_local_size_that_exceeds_cuda_block_limit() {
+    let error = LaunchArgs::parse(&[
+        "target/atlas-gpu/atlas_search.ptx".to_owned(),
+        "--start".to_owned(),
+        "0".to_owned(),
+        "--end".to_owned(),
+        "1025".to_owned(),
+        "--max-matches".to_owned(),
+        "1".to_owned(),
+        "--global-size".to_owned(),
+        "1025".to_owned(),
+        "--local-size".to_owned(),
+        "1025".to_owned(),
+    ])
+    .unwrap_err();
+
+    assert!(error.contains("local-size exceeds CUDA block limit"));
+}
+
+#[test]
 fn cli_emits_match_lines_from_launcher() {
     let output = run_cli(
         &[

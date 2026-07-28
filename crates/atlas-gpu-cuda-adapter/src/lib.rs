@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::ptr;
 
+const CUDA_MAX_THREADS_PER_BLOCK: usize = 1024;
+
 type CuDevice = c_int;
 type CuContext = *mut c_void;
 type CuModule = *mut c_void;
@@ -97,6 +99,9 @@ impl LaunchArgs {
         let local_size = parse_usize_flag(args, "--local-size")?;
         if global_size == 0 || local_size == 0 {
             return Err("global-size and local-size must be nonzero".to_owned());
+        }
+        if local_size > CUDA_MAX_THREADS_PER_BLOCK {
+            return Err("local-size exceeds CUDA block limit".to_owned());
         }
         if global_size.div_ceil(local_size) > u32::MAX as usize {
             return Err("grid size exceeds CUDA uint".to_owned());
