@@ -9,6 +9,7 @@ rust-version.workspace = true
 [dependencies]
 atlas-search-ir = { path = "../atlas-search-ir" }
 atlas-scheduler = { path = "../atlas-scheduler" }
+wide = "1.5.0"
 
 [dev-dependencies]
 atlas-search-native = { path = "../atlas-search-native" }

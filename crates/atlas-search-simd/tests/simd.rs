@@ -3,7 +3,7 @@
 use atlas_scheduler::CancellationToken;
 use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram};
 use atlas_search_native::NativeSearcher;
-use atlas_search_simd::SimdSearcher;
+use atlas_search_simd::{SimdEngine, SimdSearcher};
 
 #[test]
 fn simd_matches_native_for_widths_tails_multiple_and_no_matches() {
@@ -18,6 +18,67 @@ fn simd_matches_native_for_widths_tails_multiple_and_no_matches() {
             );
         }
     }
+}
+
+#[test]
+fn simd_report_uses_wide_vector_engine_for_regular_batches() {
+    let token = CancellationToken::new();
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let domain = SearchDomain::new(0, 512);
+
+    let report = SimdSearcher::search_report(&program, domain, &token, 8);
+
+    assert_eq!(report.engine, SimdEngine::WideU64x4);
+    assert_eq!(
+        report.matches,
+        NativeSearcher::search(&program, domain, &token)
+    );
+}
+
+#[test]
+fn simd_wide_engine_matches_native_for_full_restricted_op_set() {
+    let token = CancellationToken::new();
+    let program = SearchProgram::new(
+        24,
+        vec![
+            SearchOp::XorEq {
+                mask: 0xaa,
+                target: 0xff,
+            },
+            SearchOp::AddEq {
+                addend: 1,
+                target: 4,
+            },
+            SearchOp::ChecksumEq {
+                modulus: 17,
+                target: 3,
+            },
+            SearchOp::MulAddEq {
+                multiplier: 65_537,
+                addend: 0x1337,
+                target: 0xC0_FF_EE,
+            },
+            SearchOp::RotateXorEq {
+                rotate_left: 7,
+                mask: 0xA5_A5_A5,
+                target: 0x12_34_56,
+            },
+            SearchOp::ByteEq {
+                byte_index: 1,
+                value: b'T',
+            },
+        ],
+    )
+    .unwrap();
+    let domain = SearchDomain::new(0, 4_096);
+
+    let report = SimdSearcher::search_report(&program, domain, &token, 8);
+
+    assert_eq!(report.engine, SimdEngine::WideU64x4);
+    assert_eq!(
+        report.matches,
+        NativeSearcher::search(&program, domain, &token)
+    );
 }
 
 #[test]
