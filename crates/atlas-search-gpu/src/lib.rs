@@ -448,11 +448,14 @@ impl AcceleratorRuntime {
         let launch = Self::plan_launch(domain, 256, 1024);
         let plan = GpuSdkPlan::choose(detected_sdks, true);
         if reported_device_matches.is_empty() {
-            return Self::execute_with_detected_driver(
+            let cached_kernel_keys =
+                persisted_kernel_cache_keys(program, domain, detected_sdks, "target/atlas-gpu");
+            return Self::execute_with_detected_driver_and_explicit_cache(
                 program,
                 domain,
                 detected_sdks,
                 cancellation,
+                &cached_kernel_keys,
                 &ProcessDriverRunner,
             );
         }
@@ -507,7 +510,7 @@ impl AcceleratorRuntime {
         cancellation: &CancellationToken,
         runner: &dyn DriverRunner,
     ) -> AcceleratorReport {
-        Self::execute_with_detected_driver_and_kernel_cache(
+        Self::execute_with_detected_driver_and_explicit_cache(
             program,
             domain,
             detected_sdks,
@@ -522,6 +525,24 @@ impl AcceleratorRuntime {
     /// device-reported matches.
     #[must_use]
     pub fn execute_with_detected_driver_and_kernel_cache(
+        program: &SearchProgram,
+        domain: SearchDomain,
+        detected_sdks: &[GpuSdk],
+        cancellation: &CancellationToken,
+        cached_kernel_keys: &[KernelCacheKey],
+        runner: &dyn DriverRunner,
+    ) -> AcceleratorReport {
+        Self::execute_with_detected_driver_and_explicit_cache(
+            program,
+            domain,
+            detected_sdks,
+            cancellation,
+            cached_kernel_keys,
+            runner,
+        )
+    }
+
+    fn execute_with_detected_driver_and_explicit_cache(
         program: &SearchProgram,
         domain: SearchDomain,
         detected_sdks: &[GpuSdk],
@@ -620,7 +641,16 @@ impl AcceleratorRuntime {
         runner: &dyn DriverRunner,
     ) -> AcceleratorReport {
         let detected_sdks = GpuSdkDetector::detect_from_path_dirs(path_dirs);
-        Self::execute_with_detected_driver(program, domain, &detected_sdks, cancellation, runner)
+        let cached_kernel_keys =
+            persisted_kernel_cache_keys(program, domain, &detected_sdks, "target/atlas-gpu");
+        Self::execute_with_detected_driver_and_explicit_cache(
+            program,
+            domain,
+            &detected_sdks,
+            cancellation,
+            &cached_kernel_keys,
+            runner,
+        )
     }
 
     /// Detects SDKs from the host `PATH`, executes through the process-backed
@@ -632,11 +662,14 @@ impl AcceleratorRuntime {
         cancellation: &CancellationToken,
     ) -> AcceleratorReport {
         let detected_sdks = GpuSdkDetector::detect_from_host_path();
-        Self::execute_with_detected_driver(
+        let cached_kernel_keys =
+            persisted_kernel_cache_keys(program, domain, &detected_sdks, "target/atlas-gpu");
+        Self::execute_with_detected_driver_and_explicit_cache(
             program,
             domain,
             &detected_sdks,
             cancellation,
+            &cached_kernel_keys,
             &ProcessDriverRunner,
         )
     }
@@ -782,6 +815,24 @@ fn can_reuse_compiled_artifact(plan: &DriverCommandPlan) -> bool {
         .get(1)
         .is_some_and(|launch_input| launch_input == &plan.artifact_file)
         && Path::new(&plan.artifact_file).is_file()
+}
+
+fn persisted_kernel_cache_keys(
+    program: &SearchProgram,
+    domain: SearchDomain,
+    detected_sdks: &[GpuSdk],
+    output_dir: &str,
+) -> Vec<KernelCacheKey> {
+    let launch = AcceleratorRuntime::plan_launch(domain, 256, 1024);
+    detected_sdks
+        .iter()
+        .filter_map(|sdk| {
+            let plan = DriverCommandPlan::for_launch(sdk, program, domain, launch, output_dir);
+            Path::new(&plan.artifact_file)
+                .is_file()
+                .then_some(plan.cache_key)
+        })
+        .collect()
 }
 
 fn run_command(command: &[String]) -> DriverRunOutput {

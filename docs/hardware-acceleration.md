@@ -57,6 +57,8 @@ Runtime behavior:
 - accelerator placement can load Track 3 calibration thresholds for SIMD and
   GPU break-even decisions;
 - generated kernels are cache-keyed by program, compiler, device, and options;
+- host runtime execution treats existing cache-keyed kernel artifacts as warmed
+  kernels for GPU placement decisions;
 - every GPU-reported match is revalidated against CPU IR semantics;
 - runtime telemetry records whether the result came from CPU fallback or from a
   CPU-validated device buffer.

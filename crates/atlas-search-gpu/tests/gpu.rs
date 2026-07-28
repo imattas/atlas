@@ -1664,6 +1664,94 @@ fn runtime_uses_gpu_cache_hit_threshold_for_warmed_kernel() {
 }
 
 #[test]
+fn host_runtime_uses_persisted_kernel_cache_for_warmed_gpu_threshold() {
+    struct Cleanup {
+        tool_dir: PathBuf,
+        adapter_path: PathBuf,
+        artifact_root: PathBuf,
+        original_path: Option<std::ffi::OsString>,
+    }
+
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            restore_env("PATH", self.original_path.clone());
+            let _ = fs::remove_dir_all(&self.tool_dir);
+            let _ = fs::remove_file(&self.adapter_path);
+            let _ = fs::remove_dir_all(&self.artifact_root);
+        }
+    }
+
+    let _env_guard = env_lock();
+    let tool_dir =
+        std::env::temp_dir().join(format!("atlas-gpu-host-cache-{}", std::process::id()));
+    fs::create_dir_all(&tool_dir).unwrap();
+    fs::write(tool_dir.join("clinfo.exe"), "").unwrap();
+    let exe_dir = std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    let adapter_path = exe_dir.join(if cfg!(windows) {
+        "atlas-gpu-opencl-run.cmd"
+    } else {
+        "atlas-gpu-opencl-run"
+    });
+    assert!(
+        !adapter_path.exists(),
+        "test would overwrite existing adapter: {}",
+        adapter_path.display()
+    );
+    fs::write(
+        &adapter_path,
+        if cfg!(windows) {
+            "@echo off\r\necho match=3\r\nexit /b 0\r\n"
+        } else {
+            "#!/bin/sh\necho match=3\nexit 0\n"
+        },
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(&adapter_path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&adapter_path, permissions).unwrap();
+    }
+
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let domain = SearchDomain::new(0, 100_000);
+    let sdk = GpuSdk::OpenCl {
+        sdk: "Khronos OpenCL-compatible toolchain".to_owned(),
+    };
+    let launch = AcceleratorRuntime::plan_launch(domain, 256, 1024);
+    let cached_plan =
+        DriverCommandPlan::for_launch(&sdk, &program, domain, launch, "target/atlas-gpu");
+    fs::create_dir_all(Path::new(&cached_plan.artifact_file).parent().unwrap()).unwrap();
+    fs::write(&cached_plan.artifact_file, [0xCA, 0xFE]).unwrap();
+    let artifact_root = Path::new(&cached_plan.artifact_file)
+        .parent()
+        .unwrap()
+        .to_path_buf();
+
+    let original_path = std::env::var_os("PATH");
+    let joined_path = std::env::join_paths(std::iter::once(tool_dir.clone())).unwrap();
+    std::env::set_var("PATH", &joined_path);
+    let _cleanup = Cleanup {
+        tool_dir,
+        adapter_path,
+        artifact_root,
+        original_path,
+    };
+    let token = CancellationToken::new();
+
+    let report = AcceleratorRuntime::execute_with_host_driver(&program, domain, &token);
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    assert_eq!(report.matches, vec![3]);
+    assert!(report.telemetry.rationale.contains("driver exit 0"));
+}
+
+#[test]
 fn public_execute_uses_placement_before_process_gpu_launch() {
     let _env_guard = env_lock();
     let tool_dir =
