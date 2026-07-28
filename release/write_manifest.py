@@ -36,6 +36,7 @@ GPU_ADAPTER_EVIDENCE = {
     "crates/atlas-gpu-vulkan-adapter/src/lib.rs",
     "crates/atlas-gpu-vulkan-adapter/src/main.rs",
 }
+TRACK3_BENCHMARK_EVIDENCE = {"benchmarks/track3/manifest.toml"}
 
 
 def _git_revision() -> str:
@@ -95,6 +96,9 @@ def validate_manifest(path: Path) -> list[str]:
     benchmarks = manifest.get("benchmarks", [])
     if not benchmarks:
         errors.append("benchmark evidence is required")
+    benchmark_paths = {str(item.get("path", "")) for item in benchmarks if isinstance(item, dict)}
+    if not TRACK3_BENCHMARK_EVIDENCE.issubset(benchmark_paths):
+        errors.append("Track 3 benchmark evidence is incomplete")
     for benchmark in benchmarks:
         if not isinstance(benchmark, dict):
             continue
@@ -182,6 +186,12 @@ def render_manifest() -> str:
         )
     for name, path, hardware, sample in [
         ("track2-strategy-baseline", "benchmarks/track2/manifest.toml", "sample-corpus-cpu", "bounded authorized fixtures"),
+        (
+            "track3-device-benchmark",
+            "benchmarks/track3/manifest.toml",
+            "OpenCL GPU device probe on Windows host",
+            "scalar/simd/device-GPU repeated samples and two-worker equivalence",
+        ),
         (
             "track3-placement-calibration",
             "benchmarks/track3/calibration.toml",

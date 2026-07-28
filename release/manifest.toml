@@ -1,8 +1,8 @@
 manifest_version = "1"
-source_revision = "8a1835998710"
+source_revision = "58a7e297c5ff"
 schema_version = "protocol-v1"
 toolchain = "rust-1.97 python-3"
-signature = "development-attestation-sha256-19156aa7063d134b98be495917c3efabe6ca5003722740a507bcecc9b7b6c024"
+signature = "development-attestation-sha256-e5430ad916796afd514b68a066d2f2ea58db8471a5be546817ad08c432b9c6b0"
 
 [[required_suites]]
 name = "advanced"
@@ -117,17 +117,17 @@ digest = "b5eb4df13dab1204f64f6e76a9818df30d5cd103a0578303e05820c9b7e8089a"
 [[artifacts]]
 name = "lib"
 path = "crates/atlas-math/src/lib.rs"
-digest = "36c3003e739ca6d38d5275a33b41e112d9494bb5ae9683fd8b6bb5dc5f2e9721"
+digest = "2389e4adf2221250fde89268098e726a4223b9579499199c88cb154b355eadad"
 
 [[artifacts]]
 name = "atlas_native_math_backend"
 path = "backends/native-math/atlas_native_math_backend.py"
-digest = "7001d9253c9d5a4ac77f28211ffd88e4c18ae96cdccb409a129835c75dfc71de"
+digest = "f99ac72aeb8e00f8dd13da8350f0ef19ae03762998806d4a025daa4072f210b9"
 
 [[artifacts]]
 name = "lib"
 path = "crates/atlas-gpu-opencl-adapter/src/lib.rs"
-digest = "7fb1aa0f002a4e536ab408341d7432bd6fe1dab4e3b943c688510c04fe530145"
+digest = "1265c7bb307cad755642375b9055b3d9924e97c44af3bee3003fe6c98888dd2c"
 
 [[artifacts]]
 name = "main"
@@ -137,7 +137,7 @@ digest = "0b953b7ad1d2ac9c23018c45a1ca62d93dcdf8b010c65423f2c837b2d429f937"
 [[artifacts]]
 name = "lib"
 path = "crates/atlas-gpu-cuda-adapter/src/lib.rs"
-digest = "f81b90ef6777c2b915069c9f4760c6ba9679e7448fc76d94ec9ebef6b72ea1b6"
+digest = "8cf5e79885bbc63b3282e8a33355e4a33983694cca09b24bfd4b3c8e9e8bc18c"
 
 [[artifacts]]
 name = "main"
@@ -147,7 +147,7 @@ digest = "58b8fddbced506c61267e8e04f135b4503c1c74031949d917ca45bfcd33eb5fa"
 [[artifacts]]
 name = "lib"
 path = "crates/atlas-gpu-hip-adapter/src/lib.rs"
-digest = "15a6661cca72d3e4f4e1dd8ccecd2222c4b7255e9bc18f9a777b6206da944935"
+digest = "0b3078da4730dab4b87b22da27f2e6c60805859098b3cf60b60dc2fbf775a7f5"
 
 [[artifacts]]
 name = "main"
@@ -157,7 +157,7 @@ digest = "3dcfe497c54195b34371b54c7cf8e3863a4615fb6a9be5f9a3f2db909eb8192b"
 [[artifacts]]
 name = "lib"
 path = "crates/atlas-gpu-vulkan-adapter/src/lib.rs"
-digest = "80c416430fe2b3fcb1882b47bbb980681e4764e3b88ee0168f629794a2538019"
+digest = "900ccf8995a12cfe90c0bdc6e68a1f6cc46be11725d3bb107ea60671821af477"
 
 [[artifacts]]
 name = "main"
@@ -187,7 +187,7 @@ digest = "f1862ac33eac661bddcd5eae9c4d3351e6fc36ee7e94613dc74b59c5d064cfda"
 [[artifacts]]
 name = "hardware-acceleration"
 path = "docs/hardware-acceleration.md"
-digest = "8553c5d86c36fcabaf4318c833d9430126cb29c47c2a7faa2704dba37670077e"
+digest = "8919d4b9f35b98fa0c693fdcb27b26ccbeb5a70876172fd051ff300052cbaf46"
 
 [[benchmarks]]
 name = "track2-strategy-baseline"
@@ -195,6 +195,13 @@ path = "benchmarks/track2/manifest.toml"
 hardware = "sample-corpus-cpu"
 sample_metadata = "bounded authorized fixtures"
 digest = "493505280fda5265921e83ee11afdba3c3b1a80d32691a11d41b3d4d66cc7ce0"
+
+[[benchmarks]]
+name = "track3-device-benchmark"
+path = "benchmarks/track3/manifest.toml"
+hardware = "OpenCL GPU device probe on Windows host"
+sample_metadata = "scalar/simd/device-GPU repeated samples and two-worker equivalence"
+digest = "f5344d45a8c1e832c6baa2c75f760cd8f5966421ab49a1a78370569f4d6708ab"
 
 [[benchmarks]]
 name = "track3-placement-calibration"

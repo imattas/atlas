@@ -78,6 +78,23 @@ class ReleaseManifestTest(unittest.TestCase):
         )
         self.assertIn("GPU adapter evidence is incomplete", validate_manifest(missing_cuda))
 
+    def test_manifest_includes_track3_device_benchmark_evidence(self) -> None:
+        text = MANIFEST.read_text(encoding="utf-8")
+
+        self.assertIn('path = "benchmarks/track3/manifest.toml"', text)
+        missing_track3_benchmark = write_manifest_variant(
+            text.replace(
+                'path = "benchmarks/track3/manifest.toml"',
+                'path = "benchmarks/track3/missing.toml"',
+                1,
+            )
+        )
+
+        self.assertIn(
+            "Track 3 benchmark evidence is incomplete",
+            validate_manifest(missing_track3_benchmark),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
