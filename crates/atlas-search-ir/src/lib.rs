@@ -133,6 +133,13 @@ impl SearchProgram {
                     target: 3,
                 }],
             ),
+            "dense" => Self::new(
+                16,
+                vec![SearchOp::ChecksumEq {
+                    modulus: 1,
+                    target: 0,
+                }],
+            ),
             "alias" => Err(SearchIrError::ForbiddenMemoryAliasing),
             "loop" => Err(SearchIrError::UnboundedLoop),
             _ => Err(SearchIrError::Empty),

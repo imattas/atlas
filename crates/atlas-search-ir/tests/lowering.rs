@@ -14,6 +14,15 @@ fn accepts_arithmetic_bitwise_and_checksum_fixtures() {
 }
 
 #[test]
+fn accepts_dense_fixture_for_gpu_retained_buffer_verification() {
+    let program = SearchProgram::try_from_fixture("dense").unwrap();
+
+    assert!(program.accepts(0));
+    assert!(program.accepts(1_499));
+    assert!(program.accepts(u64::MAX));
+}
+
+#[test]
 fn rejects_forbidden_memory_aliasing_and_unbounded_loops() {
     assert_eq!(
         SearchProgram::try_from_fixture("alias"),

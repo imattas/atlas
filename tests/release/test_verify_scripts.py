@@ -298,6 +298,30 @@ class VerifyScriptTests(unittest.TestCase):
                 for token in required_tokens:
                     self.assertIn(token, text)
 
+    def test_hardware_profile_exercises_dense_retained_gpu_buffers(self):
+        expectations = {
+            "verify.ps1": [
+                "Forced-GPU dense benchmark",
+                "dense",
+                "1500",
+                "MinRetainedMatches",
+                "max_matches",
+            ],
+            "verify.sh": [
+                "Forced-GPU dense benchmark",
+                "dense",
+                "1500",
+                "min_retained_matches",
+                "max_matches",
+            ],
+        }
+
+        for script_name, required_tokens in expectations.items():
+            with self.subTest(script=script_name):
+                text = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+                for token in required_tokens:
+                    self.assertIn(token, text)
+
     def test_hardware_profile_attempts_every_backend_before_reporting_failure(self):
         expectations = {
             "verify.ps1": ["Invoke-HardwareStep", "$HardwareFailures", "$HardwareFailures.Count"],

@@ -485,6 +485,27 @@ fn benchmark_samples_forced_gpu_runtime_repeatedly() {
 }
 
 #[test]
+fn benchmark_dense_fixture_uses_scaled_forced_gpu_retained_buffer() {
+    let output = run(&[
+        "benchmark".to_owned(),
+        "--fixture".to_owned(),
+        "dense".to_owned(),
+        "--start".to_owned(),
+        "0".to_owned(),
+        "--end".to_owned(),
+        "1500".to_owned(),
+        "--force-gpu".to_owned(),
+    ])
+    .unwrap();
+
+    assert!(output.contains("\"fixture\":\"dense\""));
+    assert!(output.contains("\"mode\":\"DeviceValidated\""));
+    assert!(output.contains("\"max_matches\":1500"));
+    assert!(output.contains("\"output_buffer_bytes\":12000"));
+    assert!(output.contains("\"matches\":[0,1,2"));
+}
+
+#[test]
 fn benchmark_supports_64_bit_fixture_domains() {
     let output = run(&[
         "benchmark".to_owned(),
