@@ -107,6 +107,41 @@ impl CommandRunner for LaunchFailureCommandRunner {
 }
 
 #[derive(Debug)]
+struct CompileStdoutWithoutTrailingNewlineRunner {
+    calls: RefCell<usize>,
+}
+
+impl CompileStdoutWithoutTrailingNewlineRunner {
+    fn new() -> Self {
+        Self {
+            calls: RefCell::new(0),
+        }
+    }
+}
+
+impl CommandRunner for CompileStdoutWithoutTrailingNewlineRunner {
+    fn run_command(&self, _command: &[String]) -> DriverRunOutput {
+        let mut calls = self.calls.borrow_mut();
+        *calls += 1;
+        if *calls == 1 {
+            DriverRunOutput {
+                exit_code: 0,
+                reported_matches: Vec::new(),
+                stdout: "compiler warning".to_owned(),
+                stderr: String::new(),
+            }
+        } else {
+            DriverRunOutput {
+                exit_code: 0,
+                reported_matches: (0..1024).collect(),
+                stdout: "match_count=1024\n".to_owned(),
+                stderr: String::new(),
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
 struct VulkanFeaturesCommandRunner {
     stdout: &'static str,
 }
@@ -2058,6 +2093,38 @@ fn process_driver_runner_tags_launch_phase_failures() {
     assert_eq!(output.exit_code, 41);
     assert!(output.stderr.contains("launch phase failed"));
     assert!(output.stderr.contains("device launch failed"));
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+fn process_driver_runner_preserves_launch_protocol_after_compile_stdout_without_newline() {
+    let program = SearchProgram::new(
+        64,
+        vec![SearchOp::ChecksumEq {
+            modulus: 1,
+            target: 0,
+        }],
+    )
+    .unwrap();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "Khronos OpenCL SDK".to_owned(),
+    };
+    let output_dir = std::env::temp_dir().join(format!(
+        "atlas-gpu-compile-stdout-boundary-{}",
+        std::process::id()
+    ));
+    let output_dir_text = output_dir.to_string_lossy().into_owned();
+    let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
+    let runner = CompileStdoutWithoutTrailingNewlineRunner::new();
+
+    let output = ProcessDriverRunner::run_with_command_runner(&plan, &runner);
+
+    assert_eq!(output.exit_code, 0);
+    assert_eq!(
+        DriverRunOutput::parse_reported_match_count(&output.stdout),
+        Some(1024)
+    );
+    assert_eq!(output.reported_matches.len(), 1024);
     let _ = fs::remove_dir_all(output_dir);
 }
 

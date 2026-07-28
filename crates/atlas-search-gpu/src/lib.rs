@@ -506,12 +506,20 @@ impl ProcessDriverRunner {
             compile
         };
         let mut launch = runner.run_command(&plan.launch_command);
-        launch.stdout = [compile.stdout, launch.stdout].join("");
-        launch.stderr = [compile.stderr, launch.stderr].join("");
+        launch.stdout = join_process_phase_streams(compile.stdout, launch.stdout);
+        launch.stderr = join_process_phase_streams(compile.stderr, launch.stderr);
         if launch.exit_code != 0 {
             return phase_failure_output("launch", launch);
         }
         launch
+    }
+}
+
+fn join_process_phase_streams(first: String, second: String) -> String {
+    if first.is_empty() || second.is_empty() || first.ends_with(['\n', '\r']) {
+        [first, second].join("")
+    } else {
+        [first, "\n".to_owned(), second].join("")
     }
 }
 
