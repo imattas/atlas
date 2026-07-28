@@ -68,6 +68,45 @@ class MathBackendParityTest(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["gcd"], [1, 1])
 
+    def test_native_backend_solves_modular_square_root_without_sage(self) -> None:
+        from atlas_native_math_backend import NativeMathBackend
+
+        backend = NativeMathBackend()
+        handle = backend.prepare(
+            json.dumps(
+                {
+                    "kind": "mod_sqrt_prime",
+                    "value": 56,
+                    "modulus": 101,
+                }
+            ).encode()
+        )
+
+        result = json.loads(backend.solve(handle, 1000))
+
+        self.assertEqual(result["status"], "sat")
+        self.assertEqual(result["roots"], [37, 64])
+
+    def test_native_backend_solves_discrete_log_without_sage(self) -> None:
+        from atlas_native_math_backend import NativeMathBackend
+
+        backend = NativeMathBackend()
+        handle = backend.prepare(
+            json.dumps(
+                {
+                    "kind": "discrete_log_prime",
+                    "base": 2,
+                    "target": 22,
+                    "modulus": 29,
+                }
+            ).encode()
+        )
+
+        result = json.loads(backend.solve(handle, 1000))
+
+        self.assertEqual(result["status"], "sat")
+        self.assertEqual(result["exponent"], 26)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -33,12 +33,20 @@ class NativeMathBackend(Backend):
                 "exact-rational",
                 "modular-linear",
                 "polynomial-gcd",
+                "modular-sqrt",
+                "discrete-log",
             ),
         )
 
     def prepare(self, problem: bytes) -> str:
         document = json.loads(problem.decode())
-        if document.get("kind") not in {"u8_xor_eq", "modular_linear", "polynomial_gcd"}:
+        if document.get("kind") not in {
+            "u8_xor_eq",
+            "modular_linear",
+            "polynomial_gcd",
+            "mod_sqrt_prime",
+            "discrete_log_prime",
+        }:
             raise ValueError("unsupported native math problem kind")
         handle = str(uuid.uuid4())
         self._prepared[handle] = document
@@ -56,8 +64,14 @@ class NativeMathBackend(Backend):
         if kind == "modular_linear":
             solution = solve_modular_linear(problem["modulus"], problem["matrix"], problem["rhs"])
             return json.dumps({"status": "sat" if solution else "unsat", "solution": solution}).encode()
-        gcd = polynomial_gcd(problem["modulus"], problem["left"], problem["right"])
-        return json.dumps({"status": "ok", "gcd": gcd}).encode()
+        if kind == "polynomial_gcd":
+            gcd = polynomial_gcd(problem["modulus"], problem["left"], problem["right"])
+            return json.dumps({"status": "ok", "gcd": gcd}).encode()
+        if kind == "mod_sqrt_prime":
+            roots = mod_sqrt_prime(problem["value"], problem["modulus"])
+            return json.dumps({"status": "sat" if roots is not None else "unsat", "roots": roots}).encode()
+        exponent = discrete_log_prime(problem["base"], problem["target"], problem["modulus"])
+        return json.dumps({"status": "sat" if exponent is not None else "unsat", "exponent": exponent}).encode()
 
     def cancel(self, handle: str) -> None:
         self._prepared.pop(handle, None)
@@ -117,3 +131,107 @@ def trim(polynomial: list[int]) -> list[int]:
     while len(polynomial) > 1 and polynomial[-1] == 0:
         polynomial.pop()
     return polynomial
+
+
+def mod_sqrt_prime(value: int, modulus: int) -> list[int] | None:
+    """Compute modular square roots over a prime field with Tonelli-Shanks."""
+
+    if not is_prime(modulus):
+        return None
+    value %= modulus
+    if value == 0:
+        return [0]
+    if modulus == 2:
+        return [value]
+    if pow(value, (modulus - 1) // 2, modulus) != 1:
+        return None
+    if modulus % 4 == 3:
+        return sorted_roots(pow(value, (modulus + 1) // 4, modulus), modulus)
+
+    q = modulus - 1
+    s = 0
+    while q % 2 == 0:
+        q //= 2
+        s += 1
+
+    non_residue = 2
+    while pow(non_residue, (modulus - 1) // 2, modulus) != modulus - 1:
+        non_residue += 1
+
+    c = pow(non_residue, q, modulus)
+    x = pow(value, (q + 1) // 2, modulus)
+    t = pow(value, q, modulus)
+    m = s
+    while t != 1:
+        i = 1
+        t_power = t * t % modulus
+        while i < m and t_power != 1:
+            t_power = t_power * t_power % modulus
+            i += 1
+        if i == m:
+            return None
+        b = pow(c, 1 << (m - i - 1), modulus)
+        x = x * b % modulus
+        b_squared = b * b % modulus
+        t = t * b_squared % modulus
+        c = b_squared
+        m = i
+    return sorted_roots(x, modulus)
+
+
+def discrete_log_prime(base: int, target: int, modulus: int) -> int | None:
+    """Solve base**x == target mod prime modulus with baby-step/giant-step."""
+
+    if not is_prime(modulus):
+        return None
+    base %= modulus
+    target %= modulus
+    if target == 1:
+        return 0
+    if base == 0:
+        return None
+
+    order = modulus - 1
+    step = 0
+    while step * step < order:
+        step += 1
+
+    baby_steps: dict[int, int] = {}
+    value = 1
+    for exponent in range(step):
+        baby_steps.setdefault(value, exponent)
+        value = value * base % modulus
+
+    giant_stride = pow(pow(base, step, modulus), -1, modulus)
+    gamma = target
+    for giant in range(step + 1):
+        if gamma in baby_steps:
+            exponent = giant * step + baby_steps[gamma]
+            if exponent < order:
+                return exponent
+        gamma = gamma * giant_stride % modulus
+    return None
+
+
+def sorted_roots(root: int, modulus: int) -> list[int]:
+    """Return the two prime-field square roots in stable order."""
+
+    other = (-root) % modulus
+    return [root] if root == other else sorted([root, other])
+
+
+def is_prime(value: int) -> bool:
+    """Return whether value is prime by trial division."""
+
+    if value < 2:
+        return False
+    if value == 2:
+        return True
+    if value % 2 == 0:
+        return False
+    divisor = 3
+    while divisor * divisor <= value:
+        if value % divisor == 0:
+            return False
+        divisor += 2
+    return True

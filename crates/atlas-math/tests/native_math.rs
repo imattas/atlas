@@ -52,3 +52,17 @@ fn crt_and_modular_exponentiation_support_ctf_crypto_from_scratch() {
     assert_eq!(atlas_math::chinese_remainder(&[(1, 4), (2, 6)]), None);
     assert_eq!(atlas_math::mod_pow(4, 13, 0), None);
 }
+
+#[test]
+fn modular_square_roots_over_prime_fields_use_tonelli_shanks_from_scratch() {
+    assert_eq!(atlas_math::mod_sqrt_prime(10, 13), Some(vec![6, 7]));
+    assert_eq!(atlas_math::mod_sqrt_prime(56, 101), Some(vec![37, 64]));
+    assert_eq!(atlas_math::mod_sqrt_prime(5, 13), None);
+}
+
+#[test]
+fn discrete_log_prime_uses_baby_step_giant_step_from_scratch() {
+    assert_eq!(atlas_math::discrete_log_prime(2, 22, 29), Some(26));
+    assert_eq!(atlas_math::discrete_log_prime(5, 1, 23), Some(0));
+    assert_eq!(atlas_math::discrete_log_prime(4, 3, 17), None);
+}
