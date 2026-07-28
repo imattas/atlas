@@ -23,8 +23,8 @@ Runtime behavior:
   device predicates with full-candidate output for CPU validation;
 - Vulkan GLSL code generation lowers the same restricted search operations into
   64-bit shader predicates with bounded atomic match output;
-- per-SDK command plans select checked-in kernel artifacts, compilers
-  (`glslc`, `nvcc`, `hipcc`), and launcher frontends
+- per-SDK command plans select checked-in kernel artifacts, vendor compilers
+  (`nvcc`, `hipcc`) where needed, and launcher frontends
   (`atlas-gpu-opencl-run`, `atlas-gpu-vulkan-run`, `atlas-gpu-cuda-run`,
   `atlas-gpu-hip-run`);
 - the OpenCL adapter uses dynamic OpenCL loading, build-checks generated source,
@@ -36,13 +36,14 @@ Runtime behavior:
 - the HIP adapter uses dynamic HIP runtime loading, validates generated code
   objects, launches the `atlas_search` kernel, and prints `match=<candidate>`
   lines for CPU validation by the runtime;
-- the Vulkan adapter uses dynamic Vulkan loading, validates generated SPIR-V,
-  dispatches the compute shader, and prints `match=<candidate>` lines for CPU
-  validation by the runtime;
+- the Vulkan adapter uses shaderc for in-process GLSL-to-SPIR-V compilation,
+  dynamic Vulkan loading, shader module validation, compute dispatch, and
+  `match=<candidate>` output for CPU validation by the runtime;
 - production driver execution is isolated behind a runner boundary so host
   adapters can compile/launch kernels without changing search semantics;
 - process-backed execution writes generated per-program kernel source into the
-  build output directory before invoking the selected SDK compiler;
+  build output directory before invoking the selected compiler or adapter
+  compile-check;
 - HIP compilation uses `hipcc --genco -O2` so the adapter receives a loadable
   `.hsaco` code object instead of a host executable;
 - launch configuration records global size, local size, output cap, and transfer

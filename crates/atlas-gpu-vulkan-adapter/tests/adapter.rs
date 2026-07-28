@@ -7,7 +7,6 @@ use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::SearchProgram;
 use std::cell::RefCell;
 use std::fs;
-use std::process::Command;
 
 #[derive(Debug, Clone, Copy)]
 struct FixtureLauncher;
@@ -172,32 +171,34 @@ fn compile_check_rejects_non_spirv_artifact() {
 }
 
 #[test]
-#[ignore = "requires glslc, Vulkan runtime, and a Vulkan compute-capable device"]
+fn compile_check_accepts_generated_glsl_source_without_external_glslc() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let source = GpuSearcher::compile_vulkan_glsl(&program);
+    let output_dir =
+        std::env::temp_dir().join(format!("atlas-vulkan-source-{}", std::process::id()));
+    fs::create_dir_all(&output_dir).unwrap();
+    let source_path = output_dir.join("atlas_search.comp");
+    fs::write(&source_path, source).unwrap();
+
+    VulkanSpirvLauncher
+        .compile_check(&source_path.to_string_lossy())
+        .unwrap();
+
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+#[ignore = "requires Vulkan runtime and a Vulkan compute-capable device"]
 fn generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates() {
     let program = SearchProgram::try_from_fixture("xor").unwrap();
     let source = GpuSearcher::compile_vulkan_glsl(&program);
     let output_dir = std::env::temp_dir().join(format!("atlas-vulkan-e2e-{}", std::process::id()));
     fs::create_dir_all(&output_dir).unwrap();
     let source_path = output_dir.join("atlas_search.comp");
-    let spirv_path = output_dir.join("atlas_search.spv");
     fs::write(&source_path, source).unwrap();
 
-    let compile = Command::new("glslc")
-        .arg("-O")
-        .arg(&source_path)
-        .arg("-o")
-        .arg(&spirv_path)
-        .output()
-        .unwrap_or_else(|error| {
-            panic!("glslc is required for this ignored Vulkan e2e test: {error}")
-        });
-    assert!(
-        compile.status.success(),
-        "glslc failed: {}",
-        String::from_utf8_lossy(&compile.stderr)
-    );
     let args = LaunchArgs {
-        artifact: spirv_path.to_string_lossy().into_owned(),
+        artifact: source_path.to_string_lossy().into_owned(),
         start: 0x50,
         end: 0x160,
         max_matches: 8,

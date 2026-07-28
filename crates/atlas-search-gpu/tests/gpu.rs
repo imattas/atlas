@@ -429,10 +429,42 @@ fn driver_command_plan_selects_sdk_specific_sources_and_compilers() {
         .iter()
         .any(|arg| arg == "--compile-check"));
     assert_eq!(vulkan.template_file, "gpu/vulkan/atlas_search.comp");
-    assert_eq!(vulkan.compile_command[0], "glslc");
+    assert_eq!(vulkan.compile_command[0], "atlas-gpu-vulkan-run");
+    assert!(vulkan
+        .compile_command
+        .iter()
+        .any(|arg| arg == "--compile-check"));
     assert_eq!(cuda.template_file, "gpu/cuda/atlas_search.cu");
     assert_eq!(cuda.compile_command[0], "nvcc");
     assert_ne!(opencl.cache_key, vulkan.cache_key);
+}
+
+#[test]
+fn vulkan_driver_plan_uses_adapter_compiler_without_external_glslc() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let launch = AcceleratorRuntime::plan_launch(SearchDomain::new(0x50, 0x160), 256, 8);
+    let sdk = GpuSdk::Vulkan {
+        sdk: "Vulkan runtime".to_owned(),
+    };
+
+    let plan = DriverCommandPlan::for_launch(
+        &sdk,
+        &program,
+        SearchDomain::new(0x50, 0x160),
+        launch,
+        "target/atlas-gpu",
+    );
+
+    assert_eq!(plan.compile_command[0], "atlas-gpu-vulkan-run");
+    assert!(plan
+        .compile_command
+        .iter()
+        .any(|arg| arg == "--compile-check"));
+    assert_eq!(
+        plan.compile_command[2],
+        "target/atlas-gpu/atlas_search.comp"
+    );
+    assert_eq!(plan.launch_command[1], "target/atlas-gpu/atlas_search.comp");
 }
 
 #[test]

@@ -3,6 +3,7 @@
 use ash::{vk, Entry};
 use std::ffi::CString;
 use std::fs;
+use std::path::Path;
 use std::ptr;
 
 const SPIRV_MAGIC: u32 = 0x0723_0203;
@@ -118,8 +119,8 @@ pub trait Launcher {
 pub struct VulkanSpirvLauncher;
 
 impl Launcher for VulkanSpirvLauncher {
-    fn compile_check(&self, spirv: &str) -> Result<(), String> {
-        let code = read_spirv_words(spirv)?;
+    fn compile_check(&self, shader: &str) -> Result<(), String> {
+        let code = read_shader_words(shader)?;
         if let Ok(runtime) = VulkanRuntime::new() {
             let _shader = runtime.create_shader_module(&code)?;
         }
@@ -132,7 +133,7 @@ impl Launcher for VulkanSpirvLauncher {
                 "Vulkan shader local-size must be {VULKAN_LOCAL_SIZE}"
             ));
         }
-        let code = read_spirv_words(&args.artifact)?;
+        let code = read_shader_words(&args.artifact)?;
         let runtime = VulkanRuntime::new()?;
         runtime.launch(&code, args)
     }
@@ -200,6 +201,46 @@ fn read_spirv_words(path: &str) -> Result<Vec<u32>, String> {
         .map(|chunk| u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
         .collect::<Vec<_>>();
     Ok(words)
+}
+
+fn read_shader_words(path: &str) -> Result<Vec<u32>, String> {
+    if Path::new(path)
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("spv"))
+    {
+        return read_spirv_words(path);
+    }
+    let source = fs::read_to_string(path)
+        .map_err(|error| format!("cannot read Vulkan GLSL {path}: {error}"))?;
+    compile_glsl_to_spirv(&source)
+}
+
+/// Compiles generated Vulkan GLSL compute source to SPIR-V words.
+///
+/// # Errors
+///
+/// Returns an error when shaderc cannot initialize or the generated GLSL is
+/// rejected by the Vulkan GLSL compiler.
+pub fn compile_glsl_to_spirv(source: &str) -> Result<Vec<u32>, String> {
+    let compiler = shaderc::Compiler::new()
+        .map_err(|error| format!("cannot initialize shaderc compiler: {error}"))?;
+    let mut options = shaderc::CompileOptions::new()
+        .map_err(|error| format!("cannot initialize shaderc compile options: {error}"))?;
+    options.set_target_env(
+        shaderc::TargetEnv::Vulkan,
+        shaderc::EnvVersion::Vulkan1_1 as u32,
+    );
+    options.set_optimization_level(shaderc::OptimizationLevel::Performance);
+    let artifact = compiler
+        .compile_into_spirv(
+            source,
+            shaderc::ShaderKind::Compute,
+            "atlas_search.comp",
+            "main",
+            Some(&options),
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(artifact.as_binary().to_vec())
 }
 
 struct VulkanRuntime {

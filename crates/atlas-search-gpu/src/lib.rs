@@ -189,8 +189,8 @@ impl DriverCommandPlan {
                     "gpu/vulkan/atlas_search.comp",
                     "atlas_search.comp",
                     "atlas_search.spv",
-                    "glslc",
-                    "-O",
+                    "atlas-gpu-vulkan-run",
+                    "--compile-check",
                     GpuSearcher::compile_vulkan_glsl(program),
                 ),
                 GpuSdk::Cuda { .. } => (
@@ -213,7 +213,7 @@ impl DriverCommandPlan {
         let source_file = join_path(output_dir, source_name);
         let artifact_file = join_path(output_dir, artifact_name);
         let compile_command = compile_command_for(compiler, options, &source_file, &artifact_file);
-        let launch_input = if matches!(sdk, GpuSdk::OpenCl { .. }) {
+        let launch_input = if matches!(sdk, GpuSdk::OpenCl { .. } | GpuSdk::Vulkan { .. }) {
             source_file.clone()
         } else {
             artifact_file.clone()
