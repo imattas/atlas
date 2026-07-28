@@ -1554,6 +1554,64 @@ __kernel void atlas_search(ulong start, ulong end, __global ulong* out, __global
     #[must_use]
     pub fn compile_vulkan_glsl(program: &SearchProgram) -> String {
         let mask = width_mask(program.width);
+        if program.width <= 32 {
+            let predicates = program
+                .ops
+                .iter()
+                .map(|op| glsl_predicate_32(op, program.width))
+                .collect::<Vec<_>>()
+                .join(" &&\n      ");
+            return format!(
+                r"#version 450
+
+layout(local_size_x = 256) in;
+
+layout(push_constant) uniform SearchParams {{
+  uint start_lo;
+  uint start_hi;
+  uint end_lo;
+  uint end_hi;
+  uint max_matches;
+}} params;
+
+layout(set = 0, binding = 0) buffer Matches {{
+  uint out_len;
+  uint _pad;
+  uint out_words[];
+}} matches;
+
+uint rotate_left_width(uint value, uint amount, uint width) {{
+  uint mask = width == 32U ? 4294967295U : ((1U << width) - 1U);
+  value = value & mask;
+  amount = amount % width;
+  return amount == 0U ? value : (((value << amount) | (value >> (width - amount))) & mask);
+}}
+
+void main() {{
+  /* width={} ops={} */
+  uint gid = gl_GlobalInvocationID.x;
+  uint raw_low = params.start_lo + gid;
+  uint raw_high = params.start_hi + uint(raw_low < params.start_lo);
+  uint mask = {mask}U;
+  if (raw_high > params.end_hi || (raw_high == params.end_hi && raw_low >= params.end_lo)) {{
+    return;
+  }}
+  uint raw_candidate = raw_low;
+  uint candidate = raw_candidate & mask;
+  if ({predicates}) {{
+    uint slot = atomicAdd(matches.out_len, 1U);
+    if (slot < params.max_matches) {{
+      uint word_index = slot * 2U;
+      matches.out_words[word_index] = raw_low;
+      matches.out_words[word_index + 1U] = raw_high;
+    }}
+  }}
+}}
+",
+                program.width,
+                program.ops.len()
+            );
+        }
         let predicates = program
             .ops
             .iter()
@@ -1708,6 +1766,40 @@ fn cuda_predicate(op: &SearchOp, width: u32) -> String {
                 "((candidate >> {shift}U) & 255ULL) == {}ULL",
                 u64::from(value)
             )
+        }
+    }
+}
+
+fn glsl_predicate_32(op: &SearchOp, width: u32) -> String {
+    match *op {
+        SearchOp::AddEq { addend, target } => {
+            format!("((candidate + {addend}U) & mask) == {target}U")
+        }
+        SearchOp::XorEq { mask, target } => {
+            format!("((candidate ^ {mask}U) & mask) == {target}U")
+        }
+        SearchOp::ChecksumEq { modulus, target } => {
+            format!("(candidate % {modulus}U) == {target}U")
+        }
+        SearchOp::MulAddEq {
+            multiplier,
+            addend,
+            target,
+        } => {
+            format!("((candidate * {multiplier}U + {addend}U) & mask) == {target}U")
+        }
+        SearchOp::RotateXorEq {
+            rotate_left,
+            mask,
+            target,
+        } => {
+            format!(
+                "((rotate_left_width(candidate, {rotate_left}U, {width}U) ^ {mask}U) & mask) == {target}U"
+            )
+        }
+        SearchOp::ByteEq { byte_index, value } => {
+            let shift = byte_index.saturating_mul(8);
+            format!("((candidate >> {shift}U) & 255U) == {}U", u64::from(value))
         }
     }
 }

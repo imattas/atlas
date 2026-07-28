@@ -296,6 +296,17 @@ fn opencl_and_vulkan_codegen_are_hardware_independent_and_encode_shape() {
 }
 
 #[test]
+fn vulkan_32_bit_codegen_does_not_require_shader_int64() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let vulkan = GpuSearcher::compile_vulkan_glsl(&program);
+
+    assert!(!vulkan.contains("GL_EXT_shader_explicit_arithmetic_types_int64"));
+    assert!(!vulkan.contains("uint64_t"));
+    assert!(vulkan.contains("uint raw_candidate"));
+    assert!(vulkan.contains("uint candidate"));
+}
+
+#[test]
 fn vulkan_codegen_emits_restricted_ir_predicates_and_preserves_full_candidate() {
     let program = SearchProgram::new(
         24,
@@ -332,16 +343,17 @@ fn vulkan_codegen_emits_restricted_ir_predicates_and_preserves_full_candidate() 
 
     let glsl = GpuSearcher::compile_vulkan_glsl(&program);
 
-    assert!(glsl.contains("uint64_t raw_candidate = params.start + gid"));
-    assert!(glsl.contains("uint64_t candidate = raw_candidate & mask"));
-    assert!(glsl.contains("((candidate ^ 170UL) & mask) == 255UL"));
-    assert!(glsl.contains("((candidate + 1UL) & mask) == 4UL"));
-    assert!(glsl.contains("(candidate % 17UL) == 3UL"));
-    assert!(glsl.contains("((candidate * 65537UL + 4919UL) & mask) == 12648430UL"));
+    assert!(glsl.contains("uint raw_candidate = raw_low"));
+    assert!(glsl.contains("uint candidate = raw_candidate & mask"));
+    assert!(glsl.contains("((candidate ^ 170U) & mask) == 255U"));
+    assert!(glsl.contains("((candidate + 1U) & mask) == 4U"));
+    assert!(glsl.contains("(candidate % 17U) == 3U"));
+    assert!(glsl.contains("((candidate * 65537U + 4919U) & mask) == 12648430U"));
     assert!(glsl.contains("rotate_left_width(candidate, 7U, 24U)"));
-    assert!(glsl.contains("((candidate >> 8U) & 255UL) == 84UL"));
+    assert!(glsl.contains("((candidate >> 8U) & 255U) == 84U"));
     assert!(glsl.contains("atomicAdd(matches.out_len, 1U)"));
-    assert!(glsl.contains("matches.out_values[slot] = raw_candidate"));
+    assert!(glsl.contains("matches.out_words[word_index] = raw_low"));
+    assert!(glsl.contains("matches.out_words[word_index + 1U] = raw_high"));
 }
 
 #[test]
