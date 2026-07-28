@@ -38,6 +38,9 @@ name = "atlas-cli"
 version = "0.1.0"
 dependencies = [
  "atlas-report",
+ "atlas-scheduler",
+ "atlas-search-gpu",
+ "atlas-search-ir",
  "atlas-validator",
 ]
 

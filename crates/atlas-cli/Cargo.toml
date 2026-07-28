@@ -8,6 +8,9 @@ rust-version.workspace = true
 
 [dependencies]
 atlas-report = { path = "../atlas-report" }
+atlas-scheduler = { path = "../atlas-scheduler" }
+atlas-search-gpu = { path = "../atlas-search-gpu" }
+atlas-search-ir = { path = "../atlas-search-ir" }
 atlas-validator = { path = "../atlas-validator" }
 
 [[bin]]
