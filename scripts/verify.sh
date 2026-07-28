@@ -60,6 +60,28 @@ print_hardware_benchmark_summary() {
 }
 export -f print_hardware_benchmark_summary
 
+validate_benchmark_equivalence() {
+  local benchmark_json="$1"
+  BENCHMARK_JSON="$benchmark_json" python - <<'PY'
+import json
+import os
+
+document = json.loads(os.environ["BENCHMARK_JSON"])
+sample_count = document.get("sample_count")
+for field in ["native_samples_ns", "simd_samples_ns", "accelerator_samples_ns"]:
+    if len(document.get(field) or []) != sample_count:
+        raise SystemExit(f"expected {field} to contain {sample_count} samples, got {len(document.get(field) or [])}")
+native_matches = document["native"]["matches"]
+simd_matches = document["simd"]["matches"]
+gpu_matches = document["accelerator"]["matches"]
+if native_matches != simd_matches:
+    raise SystemExit("native/SIMD benchmark mismatch")
+if native_matches != gpu_matches:
+    raise SystemExit("native/GPU benchmark mismatch")
+PY
+}
+export -f validate_benchmark_equivalence
+
 gpu_feature_probe_ok() {
   local doctor_json="$1"
   local name="$2"
@@ -136,6 +158,7 @@ run_forced_gpu_benchmark() {
     fi
     output=$("${command[@]}")
     printf "%s\n" "$output" | print_hardware_benchmark_summary
+    validate_benchmark_equivalence "$output"
     EXPECTED_ACTUAL_GPU_SDK="$2" BENCHMARK_JSON="$output" BENCHMARK_SAMPLES="$7" MIN_RETAINED_MATCHES="$8" python - <<'"'"'PY'"'"'
 import json
 import os
@@ -181,6 +204,7 @@ run_placement_selected_gpu_benchmark() {
     set -euo pipefail
     output=$("$1" run -q -p atlas-cli -- benchmark --fixture xor --start 0 --end 1000000 --samples "$2")
     printf "%s\n" "$output" | print_hardware_benchmark_summary
+    validate_benchmark_equivalence "$output"
     BENCHMARK_JSON="$output" BENCHMARK_SAMPLES="$2" python - <<'"'"'PY'"'"'
 import json
 import os
@@ -218,6 +242,7 @@ run_warm_cache_placement_gpu_benchmark() {
     set -euo pipefail
     output=$("$1" run -q -p atlas-cli -- benchmark --fixture xor --start 0 --end 100000 --force-gpu --samples "$2")
     printf "%s\n" "$output" | print_hardware_benchmark_summary
+    validate_benchmark_equivalence "$output"
     BENCHMARK_JSON="$output" BENCHMARK_SAMPLES="$2" python - <<'"'"'PY'"'"'
 import json
 import os
@@ -241,6 +266,7 @@ PY
     set -euo pipefail
     output=$("$1" run -q -p atlas-cli -- benchmark --fixture xor --start 0 --end 100000 --samples "$2")
     printf "%s\n" "$output" | print_hardware_benchmark_summary
+    validate_benchmark_equivalence "$output"
     BENCHMARK_JSON="$output" BENCHMARK_SAMPLES="$2" python - <<'"'"'PY'"'"'
 import json
 import os

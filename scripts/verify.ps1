@@ -72,6 +72,24 @@ function Write-HardwareBenchmarkSummary {
     }
 }
 
+function Assert-BenchmarkEquivalence {
+    param($Benchmark)
+    foreach ($SampleField in @("native_samples_ns", "simd_samples_ns", "accelerator_samples_ns")) {
+        if (@($Benchmark.$SampleField).Count -ne $Benchmark.sample_count) {
+            throw "expected $SampleField to contain $($Benchmark.sample_count) samples, got $(@($Benchmark.$SampleField).Count)"
+        }
+    }
+    $NativeMatches = @($Benchmark.native.matches) | ConvertTo-Json -Compress
+    $SimdMatches = @($Benchmark.simd.matches) | ConvertTo-Json -Compress
+    $GpuMatches = @($Benchmark.accelerator.matches) | ConvertTo-Json -Compress
+    if ($NativeMatches -ne $SimdMatches) {
+        throw "native/SIMD benchmark mismatch"
+    }
+    if ($NativeMatches -ne $GpuMatches) {
+        throw "native/GPU benchmark mismatch"
+    }
+}
+
 function Get-GpuFeatureProbeOk {
     param($Doctor, [string]$Name)
     if ($null -eq $Doctor -or $null -eq $Doctor.gpu_feature_probes) {
@@ -152,6 +170,7 @@ function Invoke-ForcedGpuBenchmark {
         if ($Benchmark.sample_count -ne $BenchmarkSamples) {
             throw "expected sample_count $BenchmarkSamples, got $($Benchmark.sample_count)"
         }
+        Assert-BenchmarkEquivalence $Benchmark
         if (![string]::IsNullOrEmpty($ExpectedActualGpuSdk) -and $Benchmark.accelerator.actual_gpu_sdk -ne $ExpectedActualGpuSdk) {
             throw "expected actual_gpu_sdk $ExpectedActualGpuSdk, got $($Benchmark.accelerator.actual_gpu_sdk)"
         }
@@ -199,6 +218,7 @@ function Invoke-PlacementSelectedGpuBenchmark {
         if ($Benchmark.sample_count -ne $BenchmarkSamples) {
             throw "expected sample_count $BenchmarkSamples, got $($Benchmark.sample_count)"
         }
+        Assert-BenchmarkEquivalence $Benchmark
         if ([string]::IsNullOrEmpty([string]$Benchmark.accelerator.actual_gpu_sdk)) {
             throw "expected placement-selected benchmark to report actual_gpu_sdk"
         }
@@ -233,6 +253,7 @@ function Invoke-WarmCachePlacementGpuBenchmark {
         if ($Benchmark.sample_count -ne $BenchmarkSamples) {
             throw "expected sample_count $BenchmarkSamples, got $($Benchmark.sample_count)"
         }
+        Assert-BenchmarkEquivalence $Benchmark
         if ([string]::IsNullOrEmpty([string]$Benchmark.accelerator.actual_gpu_sdk)) {
             throw "expected warm-cache benchmark to report actual_gpu_sdk"
         }
@@ -263,6 +284,7 @@ function Invoke-WarmCachePlacementGpuBenchmark {
         if ($Benchmark.sample_count -ne $BenchmarkSamples) {
             throw "expected sample_count $BenchmarkSamples, got $($Benchmark.sample_count)"
         }
+        Assert-BenchmarkEquivalence $Benchmark
         if ([string]::IsNullOrEmpty([string]$Benchmark.accelerator.actual_gpu_sdk)) {
             throw "expected warm-cache auto-placement benchmark to report actual_gpu_sdk"
         }

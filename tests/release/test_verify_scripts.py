@@ -405,6 +405,32 @@ class VerifyScriptTests(unittest.TestCase):
                 for token in required_tokens:
                     self.assertIn(token, text)
 
+    def test_hardware_profile_requires_native_simd_gpu_benchmark_equivalence(self):
+        expectations = {
+            "verify.ps1": [
+                "native/SIMD benchmark mismatch",
+                "native/GPU benchmark mismatch",
+                "$Benchmark.simd.matches",
+                "$Benchmark.native.matches",
+                "$Benchmark.accelerator.matches",
+                "simd_samples_ns",
+            ],
+            "verify.sh": [
+                "native/SIMD benchmark mismatch",
+                "native/GPU benchmark mismatch",
+                'document["simd"]["matches"]',
+                'document["native"]["matches"]',
+                'document["accelerator"]["matches"]',
+                "simd_samples_ns",
+            ],
+        }
+
+        for script_name, required_tokens in expectations.items():
+            with self.subTest(script=script_name):
+                text = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+                for token in required_tokens:
+                    self.assertIn(token, text)
+
 
 if __name__ == "__main__":
     unittest.main()
