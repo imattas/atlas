@@ -165,6 +165,45 @@ impl DriverRunner for RecordingPlanRunner {
     }
 }
 
+#[derive(Debug)]
+struct FailingThenSuccessfulSdkRunner {
+    attempted_sdks: RefCell<Vec<&'static str>>,
+}
+
+impl FailingThenSuccessfulSdkRunner {
+    fn new() -> Self {
+        Self {
+            attempted_sdks: RefCell::new(Vec::new()),
+        }
+    }
+}
+
+impl DriverRunner for FailingThenSuccessfulSdkRunner {
+    fn run(&self, plan: &DriverCommandPlan) -> DriverRunOutput {
+        match &plan.sdk {
+            GpuSdk::OpenCl { .. } => {
+                self.attempted_sdks.borrow_mut().push("OpenCL");
+                DriverRunOutput {
+                    exit_code: 1,
+                    reported_matches: Vec::new(),
+                    stdout: String::new(),
+                    stderr: "OpenCL runtime launch failed".to_owned(),
+                }
+            }
+            GpuSdk::Vulkan { .. } => {
+                self.attempted_sdks.borrow_mut().push("Vulkan");
+                DriverRunOutput {
+                    exit_code: 0,
+                    reported_matches: vec![3],
+                    stdout: "device completed".to_owned(),
+                    stderr: String::new(),
+                }
+            }
+            other => panic!("unexpected SDK attempted during failover: {other:?}"),
+        }
+    }
+}
+
 #[test]
 fn gpu_boundary_matches_native_without_hardware() {
     let token = CancellationToken::new();
@@ -2118,6 +2157,40 @@ fn runtime_selects_detected_sdk_and_executes_driver_runner() {
     assert_eq!(report.mode, RuntimeMode::DeviceValidated);
     assert_eq!(report.matches, vec![3]);
     assert!(report.telemetry.rationale.contains("OpenCL"));
+    assert!(report.telemetry.rationale.contains("driver exit 0"));
+}
+
+#[test]
+fn runtime_tries_next_compatible_gpu_sdk_when_selected_driver_fails() {
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    let sdks = [
+        GpuSdk::OpenCl {
+            sdk: "test OpenCL".to_owned(),
+        },
+        GpuSdk::Vulkan {
+            sdk: "test Vulkan".to_owned(),
+        },
+    ];
+    let runner = FailingThenSuccessfulSdkRunner::new();
+
+    let report = AcceleratorRuntime::execute_with_detected_driver_and_policy(
+        &program,
+        SearchDomain::new(0, 1_000_000),
+        &sdks,
+        &token,
+        RuntimePolicy { force_gpu: true },
+        &[],
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    assert_eq!(report.matches, vec![3]);
+    assert_eq!(
+        runner.attempted_sdks.borrow().as_slice(),
+        ["OpenCL", "Vulkan"]
+    );
+    assert!(report.telemetry.rationale.contains("Vulkan"));
     assert!(report.telemetry.rationale.contains("driver exit 0"));
 }
 

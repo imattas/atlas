@@ -166,11 +166,8 @@ impl GpuSdkPlan {
     /// Chooses an SDK from detected candidates.
     #[must_use]
     pub fn choose(detected: &[GpuSdk], prefer_portable: bool) -> Self {
-        let Some(selected) = detected
-            .iter()
-            .min_by_key(|sdk| sdk.priority(prefer_portable))
-            .cloned()
-        else {
+        let candidates = sorted_sdk_candidates(detected, prefer_portable);
+        let Some(selected) = candidates.first().cloned() else {
             return Self {
                 selected: None,
                 rationale: "no GPU SDK detected; hardware acceleration disabled".to_owned(),
@@ -194,11 +191,7 @@ impl GpuSdkPlan {
         prefer_portable: bool,
         program: &SearchProgram,
     ) -> Self {
-        let compatible = detected
-            .iter()
-            .filter(|sdk| sdk_supports_program(sdk, program))
-            .cloned()
-            .collect::<Vec<_>>();
+        let compatible = compatible_sdk_candidates(detected, prefer_portable, program);
         if compatible.is_empty() && !detected.is_empty() {
             return Self {
                 selected: None,
@@ -207,6 +200,26 @@ impl GpuSdkPlan {
         }
         Self::choose(&compatible, prefer_portable)
     }
+}
+
+fn sorted_sdk_candidates(detected: &[GpuSdk], prefer_portable: bool) -> Vec<GpuSdk> {
+    let mut candidates = detected.to_vec();
+    candidates.sort_by_key(|sdk| sdk.priority(prefer_portable));
+    candidates
+}
+
+fn compatible_sdk_candidates(
+    detected: &[GpuSdk],
+    prefer_portable: bool,
+    program: &SearchProgram,
+) -> Vec<GpuSdk> {
+    let mut compatible = detected
+        .iter()
+        .filter(|sdk| sdk_supports_program(sdk, program))
+        .cloned()
+        .collect::<Vec<_>>();
+    compatible.sort_by_key(|sdk| sdk.priority(prefer_portable));
+    compatible
 }
 
 /// SDK-specific driver command plan.
@@ -659,6 +672,7 @@ impl AcceleratorRuntime {
         if cancellation.is_cancelled() {
             return Self::cancelled_report(program, domain, cancellation);
         }
+        let compatible_sdks = compatible_sdk_candidates(detected_sdks, true, program);
         let plan = GpuSdkPlan::choose_for_program(detected_sdks, true, program);
         let Some(selected) = plan.selected else {
             let launch = Self::plan_launch(domain, 256, 1024);
@@ -709,7 +723,17 @@ impl AcceleratorRuntime {
                 };
             }
         }
-        Self::execute_with_driver(program, domain, &selected, cancellation, runner)
+        let mut fallback_report = None;
+        for sdk in compatible_sdks {
+            let report = Self::execute_with_driver(program, domain, &sdk, cancellation, runner);
+            if report.mode == RuntimeMode::DeviceValidated || cancellation.is_cancelled() {
+                return report;
+            }
+            fallback_report = Some(report);
+        }
+        fallback_report.unwrap_or_else(|| {
+            Self::execute_with_driver(program, domain, &selected, cancellation, runner)
+        })
     }
 
     /// Detects SDKs from supplied PATH directories, executes through the best
