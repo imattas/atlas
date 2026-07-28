@@ -119,6 +119,13 @@ impl SearchProgram {
                     target: 0xff,
                 }],
             ),
+            "xor64" => Self::new(
+                64,
+                vec![SearchOp::XorEq {
+                    mask: 1,
+                    target: 0x8000_0000_0000_0001,
+                }],
+            ),
             "checksum" => Self::new(
                 8,
                 vec![SearchOp::ChecksumEq {

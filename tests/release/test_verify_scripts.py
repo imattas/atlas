@@ -130,6 +130,19 @@ class VerifyScriptTests(unittest.TestCase):
                 for sdk in ["opencl", "vulkan", "cuda", "hip"]:
                     self.assertIn(sdk, text)
 
+    def test_hardware_profile_records_64_bit_forced_gpu_benchmarks(self):
+        scripts = [
+            ROOT / "scripts" / "verify.ps1",
+            ROOT / "scripts" / "verify.sh",
+        ]
+
+        for script in scripts:
+            with self.subTest(script=script.name):
+                text = script.read_text(encoding="utf-8")
+                self.assertIn("xor64", text)
+                self.assertIn("0x8000000000000000", text)
+                self.assertIn("0x8000000000000002", text)
+
     def test_hardware_profile_validates_forced_gpu_benchmark_backend_identity(self):
         expectations = {
             "verify.ps1": [

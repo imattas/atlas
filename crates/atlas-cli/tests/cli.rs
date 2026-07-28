@@ -424,6 +424,25 @@ fn benchmark_reports_native_and_forced_gpu_runtime() {
 }
 
 #[test]
+fn benchmark_supports_64_bit_fixture_domains() {
+    let output = run(&[
+        "benchmark".to_owned(),
+        "--fixture".to_owned(),
+        "xor64".to_owned(),
+        "--start".to_owned(),
+        "0x8000000000000000".to_owned(),
+        "--end".to_owned(),
+        "0x8000000000000002".to_owned(),
+    ])
+    .unwrap();
+
+    assert!(output.contains("\"fixture\":\"xor64\""));
+    assert!(output.contains("\"start\":9223372036854775808"));
+    assert!(output.contains("\"end\":9223372036854775810"));
+    assert!(output.contains("\"matches\":[9223372036854775808]"));
+}
+
+#[test]
 fn doctor_reports_detected_gpu_sdk_families() {
     let _env_guard = env_lock();
     let tool_dir =

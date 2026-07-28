@@ -86,9 +86,12 @@ run_forced_gpu_benchmark() {
   local name="$1"
   local sdk="$2"
   local expected_actual_gpu_sdk="$3"
+  local fixture="${4:-xor}"
+  local start="${5:-0x50}"
+  local end="${6:-0x60}"
   run_hardware_step "$name" bash -c '
     set -euo pipefail
-    command=("$3" run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu)
+    command=("$3" run -q -p atlas-cli -- benchmark --fixture "$4" --start "$5" --end "$6" --force-gpu)
     if [[ -n "$1" ]]; then
       command+=(--gpu-sdk "$1")
     fi
@@ -111,7 +114,7 @@ for required in ["driver exit 0", "driver launches", "launch abi"]:
     if required not in telemetry:
         raise SystemExit(f"expected benchmark telemetry to include {required!r}, got {telemetry!r}")
 PY
-  ' _ "$sdk" "$expected_actual_gpu_sdk" "$cargo_cmd"
+  ' _ "$sdk" "$expected_actual_gpu_sdk" "$cargo_cmd" "$fixture" "$start" "$end"
 }
 
 "$cargo_cmd" fmt --all -- --check
@@ -215,8 +218,10 @@ if [[ "$profile" == "hardware" ]]; then
     assert_gpu_feature_probes_have_launch_abi "$hardware_doctor_json"
   fi
   run_forced_gpu_benchmark "Forced-GPU benchmark" "" ""
+  run_forced_gpu_benchmark "Forced-GPU int64 benchmark" "" "" xor64 0x8000000000000000 0x8000000000000002
   if gpu_feature_probe_ok "$hardware_doctor_json" OpenCL; then
     run_forced_gpu_benchmark "Forced-GPU OpenCL benchmark" opencl OpenCL
+    run_forced_gpu_benchmark "Forced-GPU OpenCL int64 benchmark" opencl OpenCL xor64 0x8000000000000000 0x8000000000000002
     run_hardware_step "OpenCL real-device search" "$cargo_cmd" test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
     run_hardware_step "OpenCL int64 real-device search" "$cargo_cmd" test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_64_bit_kernel_runs_on_device -- --ignored --nocapture
   else
@@ -226,6 +231,7 @@ if [[ "$profile" == "hardware" ]]; then
   fi
   if gpu_feature_probe_ok "$hardware_doctor_json" Vulkan; then
     run_forced_gpu_benchmark "Forced-GPU Vulkan benchmark" vulkan Vulkan
+    run_forced_gpu_benchmark "Forced-GPU Vulkan int64 benchmark" vulkan Vulkan xor64 0x8000000000000000 0x8000000000000002
     run_hardware_step "Vulkan real-device search" "$cargo_cmd" test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
     run_hardware_step "Vulkan shaderInt64 real-device search" "$cargo_cmd" test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_64_bit_kernel_runs_on_device -- --ignored --nocapture
   else
@@ -235,6 +241,7 @@ if [[ "$profile" == "hardware" ]]; then
   fi
   if gpu_feature_probe_ok "$hardware_doctor_json" CUDA; then
     run_forced_gpu_benchmark "Forced-GPU CUDA benchmark" cuda CUDA
+    run_forced_gpu_benchmark "Forced-GPU CUDA int64 benchmark" cuda CUDA xor64 0x8000000000000000 0x8000000000000002
     run_hardware_step "CUDA real-device search" "$cargo_cmd" test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
     run_hardware_step "CUDA int64 real-device search" "$cargo_cmd" test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_64_bit_kernel_runs_on_device -- --ignored --nocapture
   else
@@ -244,6 +251,7 @@ if [[ "$profile" == "hardware" ]]; then
   fi
   if gpu_feature_probe_ok "$hardware_doctor_json" HIP; then
     run_forced_gpu_benchmark "Forced-GPU HIP benchmark" hip HIP
+    run_forced_gpu_benchmark "Forced-GPU HIP int64 benchmark" hip HIP xor64 0x8000000000000000 0x8000000000000002
     run_hardware_step "HIP real-device search" "$cargo_cmd" test -p atlas-gpu-hip-adapter --test adapter generated_hip_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
     run_hardware_step "HIP int64 real-device search" "$cargo_cmd" test -p atlas-gpu-hip-adapter --test adapter generated_hip_64_bit_kernel_runs_on_device -- --ignored --nocapture
   else

@@ -90,10 +90,13 @@ function Invoke-ForcedGpuBenchmark {
     param(
         [string]$Name,
         [string]$Sdk,
-        [string]$ExpectedActualGpuSdk
+        [string]$ExpectedActualGpuSdk,
+        [string]$Fixture = "xor",
+        [string]$Start = "0x50",
+        [string]$End = "0x60"
     )
     Invoke-HardwareStep $Name {
-        $BenchmarkArgs = @("run", "-q", "-p", "atlas-cli", "--", "benchmark", "--fixture", "xor", "--start", "0x50", "--end", "0x60", "--force-gpu")
+        $BenchmarkArgs = @("run", "-q", "-p", "atlas-cli", "--", "benchmark", "--fixture", $Fixture, "--start", $Start, "--end", $End, "--force-gpu")
         if (![string]::IsNullOrEmpty($Sdk)) {
             $BenchmarkArgs += @("--gpu-sdk", $Sdk)
         }
@@ -202,8 +205,10 @@ if ($Profile -eq "hardware") {
         $global:LASTEXITCODE = 0
     }
     Invoke-ForcedGpuBenchmark "Forced-GPU benchmark" $null $null
+    Invoke-ForcedGpuBenchmark "Forced-GPU int64 benchmark" $null $null "xor64" "0x8000000000000000" "0x8000000000000002"
     if (Get-GpuFeatureProbeOk $HardwareDoctor "OpenCL") {
         Invoke-ForcedGpuBenchmark "Forced-GPU OpenCL benchmark" "opencl" "OpenCL"
+        Invoke-ForcedGpuBenchmark "Forced-GPU OpenCL int64 benchmark" "opencl" "OpenCL" "xor64" "0x8000000000000000" "0x8000000000000002"
         Invoke-HardwareStep "OpenCL real-device search" {
             cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
         }
@@ -217,6 +222,7 @@ if ($Profile -eq "hardware") {
     }
     if (Get-GpuFeatureProbeOk $HardwareDoctor "Vulkan") {
         Invoke-ForcedGpuBenchmark "Forced-GPU Vulkan benchmark" "vulkan" "Vulkan"
+        Invoke-ForcedGpuBenchmark "Forced-GPU Vulkan int64 benchmark" "vulkan" "Vulkan" "xor64" "0x8000000000000000" "0x8000000000000002"
         Invoke-HardwareStep "Vulkan real-device search" {
             cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
         }
@@ -230,6 +236,7 @@ if ($Profile -eq "hardware") {
     }
     if (Get-GpuFeatureProbeOk $HardwareDoctor "CUDA") {
         Invoke-ForcedGpuBenchmark "Forced-GPU CUDA benchmark" "cuda" "CUDA"
+        Invoke-ForcedGpuBenchmark "Forced-GPU CUDA int64 benchmark" "cuda" "CUDA" "xor64" "0x8000000000000000" "0x8000000000000002"
         Invoke-HardwareStep "CUDA real-device search" {
             cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
         }
@@ -243,6 +250,7 @@ if ($Profile -eq "hardware") {
     }
     if (Get-GpuFeatureProbeOk $HardwareDoctor "HIP") {
         Invoke-ForcedGpuBenchmark "Forced-GPU HIP benchmark" "hip" "HIP"
+        Invoke-ForcedGpuBenchmark "Forced-GPU HIP int64 benchmark" "hip" "HIP" "xor64" "0x8000000000000000" "0x8000000000000002"
         Invoke-HardwareStep "HIP real-device search" {
             cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
         }
