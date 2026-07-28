@@ -504,6 +504,9 @@ impl AcceleratorRuntime {
         cached_kernel_keys: &[KernelCacheKey],
         runner: &dyn DriverRunner,
     ) -> AcceleratorReport {
+        if cancellation.is_cancelled() {
+            return Self::cancelled_report(program, domain, cancellation);
+        }
         let plan = GpuSdkPlan::choose(detected_sdks, true);
         let Some(selected) = plan.selected else {
             let launch = Self::plan_launch(domain, 256, 1024);
@@ -596,6 +599,9 @@ impl AcceleratorRuntime {
         cancellation: &CancellationToken,
         runner: &dyn DriverRunner,
     ) -> AcceleratorReport {
+        if cancellation.is_cancelled() {
+            return Self::cancelled_report(program, domain, cancellation);
+        }
         let launch = Self::plan_launch(domain, 256, 1024);
         let command_plan =
             DriverCommandPlan::for_launch(sdk, program, domain, launch, "target/atlas-gpu");
@@ -626,6 +632,23 @@ impl AcceleratorRuntime {
                     .saturating_sub(matches.len()),
             },
             matches,
+        }
+    }
+
+    fn cancelled_report(
+        program: &SearchProgram,
+        domain: SearchDomain,
+        cancellation: &CancellationToken,
+    ) -> AcceleratorReport {
+        AcceleratorReport {
+            mode: RuntimeMode::CpuFallback,
+            matches: NativeSearcher::search(program, domain, cancellation),
+            telemetry: RuntimeTelemetry {
+                launch: Self::plan_launch(domain, 256, 1024),
+                rationale: "cancelled before GPU driver launch".to_owned(),
+                cpu_validated: true,
+                rejected_device_matches: 0,
+            },
         }
     }
 }

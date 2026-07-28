@@ -783,6 +783,37 @@ fn runtime_selects_detected_sdk_and_executes_driver_runner() {
 }
 
 #[test]
+fn runtime_honors_cancellation_before_launching_gpu_driver() {
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    token.cancel();
+    let sdks = [GpuSdk::OpenCl {
+        sdk: "test OpenCL".to_owned(),
+    }];
+    let runner = CountingDriverRunner {
+        calls: RefCell::new(0),
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![3],
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_detected_driver(
+        &program,
+        SearchDomain::new(0, 1_000_000),
+        &sdks,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert_eq!(*runner.calls.borrow(), 0);
+    assert!(report.telemetry.rationale.contains("cancelled"));
+}
+
+#[test]
 fn runtime_uses_scalar_for_tiny_workloads_without_launching_gpu_driver() {
     let program = SearchProgram::try_from_fixture("add").unwrap();
     let token = CancellationToken::new();
