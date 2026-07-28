@@ -386,6 +386,23 @@ impl DriverRunner for CancellingSuccessfulRunner {
     }
 }
 
+#[derive(Debug)]
+struct CancellingZeroMatchRunner {
+    token: CancellationToken,
+}
+
+impl DriverRunner for CancellingZeroMatchRunner {
+    fn run(&self, _plan: &DriverCommandPlan) -> DriverRunOutput {
+        self.token.cancel();
+        DriverRunOutput {
+            exit_code: 0,
+            reported_matches: Vec::new(),
+            stdout: "match_count=0\n".to_owned(),
+            stderr: String::new(),
+        }
+    }
+}
+
 #[test]
 fn gpu_boundary_matches_native_without_hardware() {
     let token = CancellationToken::new();
@@ -3050,6 +3067,40 @@ fn runtime_accepts_explicit_zero_match_count_without_cpu_fallback() {
     assert_eq!(report.mode, RuntimeMode::DeviceValidated);
     assert!(report.matches.is_empty());
     assert_eq!(report.telemetry.rejected_device_matches, 0);
+}
+
+#[test]
+fn runtime_honors_cancellation_after_explicit_zero_match_gpu_launch() {
+    let program = SearchProgram::new(
+        8,
+        vec![
+            SearchOp::XorEq { mask: 0, target: 0 },
+            SearchOp::XorEq { mask: 0, target: 1 },
+        ],
+    )
+    .unwrap();
+    let token = CancellationToken::new();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "test OpenCL".to_owned(),
+    };
+    let runner = CancellingZeroMatchRunner {
+        token: token.clone(),
+    };
+
+    let report = AcceleratorRuntime::execute_with_driver(
+        &program,
+        SearchDomain::new(0, 2_000),
+        &sdk,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert!(report.matches.is_empty());
+    assert_eq!(
+        report.telemetry.rationale,
+        "cancelled before GPU driver launch"
+    );
 }
 
 #[test]

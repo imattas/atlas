@@ -966,28 +966,16 @@ impl AcceleratorRuntime {
         let explicit_zero_match_count = execution.explicit_zero_match_count_for_every_launch();
         let reported_matches = execution.reported_matches;
         if reported_matches.is_empty() {
-            if explicit_zero_match_count {
-                if let Some(cpu_matches) =
-                    exact_small_domain_matches(program, domain, launch.max_matches, cancellation)
-                {
-                    if !cpu_matches.is_empty() {
-                        return AcceleratorReport {
-                            mode: RuntimeMode::CpuFallback,
-                            matches: cpu_matches,
-                            telemetry: sdk_runtime_telemetry(
-                                launch,
-                                sdk,
-                                format!("{base_rationale}; incomplete device matches"),
-                                0,
-                            ),
-                        };
-                    }
-                }
-                return AcceleratorReport {
-                    mode: RuntimeMode::DeviceValidated,
-                    matches: Vec::new(),
-                    telemetry: sdk_runtime_telemetry(launch, sdk, base_rationale, 0),
-                };
+            if let Some(report) = zero_match_driver_report(
+                program,
+                domain,
+                cancellation,
+                launch,
+                sdk,
+                &base_rationale,
+                explicit_zero_match_count,
+            ) {
+                return report;
             }
             return AcceleratorReport {
                 mode: RuntimeMode::CpuFallback,
@@ -1056,6 +1044,55 @@ impl AcceleratorRuntime {
             },
         }
     }
+}
+
+fn zero_match_driver_report(
+    program: &SearchProgram,
+    domain: SearchDomain,
+    cancellation: &CancellationToken,
+    launch: LaunchConfig,
+    sdk: &GpuSdk,
+    base_rationale: &str,
+    explicit_zero_match_count: bool,
+) -> Option<AcceleratorReport> {
+    if !explicit_zero_match_count {
+        return None;
+    }
+    if cancellation.is_cancelled() {
+        return Some(AcceleratorRuntime::cancelled_report(
+            program,
+            domain,
+            cancellation,
+        ));
+    }
+    if let Some(cpu_matches) =
+        exact_small_domain_matches(program, domain, launch.max_matches, cancellation)
+    {
+        if cancellation.is_cancelled() {
+            return Some(AcceleratorRuntime::cancelled_report(
+                program,
+                domain,
+                cancellation,
+            ));
+        }
+        if !cpu_matches.is_empty() {
+            return Some(AcceleratorReport {
+                mode: RuntimeMode::CpuFallback,
+                matches: cpu_matches,
+                telemetry: sdk_runtime_telemetry(
+                    launch,
+                    sdk,
+                    format!("{base_rationale}; incomplete device matches"),
+                    0,
+                ),
+            });
+        }
+    }
+    Some(AcceleratorReport {
+        mode: RuntimeMode::DeviceValidated,
+        matches: Vec::new(),
+        telemetry: sdk_runtime_telemetry(launch, sdk, base_rationale.to_owned(), 0),
+    })
 }
 
 fn sdk_runtime_telemetry(
