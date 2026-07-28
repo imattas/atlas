@@ -883,45 +883,18 @@ impl AcceleratorRuntime {
         cancellation: &CancellationToken,
         runner: &dyn DriverRunner,
     ) -> AcceleratorReport {
-        if cancellation.is_cancelled() {
-            return Self::cancelled_report(program, domain, cancellation);
-        }
-        let launch = Self::plan_launch(domain, DEFAULT_GPU_LOCAL_SIZE, 1024);
-        let launch_domains = driver_launch_domains(domain);
-        let mut reported_matches = Vec::new();
-        let mut overflowed_device_match_count = None;
-        for launch_domain in launch_domains.iter().copied() {
-            if cancellation.is_cancelled() {
-                return Self::cancelled_report(program, domain, cancellation);
-            }
-            let chunk_launch = Self::plan_launch(launch_domain, DEFAULT_GPU_LOCAL_SIZE, 1024);
-            let command_plan = DriverCommandPlan::for_launch(
-                sdk,
-                program,
-                launch_domain,
-                chunk_launch,
-                "target/atlas-gpu",
-            );
-            let output = runner.run(&command_plan);
-            if output.exit_code != 0 {
-                let base_rationale = driver_failure_rationale(sdk, &output);
-                return AcceleratorReport {
-                    mode: RuntimeMode::CpuFallback,
-                    matches: NativeSearcher::search(program, domain, cancellation),
-                    telemetry: sdk_runtime_telemetry(launch, sdk, base_rationale, 0),
-                };
-            }
-            if let Some(overflow) = device_match_count_overflow(&output, chunk_launch) {
-                overflowed_device_match_count = Some(overflow);
-            }
-            reported_matches.extend(output.reported_matches);
-        }
+        let execution = match collect_driver_output(program, domain, sdk, cancellation, runner) {
+            Ok(execution) => execution,
+            Err(report) => return *report,
+        };
+        let launch = execution.launch;
+        let reported_matches = execution.reported_matches;
         let base_rationale = format!(
             "{}; driver exit 0; driver launches {}",
             sdk.name(),
-            launch_domains.len()
+            execution.launch_count
         );
-        if let Some(overflow) = overflowed_device_match_count {
+        if let Some(overflow) = execution.overflowed_device_match_count {
             return device_match_count_overflow_report(
                 program,
                 domain,
@@ -930,6 +903,17 @@ impl AcceleratorRuntime {
                 sdk,
                 &base_rationale,
                 overflow,
+            );
+        }
+        if let Some(max_matches) = execution.missing_full_buffer_match_count {
+            return missing_match_count_report(
+                program,
+                domain,
+                cancellation,
+                launch,
+                sdk,
+                &base_rationale,
+                max_matches,
             );
         }
         if reported_matches.is_empty() {
@@ -1017,6 +1001,55 @@ fn sdk_runtime_telemetry(
     }
 }
 
+fn collect_driver_output(
+    program: &SearchProgram,
+    domain: SearchDomain,
+    sdk: &GpuSdk,
+    cancellation: &CancellationToken,
+    runner: &dyn DriverRunner,
+) -> Result<DriverExecution, Box<AcceleratorReport>> {
+    if cancellation.is_cancelled() {
+        return Err(Box::new(AcceleratorRuntime::cancelled_report(
+            program,
+            domain,
+            cancellation,
+        )));
+    }
+    let launch = AcceleratorRuntime::plan_launch(domain, DEFAULT_GPU_LOCAL_SIZE, 1024);
+    let launch_domains = driver_launch_domains(domain);
+    let mut execution = DriverExecution::new(launch, launch_domains.len());
+    for launch_domain in launch_domains {
+        if cancellation.is_cancelled() {
+            return Err(Box::new(AcceleratorRuntime::cancelled_report(
+                program,
+                domain,
+                cancellation,
+            )));
+        }
+        let chunk_launch =
+            AcceleratorRuntime::plan_launch(launch_domain, DEFAULT_GPU_LOCAL_SIZE, 1024);
+        let output = runner.run(&DriverCommandPlan::for_launch(
+            sdk,
+            program,
+            launch_domain,
+            chunk_launch,
+            "target/atlas-gpu",
+        ));
+        if output.exit_code != 0 {
+            return Err(Box::new(driver_failure_report(
+                program,
+                domain,
+                cancellation,
+                launch,
+                sdk,
+                &output,
+            )));
+        }
+        execution.record_output(output, chunk_launch);
+    }
+    Ok(execution)
+}
+
 fn device_match_count_overflow(
     output: &DriverRunOutput,
     launch: LaunchConfig,
@@ -1026,6 +1059,29 @@ fn device_match_count_overflow(
         device_match_count,
         max_matches: launch.max_matches,
     })
+}
+
+fn output_omits_match_count_for_full_buffer(
+    output: &DriverRunOutput,
+    launch: LaunchConfig,
+) -> bool {
+    output.reported_matches.len() >= launch.max_matches
+        && DriverRunOutput::parse_reported_match_count(&output.stdout).is_none()
+}
+
+fn driver_failure_report(
+    program: &SearchProgram,
+    domain: SearchDomain,
+    cancellation: &CancellationToken,
+    launch: LaunchConfig,
+    sdk: &GpuSdk,
+    output: &DriverRunOutput,
+) -> AcceleratorReport {
+    AcceleratorReport {
+        mode: RuntimeMode::CpuFallback,
+        matches: NativeSearcher::search(program, domain, cancellation),
+        telemetry: sdk_runtime_telemetry(launch, sdk, driver_failure_rationale(sdk, output), 0),
+    }
 }
 
 fn device_match_count_overflow_report(
@@ -1052,6 +1108,27 @@ fn device_match_count_overflow_report(
     }
 }
 
+fn missing_match_count_report(
+    program: &SearchProgram,
+    domain: SearchDomain,
+    cancellation: &CancellationToken,
+    launch: LaunchConfig,
+    sdk: &GpuSdk,
+    base_rationale: &str,
+    max_matches: usize,
+) -> AcceleratorReport {
+    AcceleratorReport {
+        mode: RuntimeMode::CpuFallback,
+        matches: NativeSearcher::search(program, domain, cancellation),
+        telemetry: sdk_runtime_telemetry(
+            launch,
+            sdk,
+            format!("{base_rationale}; full device buffer omitted match_count for {max_matches} retained matches"),
+            0,
+        ),
+    }
+}
+
 fn compile_command_for(
     compiler: &str,
     options: &str,
@@ -1070,6 +1147,37 @@ fn compile_command_for(
 struct DeviceValidation {
     matches: Vec<u64>,
     rejected: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DriverExecution {
+    launch: LaunchConfig,
+    launch_count: usize,
+    reported_matches: Vec<u64>,
+    overflowed_device_match_count: Option<DeviceMatchCountOverflow>,
+    missing_full_buffer_match_count: Option<usize>,
+}
+
+impl DriverExecution {
+    fn new(launch: LaunchConfig, launch_count: usize) -> Self {
+        Self {
+            launch,
+            launch_count,
+            reported_matches: Vec::new(),
+            overflowed_device_match_count: None,
+            missing_full_buffer_match_count: None,
+        }
+    }
+
+    fn record_output(&mut self, output: DriverRunOutput, launch: LaunchConfig) {
+        if let Some(overflow) = device_match_count_overflow(&output, launch) {
+            self.overflowed_device_match_count = Some(overflow);
+        }
+        if output_omits_match_count_for_full_buffer(&output, launch) {
+            self.missing_full_buffer_match_count = Some(launch.max_matches);
+        }
+        self.reported_matches.extend(output.reported_matches);
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

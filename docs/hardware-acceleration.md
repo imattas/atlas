@@ -30,18 +30,20 @@ Runtime behavior:
   (`atlas-gpu-opencl-run`, `atlas-gpu-vulkan-run`, `atlas-gpu-cuda-run`,
   `atlas-gpu-hip-run`);
 - the OpenCL adapter uses dynamic OpenCL loading, build-checks generated source,
-  launches the generated `atlas_search` kernel, and prints `match=<candidate>`
-  lines for CPU validation by the runtime;
+  launches the generated `atlas_search` kernel, and prints `match_count=<n>`
+  plus `match=<candidate>` lines for CPU validation by the runtime;
 - the CUDA adapter uses NVRTC for in-process CUDA-source-to-PTX compilation,
   falls back to SDK-discovered `nvcc -ptx` when NVRTC is unavailable, uses
   dynamic CUDA Driver API loading, module validation, kernel launch, and
-  `match=<candidate>` output for CPU validation by the runtime;
+  `match_count=<n>` plus `match=<candidate>` output for CPU validation by the
+  runtime;
 - the HIP adapter uses dynamic HIP runtime loading, validates generated code
-  objects, launches the `atlas_search` kernel, and prints `match=<candidate>`
-  lines for CPU validation by the runtime;
+  objects, launches the `atlas_search` kernel, and prints `match_count=<n>`
+  plus `match=<candidate>` lines for CPU validation by the runtime;
 - the Vulkan adapter uses shaderc for in-process GLSL-to-SPIR-V compilation,
   dynamic Vulkan loading, shader module validation, compute dispatch, and
-  `match=<candidate>` output for CPU validation by the runtime;
+  `match_count=<n>` plus `match=<candidate>` output for CPU validation by the
+  runtime;
 - production driver execution is isolated behind a runner boundary so host
   adapters can compile/launch kernels without changing search semantics;
 - process-backed execution writes generated per-program kernel source into the
@@ -60,6 +62,9 @@ Runtime behavior:
 - host runtime execution treats existing cache-keyed kernel artifacts as warmed
   kernels for GPU placement decisions;
 - every GPU-reported match is revalidated against CPU IR semantics;
+- full retained match buffers are promoted only when the adapter also reports
+  total device match count, preventing truncated GPU results from being reported
+  as complete;
 - runtime telemetry records whether the result came from CPU fallback or from a
   CPU-validated device buffer.
 

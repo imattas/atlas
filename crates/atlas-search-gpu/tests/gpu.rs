@@ -2246,7 +2246,7 @@ fn runtime_telemetry_reports_multi_launch_driver_execution() {
 }
 
 #[test]
-fn runtime_enforces_launch_output_capacity_after_cpu_validation() {
+fn runtime_rejects_driver_output_that_exceeds_launch_capacity() {
     let program = SearchProgram::new(
         16,
         vec![SearchOp::ChecksumEq {
@@ -2276,11 +2276,15 @@ fn runtime_enforces_launch_output_capacity_after_cpu_validation() {
         &runner,
     );
 
-    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
-    assert_eq!(report.matches.len(), report.telemetry.launch.max_matches);
-    assert_eq!(report.matches[0], 0);
-    assert_eq!(report.matches[1023], 1023);
-    assert_eq!(report.telemetry.rejected_device_matches, 476);
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert_eq!(
+        report.matches,
+        NativeSearcher::search(&program, SearchDomain::new(0, 2_000), &token)
+    );
+    assert!(report
+        .telemetry
+        .rationale
+        .contains("full device buffer omitted match_count"));
 }
 
 #[test]
@@ -3041,6 +3045,48 @@ fn runtime_falls_back_to_canonical_cpu_results_when_device_match_count_overflows
         .telemetry
         .rationale
         .contains("device match count 1500 exceeds buffer 1024"));
+}
+
+#[test]
+fn runtime_falls_back_when_full_device_buffer_omits_match_count() {
+    let program = SearchProgram::new(
+        16,
+        vec![SearchOp::ChecksumEq {
+            modulus: 1,
+            target: 0,
+        }],
+    )
+    .unwrap();
+    let token = CancellationToken::new();
+    let sdk = GpuSdk::Cuda {
+        sdk: "test CUDA".to_owned(),
+    };
+    let runner = FixtureDriverRunner {
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: (0..1024).collect(),
+            stdout: String::new(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_driver(
+        &program,
+        SearchDomain::new(0, 1_500),
+        &sdk,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert_eq!(
+        report.matches,
+        NativeSearcher::search(&program, SearchDomain::new(0, 1_500), &token)
+    );
+    assert!(report
+        .telemetry
+        .rationale
+        .contains("full device buffer omitted match_count"));
 }
 
 #[test]
