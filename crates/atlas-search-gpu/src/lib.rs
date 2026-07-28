@@ -623,16 +623,16 @@ impl GpuSearcher {
 __kernel void atlas_search(ulong start, ulong end, __global ulong* out, __global uint* out_len, uint max_matches) {{
   /* width={} ops={} */
   ulong gid = (ulong)get_global_id(0);
-  ulong candidate = start + gid;
+  ulong raw_candidate = start + gid;
   ulong mask = {mask}UL;
-  if (candidate >= end) {{
+  if (raw_candidate >= end) {{
     return;
   }}
-  candidate = candidate & {mask}UL;
+  ulong candidate = raw_candidate & mask;
   if ({predicates}) {{
     uint slot = atomic_inc(out_len);
     if (slot < max_matches) {{
-      out[slot] = candidate;
+      out[slot] = raw_candidate;
     }}
   }}
 }}",

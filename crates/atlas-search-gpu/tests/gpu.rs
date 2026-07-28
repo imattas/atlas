@@ -120,7 +120,7 @@ fn opencl_codegen_emits_restricted_ir_predicates() {
     let opencl = GpuSearcher::compile_opencl(&program);
 
     assert!(opencl.contains("candidate = start + gid"));
-    assert!(opencl.contains("candidate = candidate & 16777215UL"));
+    assert!(opencl.contains("ulong candidate = raw_candidate & mask"));
     assert!(opencl.contains("((candidate ^ 170UL) & mask) == 255UL"));
     assert!(opencl.contains("((candidate + 1UL) & mask) == 4UL"));
     assert!(opencl.contains("(candidate % 17UL) == 3UL"));
@@ -128,6 +128,17 @@ fn opencl_codegen_emits_restricted_ir_predicates() {
     assert!(opencl.contains("rotate_left_width(candidate, 7U, 24U)"));
     assert!(opencl.contains("((candidate >> 8U) & 255UL) == 84UL"));
     assert!(opencl.contains("atomic_inc(out_len)"));
+}
+
+#[test]
+fn opencl_codegen_preserves_full_candidate_when_outputting_matches() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+
+    let opencl = GpuSearcher::compile_opencl(&program);
+
+    assert!(opencl.contains("ulong raw_candidate = start + gid"));
+    assert!(opencl.contains("ulong candidate = raw_candidate & mask"));
+    assert!(opencl.contains("out[slot] = raw_candidate"));
 }
 
 #[test]

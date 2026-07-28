@@ -9,6 +9,10 @@ rust-version.workspace = true
 [dependencies]
 opencl3 = "0.12.3"
 
+[dev-dependencies]
+atlas-search-gpu = { path = "../atlas-search-gpu" }
+atlas-search-ir = { path = "../atlas-search-ir" }
+
 [[bin]]
 name = "atlas-gpu-opencl-run"
 path = "src/main.rs"

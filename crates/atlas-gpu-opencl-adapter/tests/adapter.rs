@@ -1,7 +1,10 @@
 //! OpenCL adapter CLI tests.
 
 use atlas_gpu_opencl_adapter::{run_cli, AdapterCommand, LaunchArgs, Launcher};
+use atlas_search_gpu::GpuSearcher;
+use atlas_search_ir::SearchProgram;
 use std::cell::RefCell;
+use std::fs;
 
 #[derive(Debug, Clone, Copy)]
 struct FixtureLauncher;
@@ -148,4 +151,30 @@ fn cli_emits_match_lines_from_launcher() {
     .unwrap();
 
     assert_eq!(output, "match=11\nmatch=13\nmatch=17\n");
+}
+
+#[test]
+#[ignore = "requires a local OpenCL runtime and device"]
+fn generated_opencl_kernel_runs_on_device_and_preserves_full_candidates() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let source = GpuSearcher::compile_opencl(&program);
+    let output_dir = std::env::temp_dir().join(format!("atlas-opencl-e2e-{}", std::process::id()));
+    fs::create_dir_all(&output_dir).unwrap();
+    let source_path = output_dir.join("atlas_search.cl");
+    fs::write(&source_path, source).unwrap();
+    let args = LaunchArgs {
+        artifact: source_path.to_string_lossy().into_owned(),
+        start: 0x50,
+        end: 0x160,
+        max_matches: 8,
+        global_size: 512,
+        local_size: 1,
+    };
+
+    let matches = atlas_gpu_opencl_adapter::OpenClLauncher
+        .launch(&args)
+        .unwrap();
+
+    assert_eq!(matches, vec![0x55, 0x155]);
+    let _ = fs::remove_dir_all(output_dir);
 }

@@ -226,6 +226,7 @@ fn launch_opencl(args: &LaunchArgs) -> Result<Vec<u64>, String> {
             .map_err(|error| error.to_string())?;
     }
     matches.truncate(retained);
+    matches.sort_unstable();
     Ok(matches)
 }
 

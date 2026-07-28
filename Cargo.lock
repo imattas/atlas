@@ -55,6 +55,8 @@ version = "0.1.0"
 name = "atlas-gpu-opencl-adapter"
 version = "0.1.0"
 dependencies = [
+ "atlas-search-gpu",
+ "atlas-search-ir",
  "opencl3",
 ]
 
