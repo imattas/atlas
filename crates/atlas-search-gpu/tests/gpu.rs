@@ -1,7 +1,7 @@
 //! GPU boundary and differential tests.
 
 use atlas_scheduler::CancellationToken;
-use atlas_search_gpu::{GpuSearcher, KernelCacheKey};
+use atlas_search_gpu::{GpuSdk, GpuSdkPlan, GpuSearcher, KernelCacheKey};
 use atlas_search_ir::{SearchDomain, SearchProgram};
 use atlas_search_native::NativeSearcher;
 
@@ -42,4 +42,38 @@ fn cpu_validation_rejects_injected_false_gpu_match() {
     let validated = GpuSearcher::cpu_validate_matches(&program, &[3, 4]);
 
     assert_eq!(validated, vec![3]);
+}
+
+#[test]
+fn plans_portable_gpu_sdks_before_vendor_specific_cuda_when_requested() {
+    let plan = GpuSdkPlan::choose(
+        &[
+            GpuSdk::Vulkan {
+                sdk: "LunarG Vulkan SDK".to_owned(),
+            },
+            GpuSdk::OpenCl {
+                sdk: "Khronos OpenCL SDK".to_owned(),
+            },
+            GpuSdk::Cuda {
+                sdk: "NVIDIA CUDA Toolkit".to_owned(),
+            },
+        ],
+        true,
+    );
+
+    assert_eq!(
+        plan.selected,
+        Some(GpuSdk::OpenCl {
+            sdk: "Khronos OpenCL SDK".to_owned(),
+        })
+    );
+    assert!(plan.rationale.contains("portable"));
+}
+
+#[test]
+fn reports_missing_gpu_sdk_without_claiming_hardware_acceleration() {
+    let plan = GpuSdkPlan::choose(&[], true);
+
+    assert_eq!(plan.selected, None);
+    assert!(plan.rationale.contains("no GPU SDK"));
 }

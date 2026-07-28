@@ -10,6 +10,8 @@ class BackendHealth:
     name: str
     version: str
     capabilities: tuple[str, ...]
+    available: bool = True
+    diagnostic: str = ""
 
 
 class Backend:

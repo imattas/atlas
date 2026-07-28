@@ -5,8 +5,12 @@ installation requires:
 
 1. Rust toolchain compatible with workspace `rust-version`.
 2. Python 3 with stdlib `unittest` and `tomllib`.
-3. Optional CUDA tooling for compiling external GPU kernels; the checked tests
-   validate GPU code generation without requiring hardware.
+3. Optional Z3 Python bindings for full SMT solving through the Z3 adapter.
+4. Optional SageMath CLI for broad algebra, number theory, and polynomial-ring
+   workflows through the Sage adapter.
+5. Optional GPU SDK/runtime. Prefer OpenCL or Vulkan for portable GPU compute;
+   use CUDA/HIP for vendor-specific deployments. The checked tests validate GPU
+   code generation and SDK planning without requiring hardware.
 
 Recommended validation:
 

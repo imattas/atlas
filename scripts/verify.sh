@@ -64,10 +64,13 @@ if [[ "$profile" == "full" ]]; then
     release/manifest.toml \
     release/write-manifest.sh \
     release/write_manifest.py \
+    backends/z3/atlas_z3_backend.py \
+    backends/sage/atlas_sage_backend.py \
     docs/installation.md \
     docs/security.md \
     docs/plugins.md \
     docs/architecture.md \
+    docs/hardware-acceleration.md \
     tests/release/test_manifest.py
   do
     if [[ ! -e "$required_path" ]]; then

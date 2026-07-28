@@ -44,6 +44,21 @@ name = "advanced-automation"
 status = "supported"
 evidence = "tests/e2e/track4/manifest.toml"
 
+[[capabilities]]
+name = "z3-theory-backend"
+status = "supported-when-installed"
+evidence = "backends/z3/atlas_z3_backend.py"
+
+[[capabilities]]
+name = "sage-math-backend"
+status = "supported-when-installed"
+evidence = "backends/sage/atlas_sage_backend.py"
+
+[[capabilities]]
+name = "portable-gpu-sdk-selection"
+status = "supported"
+evidence = "crates/atlas-search-gpu/src/lib.rs"
+
 [[artifacts]]
 name = "protocol-schema"
 path = "crates/atlas-protocol/src/lib.rs"
@@ -82,6 +97,21 @@ digest = "tracked-by-git"
 [[artifacts]]
 name = "notebook-replay"
 path = "tests/fixtures/events/track1_stream.toml"
+digest = "tracked-by-git"
+
+[[artifacts]]
+name = "z3-backend-adapter"
+path = "backends/z3/atlas_z3_backend.py"
+digest = "tracked-by-git"
+
+[[artifacts]]
+name = "sage-backend-adapter"
+path = "backends/sage/atlas_sage_backend.py"
+digest = "tracked-by-git"
+
+[[artifacts]]
+name = "hardware-acceleration-guide"
+path = "docs/hardware-acceleration.md"
 digest = "tracked-by-git"
 
 [[benchmarks]]

@@ -9,6 +9,8 @@ validated outcomes.
   validation.
 - Distributed workers are isolated, authenticated, replay-protected, and
   scheduled with least-capability matching.
+- Z3 and Sage execute behind adapter boundaries. Missing optional math backends
+  report precise diagnostics rather than silently weakening a requested strategy.
 - Reports and notebook views apply explicit redaction before display or export.
 - Binary/source intake rejects malformed, oversized, and unsafe artifacts before
   lowering.
