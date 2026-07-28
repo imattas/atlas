@@ -2047,6 +2047,84 @@ fn process_driver_runner_recompiles_invalid_vulkan_cached_artifact() {
 }
 
 #[test]
+fn process_driver_runner_recompiles_invalid_opencl_cached_artifact() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "OpenCL runtime".to_owned(),
+    };
+    let output_dir = std::env::temp_dir().join(format!(
+        "atlas-gpu-invalid-opencl-cache-{}",
+        std::process::id()
+    ));
+    let output_dir_text = output_dir.to_string_lossy().into_owned();
+    let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
+    fs::create_dir_all(Path::new(&plan.artifact_file).parent().unwrap()).unwrap();
+    fs::write(&plan.artifact_file, b"not opencl source").unwrap();
+    let runner = RecordingCommandRunner::new();
+
+    let output = ProcessDriverRunner::run_with_command_runner(&plan, &runner);
+
+    assert_eq!(output.exit_code, 0);
+    assert_eq!(
+        runner.commands.borrow().as_slice(),
+        &[plan.compile_command, plan.launch_command]
+    );
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+fn process_driver_runner_recompiles_invalid_cuda_cached_artifact() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let sdk = GpuSdk::Cuda {
+        sdk: "CUDA runtime".to_owned(),
+    };
+    let output_dir = std::env::temp_dir().join(format!(
+        "atlas-gpu-invalid-cuda-cache-{}",
+        std::process::id()
+    ));
+    let output_dir_text = output_dir.to_string_lossy().into_owned();
+    let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
+    fs::create_dir_all(Path::new(&plan.artifact_file).parent().unwrap()).unwrap();
+    fs::write(&plan.artifact_file, b"not ptx").unwrap();
+    let runner = RecordingCommandRunner::new();
+
+    let output = ProcessDriverRunner::run_with_command_runner(&plan, &runner);
+
+    assert_eq!(output.exit_code, 0);
+    assert_eq!(
+        runner.commands.borrow().as_slice(),
+        &[plan.compile_command, plan.launch_command]
+    );
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+fn process_driver_runner_recompiles_invalid_hip_cached_artifact() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let sdk = GpuSdk::Hip {
+        sdk: "HIP runtime".to_owned(),
+    };
+    let output_dir = std::env::temp_dir().join(format!(
+        "atlas-gpu-invalid-hip-cache-{}",
+        std::process::id()
+    ));
+    let output_dir_text = output_dir.to_string_lossy().into_owned();
+    let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
+    fs::create_dir_all(Path::new(&plan.artifact_file).parent().unwrap()).unwrap();
+    fs::write(&plan.artifact_file, b"not hsaco").unwrap();
+    let runner = RecordingCommandRunner::new();
+
+    let output = ProcessDriverRunner::run_with_command_runner(&plan, &runner);
+
+    assert_eq!(output.exit_code, 0);
+    assert_eq!(
+        runner.commands.borrow().as_slice(),
+        &[plan.compile_command, plan.launch_command]
+    );
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
 fn process_driver_runner_resolves_adjacent_adapter_command_when_not_on_path() {
     let adapter_name = "atlas-gpu-fallback-test-run";
     let adapter_path = write_adjacent_test_adapter(adapter_name);
