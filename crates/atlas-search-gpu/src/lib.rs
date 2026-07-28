@@ -944,7 +944,9 @@ impl AcceleratorRuntime {
             Ok(execution) => execution,
             Err(report) => return *report,
         };
-        let launch = execution.launch;
+        let launch = execution
+            .launch
+            .unwrap_or_else(|| Self::plan_launch(domain, DEFAULT_GPU_LOCAL_SIZE, 1024));
         let base_rationale = format!(
             "{}; driver exit 0; driver launches {}; launch abi {}",
             sdk.name(),
@@ -1069,9 +1071,8 @@ fn collect_driver_output(
             cancellation,
         )));
     }
-    let launch = AcceleratorRuntime::plan_launch(domain, DEFAULT_GPU_LOCAL_SIZE, 1024);
     let launch_domains = driver_launch_domains(domain);
-    let mut execution = DriverExecution::new(launch, launch_domains.len());
+    let mut execution = DriverExecution::new(launch_domains.len());
     for launch_domain in launch_domains {
         if cancellation.is_cancelled() {
             return Err(Box::new(AcceleratorRuntime::cancelled_report(
@@ -1094,7 +1095,7 @@ fn collect_driver_output(
                 program,
                 domain,
                 cancellation,
-                launch,
+                chunk_launch,
                 sdk,
                 &output,
             )));
@@ -1192,12 +1193,13 @@ fn driver_protocol_fallback_report(
     execution: &DriverExecution,
     base_rationale: &str,
 ) -> Option<AcceleratorReport> {
+    let launch = execution.launch?;
     if let Some(overflow) = execution.overflowed_device_match_count {
         return Some(device_match_count_overflow_report(
             program,
             domain,
             cancellation,
-            execution.launch,
+            launch,
             sdk,
             base_rationale,
             overflow,
@@ -1208,7 +1210,7 @@ fn driver_protocol_fallback_report(
             program,
             domain,
             cancellation,
-            execution.launch,
+            launch,
             sdk,
             base_rationale,
             max_matches,
@@ -1219,7 +1221,7 @@ fn driver_protocol_fallback_report(
             program,
             domain,
             cancellation,
-            execution.launch,
+            launch,
             sdk,
             base_rationale,
             inconsistency,
@@ -1230,7 +1232,7 @@ fn driver_protocol_fallback_report(
             program,
             domain,
             cancellation,
-            execution.launch,
+            launch,
             sdk,
             base_rationale,
             malformed,
@@ -1241,7 +1243,7 @@ fn driver_protocol_fallback_report(
             program,
             domain,
             cancellation,
-            execution.launch,
+            launch,
             sdk,
             base_rationale,
             malformed,
@@ -1252,7 +1254,7 @@ fn driver_protocol_fallback_report(
             program,
             domain,
             cancellation,
-            execution.launch,
+            launch,
             sdk,
             base_rationale,
             conflict,
@@ -1263,7 +1265,7 @@ fn driver_protocol_fallback_report(
             program,
             domain,
             cancellation,
-            execution.launch,
+            launch,
             sdk,
             base_rationale,
             overflow,
@@ -1458,7 +1460,7 @@ struct DeviceValidation {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DriverExecution {
-    launch: LaunchConfig,
+    launch: Option<LaunchConfig>,
     launch_count: usize,
     reported_matches: Vec<u64>,
     overflowed_device_match_count: Option<DeviceMatchCountOverflow>,
@@ -1472,9 +1474,9 @@ struct DriverExecution {
 }
 
 impl DriverExecution {
-    fn new(launch: LaunchConfig, launch_count: usize) -> Self {
+    fn new(launch_count: usize) -> Self {
         Self {
-            launch,
+            launch: None,
             launch_count,
             reported_matches: Vec::new(),
             overflowed_device_match_count: None,
@@ -1489,6 +1491,7 @@ impl DriverExecution {
     }
 
     fn record_output(&mut self, output: DriverRunOutput, launch: LaunchConfig) {
+        self.launch = Some(max_observed_launch(self.launch, launch));
         if let Some(overflow) = device_match_count_overflow(&output, launch) {
             self.overflowed_device_match_count = Some(overflow);
         }
@@ -1513,14 +1516,25 @@ impl DriverExecution {
         self.aggregate_device_match_count = self
             .aggregate_device_match_count
             .saturating_add(device_match_count);
-        if self.aggregate_device_match_count > self.launch.max_matches {
+        if self.aggregate_device_match_count > launch.max_matches {
             self.overflowed_aggregate_match_count = Some(AggregateMatchCountOverflow {
                 aggregate_device_match_count: self.aggregate_device_match_count,
-                max_matches: self.launch.max_matches,
+                max_matches: launch.max_matches,
             });
         }
         self.reported_matches.extend(output.reported_matches);
     }
+}
+
+fn max_observed_launch(current: Option<LaunchConfig>, candidate: LaunchConfig) -> LaunchConfig {
+    current.map_or(candidate, |current| LaunchConfig {
+        global_size: current.global_size.max(candidate.global_size),
+        local_size: current.local_size.max(candidate.local_size),
+        max_matches: current.max_matches.max(candidate.max_matches),
+        output_buffer_bytes: current
+            .output_buffer_bytes
+            .max(candidate.output_buffer_bytes),
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

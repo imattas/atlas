@@ -2832,6 +2832,11 @@ fn runtime_splits_driver_launches_before_rounded_global_size_exceeds_adapter_uin
             .all(|global_size| *global_size <= adapter_global_size_limit),
         "expected all global sizes to fit adapter uint, got {global_sizes:?}"
     );
+    assert!(
+        report.telemetry.launch.global_size <= adapter_global_size_limit,
+        "telemetry launch should report a single dispatch shape, got {:?}",
+        report.telemetry.launch
+    );
 }
 
 #[test]
