@@ -232,6 +232,11 @@ fn benchmark_reports_native_and_forced_gpu_runtime() {
     assert!(output.contains("\"accelerator\""));
     assert!(output.contains("\"mode\":\"DeviceValidated\""));
     assert!(output.contains("\"matches\":[85]"));
+    assert!(output.contains("\"launch\""));
+    assert!(output.contains("\"global_size\":256"));
+    assert!(output.contains("\"local_size\":256"));
+    assert!(output.contains("\"max_matches\":1024"));
+    assert!(output.contains("\"output_buffer_bytes\":8192"));
     assert!(!output.contains("\"kind\":\"benchmark\"}\n"));
 }
 

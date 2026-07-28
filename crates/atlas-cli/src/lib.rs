@@ -104,7 +104,7 @@ fn benchmark(args: &[String]) -> Result<String, String> {
     );
     let accelerator_elapsed_ns = accelerator_start.elapsed().as_nanos();
     Ok(format!(
-        "{{\"schema_major\":1,\"kind\":\"benchmark\",\"fixture\":\"{}\",\"domain\":{{\"start\":{},\"end\":{}}},\"native\":{{\"elapsed_ns\":{},\"matches\":{}}},\"accelerator\":{{\"elapsed_ns\":{},\"mode\":\"{}\",\"matches\":{},\"telemetry\":\"{}\"}}}}\n",
+        "{{\"schema_major\":1,\"kind\":\"benchmark\",\"fixture\":\"{}\",\"domain\":{{\"start\":{},\"end\":{}}},\"native\":{{\"elapsed_ns\":{},\"matches\":{}}},\"accelerator\":{{\"elapsed_ns\":{},\"mode\":\"{}\",\"matches\":{},\"launch\":{{\"global_size\":{},\"local_size\":{},\"max_matches\":{},\"output_buffer_bytes\":{}}},\"telemetry\":\"{}\"}}}}\n",
         json_escape(&request.fixture),
         request.domain.start,
         request.domain.end,
@@ -113,6 +113,10 @@ fn benchmark(args: &[String]) -> Result<String, String> {
         accelerator_elapsed_ns,
         mode_name(accelerator.mode),
         format_matches(&accelerator.matches),
+        accelerator.telemetry.launch.global_size,
+        accelerator.telemetry.launch.local_size,
+        accelerator.telemetry.launch.max_matches,
+        accelerator.telemetry.launch.output_buffer_bytes,
         json_escape(&accelerator.telemetry.rationale)
     ))
 }
