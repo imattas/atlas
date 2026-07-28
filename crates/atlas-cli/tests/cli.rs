@@ -7,7 +7,10 @@ use std::sync::{Mutex, OnceLock};
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+    ENV_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn write_feature_adapter(dir: &Path, command: &str, line: &str) -> std::io::Result<()> {
@@ -137,6 +140,8 @@ fn solve_force_gpu_launches_adapter_for_tiny_domain() {
         "--end".to_owned(),
         "0x60".to_owned(),
         "--force-gpu".to_owned(),
+        "--gpu-sdk".to_owned(),
+        "opencl".to_owned(),
     ])
     .unwrap();
 
@@ -274,6 +279,8 @@ fn benchmark_reports_native_and_forced_gpu_runtime() {
         "--end".to_owned(),
         "0x60".to_owned(),
         "--force-gpu".to_owned(),
+        "--gpu-sdk".to_owned(),
+        "opencl".to_owned(),
     ])
     .unwrap();
 
@@ -282,6 +289,7 @@ fn benchmark_reports_native_and_forced_gpu_runtime() {
     assert!(output.contains("\"kind\":\"benchmark\""));
     assert!(output.contains("\"native\""));
     assert!(output.contains("\"accelerator\""));
+    assert!(output.contains("\"requested_gpu_sdk\":\"opencl\""));
     assert!(output.contains("\"speedup_ratio\""));
     assert!(output.contains("\"mode\":\"DeviceValidated\""));
     assert!(output.contains("\"matches\":[85]"));
@@ -440,20 +448,23 @@ fn doctor_reports_adjacent_gpu_adapter_binary_availability() {
     } else {
         "atlas-gpu-cuda-run"
     });
+    let adapter_fixture = if cfg!(windows) {
+        "@echo off\r\nexit /b 0\r\n"
+    } else {
+        "#!/bin/sh\nexit 0\n"
+    };
+    if adapter_path.exists() {
+        let existing = fs::read_to_string(&adapter_path).unwrap_or_default();
+        if existing == adapter_fixture {
+            fs::remove_file(&adapter_path).unwrap();
+        }
+    }
     assert!(
         !adapter_path.exists(),
         "test would overwrite existing adapter: {}",
         adapter_path.display()
     );
-    fs::write(
-        &adapter_path,
-        if cfg!(windows) {
-            "@echo off\r\nexit /b 0\r\n"
-        } else {
-            "#!/bin/sh\nexit 0\n"
-        },
-    )
-    .unwrap();
+    fs::write(&adapter_path, adapter_fixture).unwrap();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

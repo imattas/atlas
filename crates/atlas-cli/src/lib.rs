@@ -153,14 +153,16 @@ fn benchmark(args: &[String]) -> Result<String, String> {
     );
     let accelerator_elapsed_ns = accelerator_start.elapsed().as_nanos();
     let speedup_ratio = format_speedup_ratio(native_elapsed_ns, accelerator_elapsed_ns);
+    let requested_gpu_sdk = requested_gpu_sdk_json(request.gpu_sdk);
     Ok(format!(
-        "{{\"schema_major\":1,\"kind\":\"benchmark\",\"fixture\":\"{}\",\"domain\":{{\"start\":{},\"end\":{}}},\"native\":{{\"elapsed_ns\":{},\"matches\":{}}},\"accelerator\":{{\"elapsed_ns\":{},\"speedup_ratio\":{},\"mode\":\"{}\",\"matches\":{},\"launch\":{{\"global_size\":{},\"local_size\":{},\"max_matches\":{},\"output_buffer_bytes\":{}}},\"telemetry\":\"{}\"}}}}\n",
+        "{{\"schema_major\":1,\"kind\":\"benchmark\",\"fixture\":\"{}\",\"domain\":{{\"start\":{},\"end\":{}}},\"native\":{{\"elapsed_ns\":{},\"matches\":{}}},\"accelerator\":{{\"elapsed_ns\":{},\"requested_gpu_sdk\":{},\"speedup_ratio\":{},\"mode\":\"{}\",\"matches\":{},\"launch\":{{\"global_size\":{},\"local_size\":{},\"max_matches\":{},\"output_buffer_bytes\":{}}},\"telemetry\":\"{}\"}}}}\n",
         json_escape(&request.fixture),
         request.domain.start,
         request.domain.end,
         native_elapsed_ns,
         format_matches(&native_matches),
         accelerator_elapsed_ns,
+        requested_gpu_sdk,
         speedup_ratio,
         mode_name(accelerator.mode),
         format_matches(&accelerator.matches),
@@ -170,6 +172,12 @@ fn benchmark(args: &[String]) -> Result<String, String> {
         accelerator.telemetry.launch.output_buffer_bytes,
         json_escape(&accelerator.telemetry.rationale)
     ))
+}
+
+fn requested_gpu_sdk_json(gpu_sdk: Option<GpuSdkChoice>) -> String {
+    gpu_sdk
+        .map(gpu_sdk_choice_name)
+        .map_or_else(|| "null".to_owned(), |name| format!("\"{name}\""))
 }
 
 fn format_speedup_ratio(native_elapsed_ns: u128, accelerator_elapsed_ns: u128) -> String {
