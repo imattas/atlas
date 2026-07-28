@@ -6,6 +6,7 @@ import argparse
 import json
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 from statistics import mean
@@ -134,6 +135,72 @@ def run_python_scalar() -> list[dict[str, Any]]:
     return results
 
 
+def run_native_math_backend() -> list[dict[str, Any]]:
+    """Run Atlas' dependency-free native math backend on CTF-style kernels."""
+
+    sys.path.insert(0, str(ROOT / "backends" / "native-math"))
+    from atlas_native_math_backend import NativeMathBackend
+
+    cases: list[tuple[str, dict[str, Any], int]] = [
+        (
+            "mod_sqrt_prime_101",
+            {
+                "kind": "mod_sqrt_prime",
+                "value": 56,
+                "modulus": 101,
+            },
+            2000,
+        ),
+        (
+            "discrete_log_prime_29",
+            {
+                "kind": "discrete_log_prime",
+                "base": 2,
+                "target": 22,
+                "modulus": 29,
+            },
+            2000,
+        ),
+    ]
+    results: list[dict[str, Any]] = []
+    backend = NativeMathBackend()
+    for name, problem, iterations in cases:
+        handle = backend.prepare(json.dumps(problem).encode())
+        samples: list[int] = []
+        last_result: dict[str, Any] = {}
+        for _ in range(iterations):
+            start = time.perf_counter_ns()
+            last_result = json.loads(backend.solve(handle, 1000))
+            samples.append(time.perf_counter_ns() - start)
+        backend.cancel(handle)
+        results.append(
+            {
+                "name": name,
+                "engine": "atlas-native-math",
+                "iterations": iterations,
+                "mean_ns": int(mean(samples)),
+                "matches": result_count(last_result),
+                "candidates_evaluated": None,
+                "used_closed_form": False,
+            }
+        )
+    return results
+
+
+def result_count(result: dict[str, Any]) -> int:
+    """Return a comparable solution count from a backend response."""
+
+    if result.get("status") not in {"sat", "ok"}:
+        return 0
+    if isinstance(result.get("roots"), list):
+        return len(result["roots"])
+    if result.get("exponent") is not None:
+        return 1
+    if isinstance(result.get("matches"), list):
+        return len(result["matches"])
+    return 1
+
+
 def sage_result() -> list[dict[str, Any]]:
     """Return Sage availability metadata."""
 
@@ -187,6 +254,7 @@ def main() -> int:
 
     results = run_atlas()
     results.extend(run_python_scalar())
+    results.extend(run_native_math_backend())
     if z3_available():
         results.extend(run_z3())
     else:
