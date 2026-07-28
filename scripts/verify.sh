@@ -212,6 +212,7 @@ if [[ "$profile" == "full" ]]; then
     release/manifest.toml \
     release/write-manifest.sh \
     release/write_manifest.py \
+    scripts/verify_hardware_doctor.py \
     crates/atlas-math/src/lib.rs \
     backends/native-math/atlas_native_math_backend.py \
     docs/installation.md \
@@ -241,7 +242,7 @@ if [[ "$profile" == "hardware" ]]; then
     hardware_doctor_json='{"gpu_feature_probes":[]}'
   else
     printf "%s\n" "$hardware_doctor_json"
-    assert_gpu_feature_probes_have_launch_abi "$hardware_doctor_json"
+    printf "%s\n" "$hardware_doctor_json" | python scripts/verify_hardware_doctor.py --require-launch-abi
   fi
   run_forced_gpu_benchmark "Forced-GPU benchmark" "" ""
   if gpu_any_feature_probe_has_int64 "$hardware_doctor_json"; then

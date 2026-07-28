@@ -193,6 +193,7 @@ if ($Profile -eq "full") {
         "release/manifest.toml",
         "release/write-manifest.sh",
         "release/write_manifest.py",
+        "scripts/verify_hardware_doctor.py",
         "crates/atlas-math/src/lib.rs",
         "backends/native-math/atlas_native_math_backend.py",
         "docs/installation.md",
@@ -222,7 +223,16 @@ if ($Profile -eq "hardware") {
         }
         Write-Host $Output
         $script:HardwareDoctor = $Output | ConvertFrom-Json
-        Assert-GpuFeatureProbeHasLaunchAbi $script:HardwareDoctor
+        $DoctorJsonFile = New-TemporaryFile
+        try {
+            Set-Content -LiteralPath $DoctorJsonFile -Value $Output -NoNewline -Encoding utf8
+            python scripts/verify_hardware_doctor.py --input $DoctorJsonFile --require-launch-abi
+            if ($LASTEXITCODE -ne 0) {
+                throw "GPU doctor diagnostics failed hardware validation"
+            }
+        } finally {
+            Remove-Item -LiteralPath $DoctorJsonFile -Force -ErrorAction SilentlyContinue
+        }
         $global:LASTEXITCODE = 0
     }
     Invoke-ForcedGpuBenchmark "Forced-GPU benchmark" $null $null

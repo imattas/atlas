@@ -1,4 +1,5 @@
 import unittest
+import subprocess
 from pathlib import Path
 
 
@@ -214,6 +215,41 @@ class VerifyScriptTests(unittest.TestCase):
                 text = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
                 for token in required_tokens:
                     self.assertIn(token, text)
+
+    def test_hardware_doctor_validator_rejects_empty_and_incomplete_probe_reports(self):
+        validator = ROOT / "scripts" / "verify_hardware_doctor.py"
+        cases = [
+            (
+                '{"schema_major":1,"kind":"doctor","gpu_feature_probes":[]}',
+                1,
+                "at least one GPU feature probe",
+            ),
+            (
+                '{"schema_major":1,"kind":"doctor","gpu_feature_probes":[{"name":"OpenCL","ok":true,"features":["int64"]}]}',
+                1,
+                "missing launchAbiU32",
+            ),
+            (
+                '{"schema_major":1,"kind":"doctor","gpu_feature_probes":[{"name":"OpenCL","ok":true,"features":["int64","launchAbiU32","launchAbiU64"]}]}',
+                0,
+                "",
+            ),
+        ]
+
+        for payload, expected_status, expected_error in cases:
+            with self.subTest(payload=payload):
+                result = subprocess.run(
+                    ["python", str(validator), "--require-launch-abi"],
+                    input=payload,
+                    text=True,
+                    capture_output=True,
+                    cwd=ROOT,
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, expected_status)
+                if expected_error:
+                    self.assertIn(expected_error, result.stderr)
 
     def test_hardware_profile_gates_int64_gpu_checks_on_backend_features(self):
         expectations = {
