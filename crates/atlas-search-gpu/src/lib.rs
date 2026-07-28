@@ -888,45 +888,22 @@ impl AcceleratorRuntime {
             Err(report) => return *report,
         };
         let launch = execution.launch;
-        let reported_matches = execution.reported_matches;
         let base_rationale = format!(
             "{}; driver exit 0; driver launches {}",
             sdk.name(),
             execution.launch_count
         );
-        if let Some(overflow) = execution.overflowed_device_match_count {
-            return device_match_count_overflow_report(
-                program,
-                domain,
-                cancellation,
-                launch,
-                sdk,
-                &base_rationale,
-                overflow,
-            );
+        if let Some(report) = driver_protocol_fallback_report(
+            program,
+            domain,
+            cancellation,
+            sdk,
+            &execution,
+            &base_rationale,
+        ) {
+            return report;
         }
-        if let Some(max_matches) = execution.missing_full_buffer_match_count {
-            return missing_match_count_report(
-                program,
-                domain,
-                cancellation,
-                launch,
-                sdk,
-                &base_rationale,
-                max_matches,
-            );
-        }
-        if let Some(inconsistency) = execution.inconsistent_device_match_count {
-            return inconsistent_match_count_report(
-                program,
-                domain,
-                cancellation,
-                launch,
-                sdk,
-                &base_rationale,
-                inconsistency,
-            );
-        }
+        let reported_matches = execution.reported_matches;
         if reported_matches.is_empty() {
             return AcceleratorReport {
                 mode: RuntimeMode::CpuFallback,
@@ -1106,6 +1083,60 @@ fn driver_failure_report(
     }
 }
 
+fn driver_protocol_fallback_report(
+    program: &SearchProgram,
+    domain: SearchDomain,
+    cancellation: &CancellationToken,
+    sdk: &GpuSdk,
+    execution: &DriverExecution,
+    base_rationale: &str,
+) -> Option<AcceleratorReport> {
+    if let Some(overflow) = execution.overflowed_device_match_count {
+        return Some(device_match_count_overflow_report(
+            program,
+            domain,
+            cancellation,
+            execution.launch,
+            sdk,
+            base_rationale,
+            overflow,
+        ));
+    }
+    if let Some(max_matches) = execution.missing_full_buffer_match_count {
+        return Some(missing_match_count_report(
+            program,
+            domain,
+            cancellation,
+            execution.launch,
+            sdk,
+            base_rationale,
+            max_matches,
+        ));
+    }
+    if let Some(inconsistency) = execution.inconsistent_device_match_count {
+        return Some(inconsistent_match_count_report(
+            program,
+            domain,
+            cancellation,
+            execution.launch,
+            sdk,
+            base_rationale,
+            inconsistency,
+        ));
+    }
+    execution.overflowed_aggregate_match_count.map(|overflow| {
+        aggregate_match_count_overflow_report(
+            program,
+            domain,
+            cancellation,
+            execution.launch,
+            sdk,
+            base_rationale,
+            overflow,
+        )
+    })
+}
+
 fn device_match_count_overflow_report(
     program: &SearchProgram,
     domain: SearchDomain,
@@ -1124,6 +1155,30 @@ fn device_match_count_overflow_report(
             format!(
                 "{base_rationale}; device match count {} exceeds buffer {}",
                 overflow.device_match_count, overflow.max_matches
+            ),
+            0,
+        ),
+    }
+}
+
+fn aggregate_match_count_overflow_report(
+    program: &SearchProgram,
+    domain: SearchDomain,
+    cancellation: &CancellationToken,
+    launch: LaunchConfig,
+    sdk: &GpuSdk,
+    base_rationale: &str,
+    overflow: AggregateMatchCountOverflow,
+) -> AcceleratorReport {
+    AcceleratorReport {
+        mode: RuntimeMode::CpuFallback,
+        matches: NativeSearcher::search(program, domain, cancellation),
+        telemetry: sdk_runtime_telemetry(
+            launch,
+            sdk,
+            format!(
+                "{base_rationale}; aggregate device match count {} exceeds buffer {}",
+                overflow.aggregate_device_match_count, overflow.max_matches
             ),
             0,
         ),
@@ -1201,8 +1256,10 @@ struct DriverExecution {
     launch_count: usize,
     reported_matches: Vec<u64>,
     overflowed_device_match_count: Option<DeviceMatchCountOverflow>,
+    overflowed_aggregate_match_count: Option<AggregateMatchCountOverflow>,
     missing_full_buffer_match_count: Option<usize>,
     inconsistent_device_match_count: Option<DeviceMatchCountInconsistency>,
+    aggregate_device_match_count: usize,
 }
 
 impl DriverExecution {
@@ -1212,8 +1269,10 @@ impl DriverExecution {
             launch_count,
             reported_matches: Vec::new(),
             overflowed_device_match_count: None,
+            overflowed_aggregate_match_count: None,
             missing_full_buffer_match_count: None,
             inconsistent_device_match_count: None,
+            aggregate_device_match_count: 0,
         }
     }
 
@@ -1227,6 +1286,18 @@ impl DriverExecution {
         if output_omits_match_count_for_full_buffer(&output, launch) {
             self.missing_full_buffer_match_count = Some(launch.max_matches);
         }
+        let retained_matches = output.reported_matches.len();
+        let device_match_count =
+            DriverRunOutput::parse_reported_match_count(&output.stdout).unwrap_or(retained_matches);
+        self.aggregate_device_match_count = self
+            .aggregate_device_match_count
+            .saturating_add(device_match_count);
+        if self.aggregate_device_match_count > self.launch.max_matches {
+            self.overflowed_aggregate_match_count = Some(AggregateMatchCountOverflow {
+                aggregate_device_match_count: self.aggregate_device_match_count,
+                max_matches: self.launch.max_matches,
+            });
+        }
         self.reported_matches.extend(output.reported_matches);
     }
 }
@@ -1234,6 +1305,12 @@ impl DriverExecution {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct DeviceMatchCountOverflow {
     device_match_count: usize,
+    max_matches: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AggregateMatchCountOverflow {
+    aggregate_device_match_count: usize,
     max_matches: usize,
 }
 

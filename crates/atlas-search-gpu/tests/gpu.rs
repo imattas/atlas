@@ -196,6 +196,30 @@ impl DriverRunner for RecordingLaunchShapeRunner {
 }
 
 #[derive(Debug)]
+struct DenseMultiLaunchRunner {
+    retained_per_launch: usize,
+}
+
+impl DriverRunner for DenseMultiLaunchRunner {
+    fn run(&self, plan: &DriverCommandPlan) -> DriverRunOutput {
+        let start = plan
+            .launch_command
+            .windows(2)
+            .find_map(|args| (args[0] == "--start").then(|| args[1].parse::<u64>().unwrap()))
+            .unwrap();
+        let matches = (0..self.retained_per_launch)
+            .map(|offset| start + u64::try_from(offset).unwrap())
+            .collect::<Vec<_>>();
+        DriverRunOutput {
+            exit_code: 0,
+            reported_matches: matches,
+            stdout: format!("match_count={}\n", self.retained_per_launch),
+            stderr: String::new(),
+        }
+    }
+}
+
+#[derive(Debug)]
 struct FailingThenSuccessfulSdkRunner {
     attempted_sdks: RefCell<Vec<&'static str>>,
 }
@@ -2366,6 +2390,39 @@ fn runtime_telemetry_reports_multi_launch_driver_execution() {
 
     assert_eq!(report.mode, RuntimeMode::DeviceValidated);
     assert!(report.telemetry.rationale.contains("driver launches 2"));
+}
+
+#[test]
+fn runtime_falls_back_when_aggregate_multi_launch_matches_exceed_buffer() {
+    let program = SearchProgram::new(
+        64,
+        vec![SearchOp::ChecksumEq {
+            modulus: 1,
+            target: 0,
+        }],
+    )
+    .unwrap();
+    let token = CancellationToken::new();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "test OpenCL".to_owned(),
+    };
+    let runner = DenseMultiLaunchRunner {
+        retained_per_launch: 800,
+    };
+    let split_at = (u64::from(u32::MAX) / 256) * 256;
+    let domain = SearchDomain::new(0, split_at + 1_000);
+
+    let report = AcceleratorRuntime::execute_with_driver(&program, domain, &sdk, &token, &runner);
+
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert_eq!(
+        report.matches,
+        NativeSearcher::search(&program, domain, &token)
+    );
+    assert!(report
+        .telemetry
+        .rationale
+        .contains("aggregate device match count 1600 exceeds buffer 1024"));
 }
 
 #[test]
