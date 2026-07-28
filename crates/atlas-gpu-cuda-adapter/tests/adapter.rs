@@ -1,6 +1,9 @@
 //! CUDA adapter CLI tests.
 
-use atlas_gpu_cuda_adapter::{run_cli, AdapterCommand, CudaPtxLauncher, LaunchArgs, Launcher};
+use atlas_gpu_cuda_adapter::{
+    nvrtc_library_candidates_from_roots, run_cli, AdapterCommand, CudaPtxLauncher, LaunchArgs,
+    Launcher,
+};
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::SearchProgram;
 use std::cell::RefCell;
@@ -217,6 +220,23 @@ fn compile_check_writes_ptx_artifact_when_output_is_requested() {
     let ptx = fs::read_to_string(&output_path).unwrap();
     assert!(ptx.contains(".entry atlas_search"));
     let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+fn nvrtc_library_candidates_include_cuda_sdk_root_library_directories() {
+    let cuda_root =
+        std::env::temp_dir().join(format!("atlas-cuda-sdk-root-{}", std::process::id()));
+    let candidates = nvrtc_library_candidates_from_roots([cuda_root.clone()]);
+
+    assert!(candidates
+        .iter()
+        .any(|path| path.starts_with(cuda_root.join("bin"))));
+    assert!(candidates
+        .iter()
+        .any(|path| path.starts_with(cuda_root.join("lib64"))));
+    assert!(candidates
+        .iter()
+        .any(|path| path.starts_with(cuda_root.join("lib").join("x64"))));
 }
 
 #[test]

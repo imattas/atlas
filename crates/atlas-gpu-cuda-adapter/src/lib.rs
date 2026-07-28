@@ -2,7 +2,7 @@
 
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::ptr;
 
 type CuDevice = c_int;
@@ -700,6 +700,9 @@ impl DynamicLibrary {
             if let Some(library) = find_windows_nvrtc_library() {
                 return Self::open(&library);
             }
+            if let Some(library) = find_cuda_root_nvrtc_library() {
+                return Self::open(&library);
+            }
             [
                 "nvrtc64_130_0.dll",
                 "nvrtc64_120_0.dll",
@@ -715,6 +718,9 @@ impl DynamicLibrary {
         }
         #[cfg(target_os = "linux")]
         {
+            if let Some(library) = find_cuda_root_nvrtc_library() {
+                return Self::open(&library);
+            }
             Self::open("libnvrtc.so.12")
                 .or_else(|_| Self::open("libnvrtc.so.11"))
                 .or_else(|_| Self::open("libnvrtc.so"))
@@ -722,6 +728,9 @@ impl DynamicLibrary {
         }
         #[cfg(target_os = "macos")]
         {
+            if let Some(library) = find_cuda_root_nvrtc_library() {
+                return Self::open(&library);
+            }
             Self::open("/usr/local/cuda/lib/libnvrtc.dylib")
                 .or_else(|_| Self::open("libnvrtc.dylib"))
                 .map_err(|_| "failed to load NVRTC runtime compiler library".to_owned())
@@ -758,6 +767,74 @@ impl DynamicLibrary {
         } else {
             Ok(std::mem::transmute_copy::<*mut c_void, T>(&symbol))
         }
+    }
+}
+
+/// Returns candidate NVRTC dynamic-library paths from CUDA SDK roots.
+#[must_use]
+pub fn nvrtc_library_candidates_from_roots(
+    roots: impl IntoIterator<Item = PathBuf>,
+) -> Vec<PathBuf> {
+    roots
+        .into_iter()
+        .flat_map(|root| {
+            nvrtc_library_dirs(&root).into_iter().flat_map(|dir| {
+                nvrtc_library_names()
+                    .into_iter()
+                    .map(move |name| dir.join(name))
+            })
+        })
+        .collect()
+}
+
+fn find_cuda_root_nvrtc_library() -> Option<String> {
+    nvrtc_library_candidates_from_roots(cuda_root_dirs())
+        .into_iter()
+        .find(|path| path.is_file())
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
+fn cuda_root_dirs() -> Vec<PathBuf> {
+    ["CUDA_PATH", "CUDA_HOME", "CUDA_ROOT"]
+        .into_iter()
+        .filter_map(std::env::var_os)
+        .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
+        .collect()
+}
+
+fn nvrtc_library_dirs(root: &Path) -> Vec<PathBuf> {
+    vec![
+        root.join("bin"),
+        root.join("lib64"),
+        root.join("lib").join("x64"),
+        root.join("lib"),
+    ]
+}
+
+fn nvrtc_library_names() -> Vec<&'static str> {
+    #[cfg(windows)]
+    {
+        vec![
+            "nvrtc64_130_0.dll",
+            "nvrtc64_120_0.dll",
+            "nvrtc64_122_0.dll",
+            "nvrtc64_121_0.dll",
+            "nvrtc64_112_0.dll",
+            "nvrtc64_111_0.dll",
+            "nvrtc64_110_0.dll",
+        ]
+    }
+    #[cfg(target_os = "linux")]
+    {
+        vec!["libnvrtc.so.12", "libnvrtc.so.11", "libnvrtc.so"]
+    }
+    #[cfg(target_os = "macos")]
+    {
+        vec!["libnvrtc.dylib"]
+    }
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+    {
+        Vec::new()
     }
 }
 
