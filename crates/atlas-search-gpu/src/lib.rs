@@ -106,14 +106,19 @@ impl GpuSdk {
 
 fn sdk_supports_program(sdk: &GpuSdk, program: &SearchProgram) -> bool {
     match sdk {
-        GpuSdk::Vulkan { sdk } if program.width > 32 => {
-            sdk.to_ascii_lowercase().contains("shaderint64")
-        }
+        GpuSdk::OpenCl { sdk } if program.width > 32 => sdk_has_feature(sdk, "int64"),
+        GpuSdk::Vulkan { sdk } if program.width > 32 => sdk_has_feature(sdk, "shaderint64"),
+        GpuSdk::Cuda { sdk } if program.width > 32 => sdk_has_feature(sdk, "int64"),
+        GpuSdk::Hip { sdk } if program.width > 32 => sdk_has_feature(sdk, "int64"),
         GpuSdk::OpenCl { .. }
         | GpuSdk::Vulkan { .. }
         | GpuSdk::Cuda { .. }
         | GpuSdk::Hip { .. } => true,
     }
+}
+
+fn sdk_has_feature(sdk: &str, feature: &str) -> bool {
+    sdk.to_ascii_lowercase().contains(feature)
 }
 
 /// GPU SDK selection result.
