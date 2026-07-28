@@ -139,6 +139,26 @@ fn rejects_malformed_or_unbounded_launch_ranges() {
 }
 
 #[test]
+fn rejects_global_size_smaller_than_launch_domain() {
+    let error = LaunchArgs::parse(&[
+        "target/atlas-gpu/atlas_search.ptx".to_owned(),
+        "--start".to_owned(),
+        "10".to_owned(),
+        "--end".to_owned(),
+        "20".to_owned(),
+        "--max-matches".to_owned(),
+        "3".to_owned(),
+        "--global-size".to_owned(),
+        "9".to_owned(),
+        "--local-size".to_owned(),
+        "1".to_owned(),
+    ])
+    .unwrap_err();
+
+    assert!(error.contains("global-size must cover launch domain"));
+}
+
+#[test]
 fn cli_emits_match_lines_from_launcher() {
     let output = run_cli(
         &[

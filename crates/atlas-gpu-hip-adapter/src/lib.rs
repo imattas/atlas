@@ -71,7 +71,7 @@ impl LaunchArgs {
     /// # Errors
     ///
     /// Returns an error when required arguments are missing, malformed, or
-    /// describe an empty range.
+    /// describe an empty or under-covered launch range.
     pub fn parse(args: &[String]) -> Result<Self, String> {
         let Some(artifact) = args.first() else {
             return Err("missing kernel artifact".to_owned());
@@ -89,6 +89,9 @@ impl LaunchArgs {
         let local_size = parse_usize_flag(args, "--local-size")?;
         if global_size == 0 || local_size == 0 {
             return Err("global-size and local-size must be nonzero".to_owned());
+        }
+        if u64::try_from(global_size).unwrap_or(u64::MAX) < end.saturating_sub(start) {
+            return Err("global-size must cover launch domain".to_owned());
         }
         Ok(Self {
             artifact: artifact.clone(),
