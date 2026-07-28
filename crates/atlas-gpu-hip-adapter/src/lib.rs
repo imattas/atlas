@@ -843,6 +843,7 @@ impl DynamicLibrary {
         }
     }
 
+    #[cfg(any(windows, target_os = "linux"))]
     fn open(name: &str) -> Result<Self, String> {
         let name =
             CString::new(name).map_err(|_| "library name contains interior NUL".to_owned())?;
@@ -897,6 +898,7 @@ pub fn hip_runtime_library_candidates_from_roots(
         .collect()
 }
 
+#[cfg(any(windows, target_os = "linux"))]
 fn find_hip_root_runtime_library() -> Option<String> {
     hip_runtime_library_candidates_from_host_roots()
         .into_iter()
@@ -1095,7 +1097,7 @@ unsafe fn platform_close(handle: *mut c_void) {
     let _ = FreeLibrary(handle);
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 unsafe fn platform_open(name: *const c_char) -> *mut c_void {
     const RTLD_NOW: c_int = 2;
     extern "C" {
