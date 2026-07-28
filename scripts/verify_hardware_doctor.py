@@ -9,6 +9,20 @@ from pathlib import Path
 from typing import Any
 
 
+GENERIC_HARDWARE_IDENTITIES = {
+    "OpenCL runtime/device",
+    "OpenCL device via OpenCL",
+    "Vulkan compute device",
+    "Vulkan compute device via Vulkan",
+    "CUDA driver device",
+    "CUDA driver device via CUDA",
+    "HIP runtime device",
+    "HIP runtime device via HIP",
+    "WGPU adapter",
+    "WGPU adapter runtime",
+}
+
+
 def validate_doctor(document: dict[str, Any], require_launch_abi: bool) -> list[str]:
     """Return validation errors for a doctor JSON document."""
 
@@ -31,6 +45,8 @@ def validate_doctor(document: dict[str, Any], require_launch_abi: bool) -> list[
         hardware = probe.get("hardware")
         if not isinstance(hardware, str) or not hardware.strip():
             errors.append(f"GPU feature probe {name} did not report hardware identity")
+        elif hardware.strip() in GENERIC_HARDWARE_IDENTITIES:
+            errors.append(f"GPU feature probe {name} reported generic hardware identity")
     if require_launch_abi:
         for probe in successful_probes:
             name = probe.get("name", "<unknown>")

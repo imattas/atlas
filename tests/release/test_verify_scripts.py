@@ -347,6 +347,11 @@ class VerifyScriptTests(unittest.TestCase):
             ),
             (
                 '{"schema_major":1,"kind":"doctor","adapter_binaries":[{"name":"OpenCL","available":true}],"gpu_feature_probes":[{"name":"OpenCL","ok":true,"hardware":"OpenCL runtime/device","features":["int64","launchAbiU32","launchAbiU64"]}]}',
+                1,
+                "reported generic hardware identity",
+            ),
+            (
+                '{"schema_major":1,"kind":"doctor","adapter_binaries":[{"name":"OpenCL","available":true}],"gpu_feature_probes":[{"name":"OpenCL","ok":true,"hardware":"gfx1100 via OpenCL","features":["int64","launchAbiU32","launchAbiU64"]}]}',
                 0,
                 "",
             ),
