@@ -290,12 +290,66 @@ pub fn vulkan_loader_candidates_from_roots(
         .collect()
 }
 
-fn vulkan_loader_candidates_from_env() -> Vec<PathBuf> {
-    let roots = ["VULKAN_SDK", "VK_SDK_PATH"]
+/// Returns Vulkan loader library candidates from host environment and standard
+/// SDK install roots.
+#[must_use]
+pub fn vulkan_loader_candidates_from_host_roots() -> Vec<PathBuf> {
+    vulkan_loader_candidates_from_roots(vulkan_loader_roots_from_host())
+}
+
+fn vulkan_loader_roots_from_host() -> Vec<PathBuf> {
+    let mut roots = vulkan_loader_roots_from_env();
+    roots.extend(vulkan_standard_loader_roots());
+    dedup_paths(roots)
+}
+
+fn vulkan_loader_roots_from_env() -> Vec<PathBuf> {
+    ["VULKAN_SDK", "VK_SDK_PATH"]
         .into_iter()
         .filter_map(std::env::var_os)
-        .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>());
-    vulkan_loader_candidates_from_roots(roots)
+        .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
+        .collect()
+}
+
+fn vulkan_standard_loader_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    #[cfg(windows)]
+    {
+        if let Some(drive) = std::env::var_os("SystemDrive").map(PathBuf::from) {
+            let vulkan_base = drive.join("VulkanSDK");
+            push_existing_dir(&mut roots, vulkan_base.clone());
+            if let Ok(entries) = fs::read_dir(&vulkan_base) {
+                roots.extend(
+                    entries
+                        .filter_map(Result::ok)
+                        .map(|entry| entry.path())
+                        .filter(|path| path.is_dir()),
+                );
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        roots.push(PathBuf::from("/usr"));
+        roots.push(PathBuf::from("/usr/local"));
+    }
+    roots
+}
+
+fn push_existing_dir(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if path.is_dir() {
+        paths.push(path);
+    }
+}
+
+fn dedup_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut deduped = Vec::new();
+    for path in paths {
+        if !deduped.iter().any(|existing| existing == &path) {
+            deduped.push(path);
+        }
+    }
+    deduped
 }
 
 fn vulkan_loader_dirs(root: &Path) -> Vec<PathBuf> {
@@ -319,7 +373,7 @@ fn vulkan_loader_names() -> Vec<&'static str> {
 }
 
 fn load_vulkan_entry() -> Result<Entry, String> {
-    for candidate in vulkan_loader_candidates_from_env() {
+    for candidate in vulkan_loader_candidates_from_host_roots() {
         if !candidate.is_file() {
             continue;
         }

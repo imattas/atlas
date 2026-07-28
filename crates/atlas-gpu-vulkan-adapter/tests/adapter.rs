@@ -1,13 +1,21 @@
 //! Vulkan adapter CLI tests.
 
 use atlas_gpu_vulkan_adapter::{
-    run_cli, vulkan_loader_candidates_from_roots, AdapterCommand, LaunchArgs, Launcher,
-    VulkanSpirvLauncher,
+    run_cli, vulkan_loader_candidates_from_host_roots, vulkan_loader_candidates_from_roots,
+    AdapterCommand, LaunchArgs, Launcher, VulkanSpirvLauncher,
 };
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::SearchProgram;
 use std::cell::RefCell;
 use std::fs;
+
+fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
+    if let Some(value) = original {
+        std::env::set_var(name, value);
+    } else {
+        std::env::remove_var(name);
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct FixtureLauncher;
@@ -240,6 +248,27 @@ fn vulkan_loader_candidates_include_sdk_root_loader_directories() {
             .iter()
             .any(|candidate| candidate.starts_with(root.join("lib64"))),
         "expected candidates to include Vulkan SDK lib64 directory, got {candidates:?}"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn vulkan_loader_candidates_include_standard_systemdrive_sdk_layout() {
+    let root = std::env::temp_dir().join(format!("atlas-vulkan-standard-{}", std::process::id()));
+    let vulkan_sdk = root.join("VulkanSDK").join("1.3.290.0");
+    fs::create_dir_all(vulkan_sdk.join("Bin")).unwrap();
+    let loader = vulkan_sdk.join("Bin").join("vulkan-1.dll");
+    fs::write(&loader, []).unwrap();
+    let original_system_drive = std::env::var_os("SystemDrive");
+    std::env::set_var("SystemDrive", &root);
+
+    let candidates = vulkan_loader_candidates_from_host_roots();
+
+    restore_env("SystemDrive", original_system_drive);
+    let _ = fs::remove_dir_all(root);
+    assert!(
+        candidates.contains(&loader),
+        "expected candidates to include standard Vulkan SDK loader, got {candidates:?}"
     );
 }
 
