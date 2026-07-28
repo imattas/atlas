@@ -1028,6 +1028,9 @@ impl DynamicLibrary {
     fn open_cuda() -> Result<Self, String> {
         #[cfg(windows)]
         {
+            if let Some(library) = find_windows_cuda_driver_library() {
+                return Self::open(&library);
+            }
             if let Some(library) = find_cuda_root_driver_library() {
                 return Self::open(&library);
             }
@@ -1134,7 +1137,7 @@ impl DynamicLibrary {
 pub fn cuda_driver_library_candidates_from_roots(
     roots: impl IntoIterator<Item = PathBuf>,
 ) -> Vec<PathBuf> {
-    roots
+    let mut candidates: Vec<PathBuf> = roots
         .into_iter()
         .flat_map(|root| {
             cuda_driver_library_dirs(&root).into_iter().flat_map(|dir| {
@@ -1143,7 +1146,16 @@ pub fn cuda_driver_library_candidates_from_roots(
                     .map(move |name| dir.join(name))
             })
         })
-        .collect()
+        .collect();
+    candidates.extend(cuda_system_driver_library_candidates());
+    candidates
+}
+
+fn find_windows_cuda_driver_library() -> Option<String> {
+    cuda_system_driver_library_candidates()
+        .into_iter()
+        .find(|path| path.is_file())
+        .map(|path| path.to_string_lossy().into_owned())
 }
 
 fn find_cuda_root_driver_library() -> Option<String> {
@@ -1184,6 +1196,24 @@ fn cuda_driver_library_names() -> Vec<&'static str> {
         vec!["libcuda.dylib"]
     }
     #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+    {
+        Vec::new()
+    }
+}
+
+fn cuda_system_driver_library_candidates() -> Vec<PathBuf> {
+    #[cfg(windows)]
+    {
+        let Some(system_root) = std::env::var_os("SystemRoot") else {
+            return Vec::new();
+        };
+        let system_root = PathBuf::from(system_root);
+        vec![
+            system_root.join("System32").join("nvcuda.dll"),
+            system_root.join("SysWOW64").join("nvcuda.dll"),
+        ]
+    }
+    #[cfg(not(windows))]
     {
         Vec::new()
     }
@@ -1604,5 +1634,22 @@ mod tests {
         assert!(error.contains("searched CUDA driver candidates"));
         assert!(error.contains("atlas-test"));
         assert!(error.contains("nvcuda"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn cuda_driver_load_errors_report_windows_display_driver_candidates() {
+        let original_system_root = std::env::var_os("SystemRoot");
+        std::env::set_var("SystemRoot", "C:\\Windows");
+
+        let error = cuda_driver_load_error("failed to load CUDA driver library nvcuda.dll", []);
+
+        assert!(error.contains("C:\\Windows\\System32\\nvcuda.dll"));
+
+        if let Some(value) = original_system_root {
+            std::env::set_var("SystemRoot", value);
+        } else {
+            std::env::remove_var("SystemRoot");
+        }
     }
 }
