@@ -45,14 +45,9 @@ status = "supported"
 evidence = "tests/e2e/track4/manifest.toml"
 
 [[capabilities]]
-name = "z3-theory-backend"
-status = "supported-when-installed"
-evidence = "backends/z3/atlas_z3_backend.py"
-
-[[capabilities]]
-name = "sage-math-backend"
-status = "supported-when-installed"
-evidence = "backends/sage/atlas_sage_backend.py"
+name = "native-exact-math"
+status = "supported"
+evidence = "crates/atlas-math"
 
 [[capabilities]]
 name = "portable-gpu-sdk-selection"
@@ -100,13 +95,13 @@ path = "tests/fixtures/events/track1_stream.toml"
 digest = "tracked-by-git"
 
 [[artifacts]]
-name = "z3-backend-adapter"
-path = "backends/z3/atlas_z3_backend.py"
+name = "native-math-kernel"
+path = "crates/atlas-math/src/lib.rs"
 digest = "tracked-by-git"
 
 [[artifacts]]
-name = "sage-backend-adapter"
-path = "backends/sage/atlas_sage_backend.py"
+name = "native-math-backend"
+path = "backends/native-math/atlas_native_math_backend.py"
 digest = "tracked-by-git"
 
 [[artifacts]]

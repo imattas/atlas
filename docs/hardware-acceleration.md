@@ -18,9 +18,7 @@ Runtime behavior:
 - generated kernels are cache-keyed by program, compiler, device, and options;
 - every GPU-reported match is revalidated against CPU IR semantics.
 
-Primary references checked while implementing this boundary:
+Primary GPU references checked while implementing this boundary:
 
-- Z3: official Z3Py API/tutorial and Z3 project documentation.
-- SageMath: official Sage reference and command-line documentation.
-- GPU compute: Khronos OpenCL SDK/resources and LunarG/Khronos Vulkan SDK
-  compute documentation.
+- Khronos OpenCL SDK/resources.
+- LunarG/Khronos Vulkan SDK compute documentation.

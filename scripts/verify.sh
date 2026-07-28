@@ -64,8 +64,8 @@ if [[ "$profile" == "full" ]]; then
     release/manifest.toml \
     release/write-manifest.sh \
     release/write_manifest.py \
-    backends/z3/atlas_z3_backend.py \
-    backends/sage/atlas_sage_backend.py \
+    crates/atlas-math/src/lib.rs \
+    backends/native-math/atlas_native_math_backend.py \
     docs/installation.md \
     docs/security.md \
     docs/plugins.md \

@@ -16,6 +16,10 @@ ARCHITECTURE_EVIDENCE = {
     "tests/fixtures/architectures/arm64.toml",
     "tests/fixtures/architectures/wasm.toml",
 }
+NATIVE_MATH_EVIDENCE = {
+    "crates/atlas-math/src/lib.rs",
+    "backends/native-math/atlas_native_math_backend.py",
+}
 
 
 def _git_revision() -> str:
@@ -57,6 +61,8 @@ def validate_manifest(path: Path) -> list[str]:
     artifact_paths = {str(item.get("path", "")) for item in artifacts if isinstance(item, dict)}
     if not ARCHITECTURE_EVIDENCE.issubset(artifact_paths):
         errors.append("architecture evidence is incomplete")
+    if not NATIVE_MATH_EVIDENCE.issubset(artifact_paths):
+        errors.append("native math evidence is incomplete")
     for artifact in artifacts:
         if not isinstance(artifact, dict):
             continue
@@ -96,6 +102,8 @@ def render_manifest() -> str:
         "tests/fixtures/architectures/arm64.toml",
         "tests/fixtures/architectures/wasm.toml",
         "tests/fixtures/events/track1_stream.toml",
+        "crates/atlas-math/src/lib.rs",
+        "backends/native-math/atlas_native_math_backend.py",
     ]
     body = [
         'manifest_version = "1"',
@@ -121,6 +129,7 @@ def render_manifest() -> str:
         ("program-analysis", "crates/atlas-program-analysis"),
         ("distributed-acceleration", "crates/atlas-worker"),
         ("advanced-automation", "tests/e2e/track4/manifest.toml"),
+        ("native-exact-math", "crates/atlas-math"),
     ]:
         body.extend(["[[capabilities]]", f'name = "{name}"', 'status = "supported"', f'evidence = "{evidence}"', ""])
     for path in evidence_paths:

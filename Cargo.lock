@@ -56,6 +56,10 @@ name = "atlas-learning"
 version = "0.1.0"
 
 [[package]]
+name = "atlas-math"
+version = "0.1.0"
+
+[[package]]
 name = "atlas-notebook"
 version = "0.1.0"
 

@@ -4,27 +4,21 @@ import unittest
 from pathlib import Path
 
 BACKENDS_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(BACKENDS_ROOT / "z3"))
-sys.path.insert(0, str(BACKENDS_ROOT / "sage"))
+sys.path.insert(0, str(BACKENDS_ROOT / "native-math"))
 
 
 class MathBackendParityTest(unittest.TestCase):
-    def test_z3_backend_solves_raw_smtlib_bitvector_problem(self) -> None:
-        from atlas_z3_backend import Z3Backend
+    def test_native_backend_solves_bitvector_problem_without_z3(self) -> None:
+        from atlas_native_math_backend import NativeMathBackend
 
-        backend = Z3Backend()
-        self.assertIn("smtlib2", backend.health().capabilities)
+        backend = NativeMathBackend()
+        self.assertIn("bitvector", backend.health().capabilities)
         handle = backend.prepare(
             json.dumps(
                 {
-                    "kind": "smtlib2",
-                    "script": """
-                    (set-logic QF_BV)
-                    (declare-fun x () (_ BitVec 8))
-                    (assert (= (bvxor x #xaa) #xff))
-                    (check-sat)
-                    (get-model)
-                    """,
+                    "kind": "u8_xor_eq",
+                    "mask": 0xAA,
+                    "target": 0xFF,
                 }
             ).encode()
         )
@@ -32,19 +26,19 @@ class MathBackendParityTest(unittest.TestCase):
         result = json.loads(backend.solve(handle, 1000))
 
         self.assertEqual(result["status"], "sat")
-        self.assertIn("x", result["model"])
+        self.assertEqual(result["matches"], [0x55])
 
-    def test_z3_backend_supports_optimize_for_theory_parity(self) -> None:
-        from atlas_z3_backend import Z3Backend
+    def test_native_backend_solves_modular_linear_system_without_sage(self) -> None:
+        from atlas_native_math_backend import NativeMathBackend
 
-        backend = Z3Backend()
+        backend = NativeMathBackend()
         handle = backend.prepare(
             json.dumps(
                 {
-                    "kind": "z3py",
-                    "variables": [{"name": "x", "sort": "int"}],
-                    "constraints": [{"op": "ge", "left": "x", "right": 7}],
-                    "objective": {"direction": "minimize", "term": "x"},
+                    "kind": "modular_linear",
+                    "modulus": 7,
+                    "matrix": [[2, 3], [4, 1]],
+                    "rhs": [1, 6],
                 }
             ).encode()
         )
@@ -52,22 +46,27 @@ class MathBackendParityTest(unittest.TestCase):
         result = json.loads(backend.solve(handle, 1000))
 
         self.assertEqual(result["status"], "sat")
-        self.assertEqual(result["model"]["x"], "7")
+        self.assertEqual(result["solution"], [1, 2])
 
-    def test_sage_backend_reports_missing_cli_precisely(self) -> None:
-        from atlas_sage_backend import SageBackend
+    def test_native_backend_solves_polynomial_gcd_without_sage(self) -> None:
+        from atlas_native_math_backend import NativeMathBackend
 
-        backend = SageBackend()
-        health = backend.health()
-        self.assertIn("sage-cli", health.capabilities)
-        if health.available:
-            handle = backend.prepare(json.dumps({"kind": "sage", "code": "print(factor(91))"}).encode())
-            result = json.loads(backend.solve(handle, 1000))
-            self.assertEqual(result["status"], "ok")
-            self.assertIn("7", result["stdout"])
-        else:
-            with self.assertRaisesRegex(RuntimeError, "sage CLI not found"):
-                backend.prepare(json.dumps({"kind": "sage", "code": "print(2+2)"}).encode())
+        backend = NativeMathBackend()
+        handle = backend.prepare(
+            json.dumps(
+                {
+                    "kind": "polynomial_gcd",
+                    "modulus": 5,
+                    "left": [2, 3, 1],
+                    "right": [3, 4, 1],
+                }
+            ).encode()
+        )
+
+        result = json.loads(backend.solve(handle, 1000))
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["gcd"], [1, 1])
 
 
 if __name__ == "__main__":

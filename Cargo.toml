@@ -26,6 +26,7 @@ members = [
     "crates/atlas-summaries",
     "crates/atlas-architectures",
     "crates/atlas-notebook",
+    "crates/atlas-math",
 ]
 resolver = "2"
 

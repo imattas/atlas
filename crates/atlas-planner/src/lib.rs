@@ -10,7 +10,7 @@ pub enum Capability {
     Smt,
     /// XOR-aware SAT/GF(2) backend available.
     Xor,
-    /// Sage-style algebra backend available.
+    /// Native algebra backend available.
     Algebra,
     /// Lattice backend available.
     Lattice,

@@ -28,7 +28,11 @@ fn valid_registration_and_untrusted_certificate_are_handled() {
 fn scheduling_uses_least_capable_matching_worker() {
     let mut coordinator = Coordinator::new(["trusted".to_owned()]);
     coordinator
-        .register(registration("fat", "trusted", &["cpu", "gpu", "sage"]))
+        .register(registration(
+            "fat",
+            "trusted",
+            &["cpu", "gpu", "native-math"],
+        ))
         .unwrap();
     coordinator
         .register(registration("thin", "trusted", &["cpu", "gpu"]))
