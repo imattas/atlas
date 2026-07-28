@@ -72,6 +72,39 @@ impl CommandRunner for VulkanFeaturesCommandRunner {
 }
 
 #[derive(Debug)]
+struct AdapterFeaturesCommandRunner {
+    commands: RefCell<Vec<Vec<String>>>,
+}
+
+impl AdapterFeaturesCommandRunner {
+    fn new() -> Self {
+        Self {
+            commands: RefCell::new(Vec::new()),
+        }
+    }
+}
+
+impl CommandRunner for AdapterFeaturesCommandRunner {
+    fn run_command(&self, command: &[String]) -> DriverRunOutput {
+        self.commands.borrow_mut().push(command.to_vec());
+        let stdout = match command.first().map(String::as_str) {
+            Some("atlas-gpu-vulkan-run") => "feature=shaderInt64\n",
+            Some("atlas-gpu-opencl-run" | "atlas-gpu-cuda-run" | "atlas-gpu-hip-run") => {
+                "feature=int64\n"
+            }
+            Some(other) => panic!("unexpected adapter feature command: {other}"),
+            None => panic!("empty adapter feature command"),
+        };
+        DriverRunOutput {
+            exit_code: 0,
+            reported_matches: Vec::new(),
+            stdout: stdout.to_owned(),
+            stderr: String::new(),
+        }
+    }
+}
+
+#[derive(Debug)]
 struct CountingDriverRunner {
     calls: RefCell<usize>,
     output: DriverRunOutput,
@@ -507,6 +540,46 @@ fn detects_vulkan_shader_int64_capability_from_adapter_features() {
     let plan = GpuSdkPlan::choose_for_program(&detected, false, &program);
 
     assert!(matches!(plan.selected, Some(GpuSdk::Vulkan { .. })));
+}
+
+#[test]
+fn adapter_feature_detection_queries_all_detected_backend_adapters() {
+    let runner = AdapterFeaturesCommandRunner::new();
+    let detected = GpuSdkDetector::detect_from_tools_with_adapter_features(
+        &[
+            "clinfo".to_owned(),
+            "vulkaninfo".to_owned(),
+            "nvidia-smi".to_owned(),
+            "hipcc.exe".to_owned(),
+        ],
+        &runner,
+    );
+
+    assert_eq!(
+        runner.commands.borrow().as_slice(),
+        &[
+            vec!["atlas-gpu-opencl-run".to_owned(), "--features".to_owned()],
+            vec!["atlas-gpu-vulkan-run".to_owned(), "--features".to_owned()],
+            vec!["atlas-gpu-cuda-run".to_owned(), "--features".to_owned()],
+            vec!["atlas-gpu-hip-run".to_owned(), "--features".to_owned()],
+        ]
+    );
+    assert!(detected.iter().any(|sdk| matches!(
+        sdk,
+        GpuSdk::OpenCl { sdk } if sdk.contains("int64")
+    )));
+    assert!(detected.iter().any(|sdk| matches!(
+        sdk,
+        GpuSdk::Vulkan { sdk } if sdk.contains("shaderInt64")
+    )));
+    assert!(detected.iter().any(|sdk| matches!(
+        sdk,
+        GpuSdk::Cuda { sdk } if sdk.contains("int64")
+    )));
+    assert!(detected.iter().any(|sdk| matches!(
+        sdk,
+        GpuSdk::Hip { sdk } if sdk.contains("int64")
+    )));
 }
 
 #[test]

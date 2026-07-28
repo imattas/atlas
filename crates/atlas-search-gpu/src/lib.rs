@@ -1211,23 +1211,36 @@ impl GpuSdkDetector {
 }
 
 fn augment_with_adapter_features(detected: &mut [GpuSdk], runner: &dyn CommandRunner) {
-    if !detected
-        .iter()
-        .any(|sdk| matches!(sdk, GpuSdk::Vulkan { .. }))
-    {
-        return;
-    }
-    let output = runner.run_command(&["atlas-gpu-vulkan-run".to_owned(), "--features".to_owned()]);
-    if output.exit_code != 0 || !adapter_features_include(&output.stdout, "shaderInt64") {
-        return;
-    }
     for sdk in detected {
-        if let GpuSdk::Vulkan { sdk } = sdk {
-            let lower = sdk.to_ascii_lowercase();
-            if !lower.contains("shaderint64") {
-                sdk.push_str(" shaderInt64");
-            }
+        let (adapter, feature) = adapter_feature_probe(sdk);
+        let output = runner.run_command(&[adapter.to_owned(), "--features".to_owned()]);
+        if output.exit_code == 0 && adapter_features_include(&output.stdout, feature) {
+            append_sdk_feature(sdk, feature);
         }
+    }
+}
+
+fn adapter_feature_probe(sdk: &GpuSdk) -> (&'static str, &'static str) {
+    match sdk {
+        GpuSdk::OpenCl { .. } => ("atlas-gpu-opencl-run", "int64"),
+        GpuSdk::Vulkan { .. } => ("atlas-gpu-vulkan-run", "shaderInt64"),
+        GpuSdk::Cuda { .. } => ("atlas-gpu-cuda-run", "int64"),
+        GpuSdk::Hip { .. } => ("atlas-gpu-hip-run", "int64"),
+    }
+}
+
+fn append_sdk_feature(sdk: &mut GpuSdk, feature: &str) {
+    let identity = match sdk {
+        GpuSdk::OpenCl { sdk }
+        | GpuSdk::Vulkan { sdk }
+        | GpuSdk::Cuda { sdk }
+        | GpuSdk::Hip { sdk } => sdk,
+    };
+    let normalized_identity = identity.to_ascii_lowercase();
+    let normalized_feature = feature.to_ascii_lowercase();
+    if !normalized_identity.contains(&normalized_feature) {
+        identity.push(' ');
+        identity.push_str(feature);
     }
 }
 
