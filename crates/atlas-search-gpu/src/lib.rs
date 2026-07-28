@@ -848,15 +848,22 @@ fn resolve_sdk_tool_program(program: &str) -> Option<PathBuf> {
 }
 
 fn is_known_sdk_tool(name: &str) -> bool {
-    matches!(name.to_ascii_lowercase().as_str(), "hipcc")
+    matches!(name.to_ascii_lowercase().as_str(), "hipcc" | "nvcc")
 }
 
 fn sdk_root_dirs() -> Vec<PathBuf> {
-    ["HIP_PATH", "ROCM_PATH", "ROCM_HOME"]
-        .into_iter()
-        .filter_map(std::env::var_os)
-        .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
-        .collect()
+    [
+        "CUDA_PATH",
+        "CUDA_HOME",
+        "CUDA_ROOT",
+        "HIP_PATH",
+        "ROCM_PATH",
+        "ROCM_HOME",
+    ]
+    .into_iter()
+    .filter_map(std::env::var_os)
+    .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
+    .collect()
 }
 
 fn sdk_tool_candidates(dir: &Path, plain_name: &str) -> Vec<PathBuf> {

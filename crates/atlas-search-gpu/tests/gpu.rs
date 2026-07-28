@@ -1125,6 +1125,26 @@ fn process_driver_runner_resolves_hipcc_from_hip_sdk_root_when_not_on_path() {
 }
 
 #[test]
+fn process_driver_runner_resolves_nvcc_from_cuda_sdk_root_when_not_on_path() {
+    let _env_guard = env_lock();
+    let sdk_root = std::env::temp_dir().join(format!("atlas-cuda-sdk-root-{}", std::process::id()));
+    let nvcc_path = write_sdk_tool(&sdk_root, "nvcc", "nvcc-ok", 9);
+    let original_path = std::env::var_os("PATH");
+    let original_cuda_path = std::env::var_os("CUDA_PATH");
+    std::env::set_var("PATH", "");
+    std::env::set_var("CUDA_PATH", &sdk_root);
+
+    let output = ProcessDriverRunner.run_command(&["nvcc".to_owned()]);
+
+    restore_env("PATH", original_path);
+    restore_env("CUDA_PATH", original_cuda_path);
+    let _ = fs::remove_file(nvcc_path);
+    let _ = fs::remove_dir_all(sdk_root);
+    assert_eq!(output.exit_code, 9);
+    assert!(output.stdout.contains("nvcc-ok"));
+}
+
+#[test]
 fn process_driver_runner_resolves_hipcc_from_rocm_home_when_not_on_path() {
     let _env_guard = env_lock();
     let sdk_root = std::env::temp_dir().join(format!("atlas-rocm-home-{}", std::process::id()));
