@@ -3,7 +3,8 @@
 use atlas_report::SolveReportV1;
 use atlas_scheduler::CancellationToken;
 use atlas_search_gpu::{
-    AcceleratorRuntime, GpuSdk, GpuSdkDetector, ProcessDriverRunner, RuntimeMode, RuntimePolicy,
+    AcceleratorReport, AcceleratorRuntime, GpuSdk, GpuSdkDetector, ProcessDriverRunner,
+    RuntimeMode, RuntimePolicy, RuntimeTelemetry,
 };
 use atlas_search_ir::{SearchDomain, SearchProgram};
 use atlas_search_native::NativeSearcher;
@@ -237,6 +238,11 @@ fn execute_accelerator(
         let detected_sdks =
             GpuSdkDetector::detect_from_host_path_with_adapter_features(&ProcessDriverRunner);
         let selected_sdks = filter_detected_sdks(detected_sdks, gpu_sdk);
+        if selected_sdks.is_empty() {
+            if let Some(choice) = gpu_sdk {
+                return missing_requested_gpu_sdk_report(program, domain, choice, token);
+            }
+        }
         let force_accelerator = force_gpu || gpu_sdk.is_some();
         AcceleratorRuntime::execute_with_detected_driver_and_policy(
             program,
@@ -251,6 +257,27 @@ fn execute_accelerator(
         )
     } else {
         AcceleratorRuntime::execute_with_host_driver(program, domain, token)
+    }
+}
+
+fn missing_requested_gpu_sdk_report(
+    program: &SearchProgram,
+    domain: SearchDomain,
+    choice: GpuSdkChoice,
+    token: &CancellationToken,
+) -> AcceleratorReport {
+    AcceleratorReport {
+        mode: RuntimeMode::CpuFallback,
+        matches: NativeSearcher::search(program, domain, token),
+        telemetry: RuntimeTelemetry {
+            launch: AcceleratorRuntime::plan_launch(domain, 256, 1024),
+            rationale: format!(
+                "requested GPU SDK {} not detected; CPU fallback used",
+                gpu_sdk_choice_display_name(choice)
+            ),
+            cpu_validated: true,
+            rejected_device_matches: 0,
+        },
     }
 }
 
@@ -300,6 +327,15 @@ fn gpu_sdk_choice_name(choice: GpuSdkChoice) -> &'static str {
         GpuSdkChoice::Vulkan => "vulkan",
         GpuSdkChoice::Cuda => "cuda",
         GpuSdkChoice::Hip => "hip",
+    }
+}
+
+fn gpu_sdk_choice_display_name(choice: GpuSdkChoice) -> &'static str {
+    match choice {
+        GpuSdkChoice::OpenCl => "OpenCL",
+        GpuSdkChoice::Vulkan => "Vulkan",
+        GpuSdkChoice::Cuda => "CUDA",
+        GpuSdkChoice::Hip => "HIP",
     }
 }
 

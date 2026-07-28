@@ -13,6 +13,14 @@ fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
+    if let Some(value) = original {
+        std::env::set_var(name, value);
+    } else {
+        std::env::remove_var(name);
+    }
+}
+
 fn write_feature_adapter(dir: &Path, command: &str, line: &str) -> std::io::Result<()> {
     let path = dir.join(if cfg!(windows) {
         format!("{command}.cmd")
@@ -288,6 +296,62 @@ fn solve_rejects_unknown_gpu_sdk_selection() {
     assert!(error.contains("vulkan"));
     assert!(error.contains("cuda"));
     assert!(error.contains("hip"));
+}
+
+#[test]
+fn solve_reports_requested_gpu_sdk_when_that_backend_is_not_detected() {
+    let _env_guard = env_lock();
+    let tool_dir = std::env::temp_dir().join(format!(
+        "atlas-cli-missing-requested-sdk-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&tool_dir).unwrap();
+    fs::write(tool_dir.join("clinfo.exe"), "").unwrap();
+
+    let original_path = std::env::var_os("PATH");
+    let original_cuda_path = std::env::var_os("CUDA_PATH");
+    let original_cuda_home = std::env::var_os("CUDA_HOME");
+    let original_cuda_root = std::env::var_os("CUDA_ROOT");
+    #[cfg(windows)]
+    let original_program_files = std::env::var_os("ProgramFiles");
+    #[cfg(windows)]
+    let original_program_files_x86 = std::env::var_os("ProgramFiles(x86)");
+
+    std::env::set_var("PATH", &tool_dir);
+    std::env::remove_var("CUDA_PATH");
+    std::env::remove_var("CUDA_HOME");
+    std::env::remove_var("CUDA_ROOT");
+    #[cfg(windows)]
+    {
+        std::env::set_var("ProgramFiles", &tool_dir);
+        std::env::remove_var("ProgramFiles(x86)");
+    }
+
+    let output = run(&[
+        "solve".to_owned(),
+        "--fixture".to_owned(),
+        "xor".to_owned(),
+        "--start".to_owned(),
+        "0x50".to_owned(),
+        "--end".to_owned(),
+        "0x60".to_owned(),
+        "--gpu-sdk".to_owned(),
+        "cuda".to_owned(),
+    ])
+    .unwrap();
+
+    restore_env("PATH", original_path);
+    restore_env("CUDA_PATH", original_cuda_path);
+    restore_env("CUDA_HOME", original_cuda_home);
+    restore_env("CUDA_ROOT", original_cuda_root);
+    #[cfg(windows)]
+    {
+        restore_env("ProgramFiles", original_program_files);
+        restore_env("ProgramFiles(x86)", original_program_files_x86);
+    }
+    let _ = fs::remove_dir_all(tool_dir);
+    assert!(output.contains("mode=CpuFallback"));
+    assert!(output.contains("requested GPU SDK CUDA not detected"));
 }
 
 #[test]
