@@ -414,7 +414,7 @@ pub struct AcceleratorReport {
 pub struct AcceleratorRuntime;
 
 const DEFAULT_GPU_LOCAL_SIZE: u64 = 256;
-const MAX_DRIVER_LAUNCH_CANDIDATES: u64 = u32::MAX as u64 * DEFAULT_GPU_LOCAL_SIZE;
+const MAX_DRIVER_LAUNCH_CANDIDATES: u64 = u32::MAX as u64;
 
 impl AcceleratorRuntime {
     /// Plans a bounded GPU launch and transfer shape.

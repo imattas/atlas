@@ -1544,14 +1544,59 @@ fn runtime_splits_driver_launches_that_exceed_single_dispatch_capacity() {
     );
 
     assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    let launch_domains = runner.launch_domains.borrow();
+    assert!(launch_domains.len() > 2);
+    assert_eq!(
+        launch_domains.first(),
+        Some(&SearchDomain::new(0, u64::from(u32::MAX)))
+    );
+    assert_eq!(
+        launch_domains.last(),
+        Some(&SearchDomain::new(
+            single_dispatch_capacity,
+            single_dispatch_capacity + 2
+        ))
+    );
+    assert!(launch_domains
+        .iter()
+        .all(|domain| u32::try_from(domain.end - domain.start).is_ok()));
+    assert_eq!(report.matches[0], 0);
+}
+
+#[test]
+fn runtime_splits_driver_launches_before_device_match_counter_can_wrap() {
+    let program = SearchProgram::new(
+        64,
+        vec![SearchOp::ChecksumEq {
+            modulus: 1,
+            target: 0,
+        }],
+    )
+    .unwrap();
+    let token = CancellationToken::new();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "test OpenCL".to_owned(),
+    };
+    let runner = RecordingPlanRunner::new();
+    let counter_capacity = u64::from(u32::MAX);
+
+    let report = AcceleratorRuntime::execute_with_driver(
+        &program,
+        SearchDomain::new(0, counter_capacity + 2),
+        &sdk,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
     assert_eq!(
         runner.launch_domains.borrow().as_slice(),
         &[
-            SearchDomain::new(0, single_dispatch_capacity),
-            SearchDomain::new(single_dispatch_capacity, single_dispatch_capacity + 2),
+            SearchDomain::new(0, counter_capacity),
+            SearchDomain::new(counter_capacity, counter_capacity + 2),
         ]
     );
-    assert_eq!(report.matches, vec![0, single_dispatch_capacity]);
+    assert_eq!(report.matches, vec![0, counter_capacity]);
 }
 
 #[test]
