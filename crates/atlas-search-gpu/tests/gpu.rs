@@ -590,6 +590,51 @@ fn vulkan_32_bit_codegen_keeps_literals_in_32_bit_range() {
 }
 
 #[test]
+fn gpu_codegen_rejects_out_of_width_byte_constraints_without_overshifting() {
+    let program32 = SearchProgram::new(
+        32,
+        vec![SearchOp::ByteEq {
+            byte_index: 4,
+            value: 0,
+        }],
+    )
+    .unwrap();
+    let program64 = SearchProgram::new(
+        64,
+        vec![SearchOp::ByteEq {
+            byte_index: 8,
+            value: 0,
+        }],
+    )
+    .unwrap();
+
+    for source in [
+        GpuSearcher::compile_cuda(&program32),
+        GpuSearcher::compile_hip(&program32),
+        GpuSearcher::compile_opencl(&program32),
+        GpuSearcher::compile_vulkan_glsl(&program32),
+    ] {
+        assert!(source.contains("0U == 1U"), "{source}");
+        assert!(!source.contains(">> 32U"), "{source}");
+    }
+
+    for source in [
+        GpuSearcher::compile_cuda(&program64),
+        GpuSearcher::compile_hip(&program64),
+        GpuSearcher::compile_opencl(&program64),
+        GpuSearcher::compile_vulkan_glsl(&program64),
+    ] {
+        assert!(
+            source.contains("0ULL == 1ULL")
+                || source.contains("0UL == 1UL")
+                || source.contains("uint64_t(0) == uint64_t(1)"),
+            "{source}"
+        );
+        assert!(!source.contains(">> 64U"), "{source}");
+    }
+}
+
+#[test]
 fn vulkan_codegen_emits_restricted_ir_predicates_and_preserves_full_candidate() {
     let program = SearchProgram::new(
         24,

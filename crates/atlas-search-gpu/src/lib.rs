@@ -2315,6 +2315,9 @@ fn opencl_predicate(op: &SearchOp, width: u32) -> String {
         }
         SearchOp::ByteEq { byte_index, value } => {
             let shift = byte_index.saturating_mul(8);
+            if shift >= width {
+                return "0UL == 1UL".to_owned();
+            }
             format!(
                 "((candidate >> {shift}U) & 255UL) == {}UL",
                 u64::from(value)
@@ -2393,6 +2396,9 @@ fn opencl_predicate_32(op: &SearchOp, width: u32) -> String {
         }
         SearchOp::ByteEq { byte_index, value } => {
             let shift = byte_index.saturating_mul(8);
+            if shift >= width {
+                return false_predicate_32();
+            }
             format!("((candidate >> {shift}U) & 255U) == {}U", u64::from(value))
         }
     }
@@ -2472,6 +2478,9 @@ fn cuda_predicate_32(op: &SearchOp, width: u32) -> String {
         }
         SearchOp::ByteEq { byte_index, value } => {
             let shift = byte_index.saturating_mul(8);
+            if shift >= width {
+                return false_predicate_32();
+            }
             format!("((candidate >> {shift}U) & 255U) == {}U", u64::from(value))
         }
     }
@@ -2518,6 +2527,9 @@ fn cuda_predicate(op: &SearchOp, width: u32) -> String {
         }
         SearchOp::ByteEq { byte_index, value } => {
             let shift = byte_index.saturating_mul(8);
+            if shift >= width {
+                return "0ULL == 1ULL".to_owned();
+            }
             format!(
                 "((candidate >> {shift}U) & 255ULL) == {}ULL",
                 u64::from(value)
@@ -2596,6 +2608,9 @@ fn glsl_predicate_32(op: &SearchOp, width: u32) -> String {
         }
         SearchOp::ByteEq { byte_index, value } => {
             let shift = byte_index.saturating_mul(8);
+            if shift >= width {
+                return false_predicate_32();
+            }
             format!("((candidate >> {shift}U) & 255U) == {}U", u64::from(value))
         }
     }
@@ -2630,6 +2645,9 @@ fn glsl_predicate(op: &SearchOp, width: u32) -> String {
         }
         SearchOp::ByteEq { byte_index, value } => {
             let shift = byte_index.saturating_mul(8);
+            if shift >= width {
+                return "uint64_t(0) == uint64_t(1)".to_owned();
+            }
             format!(
                 "((candidate >> {shift}U) & 255UL) == {}UL",
                 u64::from(value)
