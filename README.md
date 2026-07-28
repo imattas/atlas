@@ -18,10 +18,22 @@ Install the CLI from GitHub:
 curl -fsSL https://raw.githubusercontent.com/imattas/atlas/main/install.sh | sh
 ```
 
+On Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/imattas/atlas/main/install.ps1 | iex
+```
+
 Install optional GPU adapter binaries too:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/imattas/atlas/main/install.sh | ATLAS_INSTALL_GPU=1 sh
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:ATLAS_INSTALL_GPU='1'; irm https://raw.githubusercontent.com/imattas/atlas/main/install.ps1 | iex
 ```
 
 ```powershell

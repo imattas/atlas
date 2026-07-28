@@ -17,10 +17,22 @@ Install the CLI directly from GitHub:
 curl -fsSL https://raw.githubusercontent.com/imattas/atlas/main/install.sh | sh
 ```
 
+On Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/imattas/atlas/main/install.ps1 | iex
+```
+
 Install GPU adapter binaries as well:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/imattas/atlas/main/install.sh | ATLAS_INSTALL_GPU=1 sh
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:ATLAS_INSTALL_GPU='1'; irm https://raw.githubusercontent.com/imattas/atlas/main/install.ps1 | iex
 ```
 
 Version/ref overrides are supported:
@@ -28,6 +40,13 @@ Version/ref overrides are supported:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/imattas/atlas/main/install.sh | ATLAS_TAG=v0.1.0 sh
 curl -fsSL https://raw.githubusercontent.com/imattas/atlas/main/install.sh | ATLAS_REV=<commit-sha> sh
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:ATLAS_TAG='v0.1.0'; irm https://raw.githubusercontent.com/imattas/atlas/main/install.ps1 | iex
+$env:ATLAS_REV='<commit-sha>'; irm https://raw.githubusercontent.com/imattas/atlas/main/install.ps1 | iex
 ```
 
 Recommended validation:
