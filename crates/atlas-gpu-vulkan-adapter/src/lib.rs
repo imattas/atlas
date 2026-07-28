@@ -469,6 +469,7 @@ fn vulkan_standard_loader_roots() -> Vec<PathBuf> {
     roots
 }
 
+#[cfg(windows)]
 fn sdk_version_key(path: &Path) -> Vec<u32> {
     path.file_name()
         .and_then(|name| name.to_str())
@@ -482,6 +483,7 @@ fn sdk_version_key(path: &Path) -> Vec<u32> {
         .unwrap_or_default()
 }
 
+#[cfg(windows)]
 fn push_existing_dir(paths: &mut Vec<PathBuf>, path: PathBuf) {
     if path.is_dir() {
         paths.push(path);

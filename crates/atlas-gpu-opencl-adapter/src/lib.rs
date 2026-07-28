@@ -588,6 +588,7 @@ fn opencl_standard_loader_roots() -> Vec<PathBuf> {
     roots
 }
 
+#[cfg(windows)]
 fn push_existing_dir(paths: &mut Vec<PathBuf>, path: PathBuf) {
     if path.is_dir() {
         paths.push(path);
