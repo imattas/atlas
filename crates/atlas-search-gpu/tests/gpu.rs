@@ -10,6 +10,12 @@ use atlas_search_native::NativeSearcher;
 use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+
+fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+}
 
 #[derive(Debug)]
 struct FixtureDriverRunner {
@@ -478,6 +484,7 @@ fn detects_gpu_sdks_from_standard_sdk_root_directories() {
 
 #[test]
 fn detects_gpu_sdks_from_common_sdk_root_alias_env_vars() {
+    let _env_guard = env_lock();
     let root = std::env::temp_dir().join(format!("atlas-gpu-sdk-aliases-{}", std::process::id()));
     let cuda = root.join("cuda-toolkit");
     let rocm = root.join("rocm-runtime");
@@ -796,6 +803,7 @@ fn process_driver_runner_resolves_adjacent_adapter_command_when_not_on_path() {
 
 #[test]
 fn process_driver_runner_resolves_hipcc_from_hip_sdk_root_when_not_on_path() {
+    let _env_guard = env_lock();
     let sdk_root = std::env::temp_dir().join(format!("atlas-hip-sdk-root-{}", std::process::id()));
     let hipcc_path = write_sdk_tool(&sdk_root, "hipcc", "hipcc-ok", 9);
     let original_hip_path = std::env::var_os("HIP_PATH");
@@ -808,6 +816,26 @@ fn process_driver_runner_resolves_hipcc_from_hip_sdk_root_when_not_on_path() {
     let _ = fs::remove_dir_all(sdk_root);
     assert_eq!(output.exit_code, 9);
     assert!(output.stdout.contains("hipcc-ok"));
+}
+
+#[test]
+fn process_driver_runner_resolves_hipcc_from_rocm_home_when_not_on_path() {
+    let _env_guard = env_lock();
+    let sdk_root = std::env::temp_dir().join(format!("atlas-rocm-home-{}", std::process::id()));
+    let hipcc_path = write_sdk_tool(&sdk_root, "hipcc", "rocm-home-hipcc-ok", 9);
+    let original_path = std::env::var_os("PATH");
+    let original_rocm_home = std::env::var_os("ROCM_HOME");
+    std::env::set_var("PATH", "");
+    std::env::set_var("ROCM_HOME", &sdk_root);
+
+    let output = ProcessDriverRunner.run_command(&["hipcc".to_owned()]);
+
+    restore_env("PATH", original_path);
+    restore_env("ROCM_HOME", original_rocm_home);
+    let _ = fs::remove_file(hipcc_path);
+    let _ = fs::remove_dir_all(sdk_root);
+    assert_eq!(output.exit_code, 9);
+    assert!(output.stdout.contains("rocm-home-hipcc-ok"));
 }
 
 #[test]
@@ -1065,6 +1093,7 @@ fn runtime_uses_gpu_cache_hit_threshold_for_warmed_kernel() {
 
 #[test]
 fn public_execute_uses_placement_before_process_gpu_launch() {
+    let _env_guard = env_lock();
     let tool_dir =
         std::env::temp_dir().join(format!("atlas-gpu-public-path-{}", std::process::id()));
     fs::create_dir_all(&tool_dir).unwrap();

@@ -803,7 +803,7 @@ fn is_known_sdk_tool(name: &str) -> bool {
 }
 
 fn sdk_root_dirs() -> Vec<PathBuf> {
-    ["HIP_PATH", "ROCM_PATH"]
+    ["HIP_PATH", "ROCM_PATH", "ROCM_HOME"]
         .into_iter()
         .filter_map(std::env::var_os)
         .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
