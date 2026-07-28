@@ -2527,30 +2527,71 @@ fn cuda_predicate(op: &SearchOp, width: u32) -> String {
 }
 
 fn glsl_predicate_32(op: &SearchOp, width: u32) -> String {
+    let width_mask = width_mask(width);
     match *op {
         SearchOp::AddEq { addend, target } => {
-            format!("((candidate + {addend}U) & mask) == {target}U")
+            if target > width_mask {
+                return false_predicate_32();
+            }
+            format!(
+                "((candidate + {}U) & mask) == {}U",
+                low_u32(addend),
+                exact_u32(target)
+            )
         }
         SearchOp::XorEq { mask, target } => {
-            format!("((candidate ^ {mask}U) & mask) == {target}U")
+            if target > width_mask {
+                return false_predicate_32();
+            }
+            format!(
+                "((candidate ^ {}U) & mask) == {}U",
+                low_u32(mask),
+                exact_u32(target)
+            )
         }
         SearchOp::ChecksumEq { modulus, target } => {
-            format!("(candidate % {modulus}U) == {target}U")
+            if modulus == 0 || target > u64::from(u32::MAX) {
+                return false_predicate_32();
+            }
+            if modulus > u64::from(u32::MAX) {
+                return format!("candidate == {}U", exact_u32(target));
+            }
+            if target >= modulus {
+                return false_predicate_32();
+            }
+            format!(
+                "(candidate % {}U) == {}U",
+                exact_u32(modulus),
+                exact_u32(target)
+            )
         }
         SearchOp::MulAddEq {
             multiplier,
             addend,
             target,
         } => {
-            format!("((candidate * {multiplier}U + {addend}U) & mask) == {target}U")
+            if target > width_mask {
+                return false_predicate_32();
+            }
+            format!(
+                "((candidate * {}U + {}U) & mask) == {}U",
+                low_u32(multiplier),
+                low_u32(addend),
+                exact_u32(target)
+            )
         }
         SearchOp::RotateXorEq {
             rotate_left,
             mask,
             target,
         } => {
+            if target > width_mask {
+                return false_predicate_32();
+            }
             format!(
-                "((rotate_left_width(candidate, {rotate_left}U, {width}U) ^ {mask}U) & mask) == {target}U"
+                "((rotate_left_width(candidate, {rotate_left}U, {width}U) ^ {}U) & mask) == {}U",
+                low_u32(mask),
+                exact_u32(target)
             )
         }
         SearchOp::ByteEq { byte_index, value } => {

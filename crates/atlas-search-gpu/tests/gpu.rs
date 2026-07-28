@@ -552,6 +552,44 @@ fn vulkan_32_bit_codegen_does_not_require_shader_int64() {
 }
 
 #[test]
+fn vulkan_32_bit_codegen_keeps_literals_in_32_bit_range() {
+    let program = SearchProgram::new(
+        8,
+        vec![
+            SearchOp::XorEq {
+                mask: 0x1_0000_00aa,
+                target: 0xff,
+            },
+            SearchOp::AddEq {
+                addend: 0x1_0000_0001,
+                target: 4,
+            },
+            SearchOp::ChecksumEq {
+                modulus: 0x1_0000_0000,
+                target: 0xff,
+            },
+            SearchOp::MulAddEq {
+                multiplier: 0x1_0000_0003,
+                addend: 0x1_0000_0005,
+                target: 0x1ff,
+            },
+        ],
+    )
+    .unwrap();
+
+    let vulkan = GpuSearcher::compile_vulkan_glsl(&program);
+
+    assert!(vulkan.contains("((candidate ^ 170U) & mask) == 255U"));
+    assert!(vulkan.contains("((candidate + 1U) & mask) == 4U"));
+    assert!(vulkan.contains("candidate == 255U"));
+    assert!(vulkan.contains("0U == 1U"));
+    assert!(!vulkan.contains("4294967296U"));
+    assert!(!vulkan.contains("4294967297U"));
+    assert!(!vulkan.contains("8589934591U"));
+    assert!(!vulkan.contains("UL"));
+}
+
+#[test]
 fn vulkan_codegen_emits_restricted_ir_predicates_and_preserves_full_candidate() {
     let program = SearchProgram::new(
         24,
