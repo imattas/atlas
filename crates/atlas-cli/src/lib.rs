@@ -152,14 +152,16 @@ fn benchmark(args: &[String]) -> Result<String, String> {
         &token,
     );
     let accelerator_elapsed_ns = accelerator_start.elapsed().as_nanos();
+    let speedup_ratio = format_speedup_ratio(native_elapsed_ns, accelerator_elapsed_ns);
     Ok(format!(
-        "{{\"schema_major\":1,\"kind\":\"benchmark\",\"fixture\":\"{}\",\"domain\":{{\"start\":{},\"end\":{}}},\"native\":{{\"elapsed_ns\":{},\"matches\":{}}},\"accelerator\":{{\"elapsed_ns\":{},\"mode\":\"{}\",\"matches\":{},\"launch\":{{\"global_size\":{},\"local_size\":{},\"max_matches\":{},\"output_buffer_bytes\":{}}},\"telemetry\":\"{}\"}}}}\n",
+        "{{\"schema_major\":1,\"kind\":\"benchmark\",\"fixture\":\"{}\",\"domain\":{{\"start\":{},\"end\":{}}},\"native\":{{\"elapsed_ns\":{},\"matches\":{}}},\"accelerator\":{{\"elapsed_ns\":{},\"speedup_ratio\":{},\"mode\":\"{}\",\"matches\":{},\"launch\":{{\"global_size\":{},\"local_size\":{},\"max_matches\":{},\"output_buffer_bytes\":{}}},\"telemetry\":\"{}\"}}}}\n",
         json_escape(&request.fixture),
         request.domain.start,
         request.domain.end,
         native_elapsed_ns,
         format_matches(&native_matches),
         accelerator_elapsed_ns,
+        speedup_ratio,
         mode_name(accelerator.mode),
         format_matches(&accelerator.matches),
         accelerator.telemetry.launch.global_size,
@@ -168,6 +170,16 @@ fn benchmark(args: &[String]) -> Result<String, String> {
         accelerator.telemetry.launch.output_buffer_bytes,
         json_escape(&accelerator.telemetry.rationale)
     ))
+}
+
+fn format_speedup_ratio(native_elapsed_ns: u128, accelerator_elapsed_ns: u128) -> String {
+    if accelerator_elapsed_ns == 0 {
+        return "null".to_owned();
+    }
+    let scaled = native_elapsed_ns.saturating_mul(1_000_000) / accelerator_elapsed_ns;
+    let whole = scaled / 1_000_000;
+    let fractional = scaled % 1_000_000;
+    format!("{whole}.{fractional:06}")
 }
 
 struct SolveRequest {
