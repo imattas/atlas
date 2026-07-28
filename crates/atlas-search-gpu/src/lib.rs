@@ -610,9 +610,15 @@ impl AcceleratorRuntime {
                 },
             };
         }
+        if cancellation.is_cancelled() {
+            return Self::cancelled_report(program, domain, cancellation);
+        }
         if let Some(cpu_matches) =
             exact_small_domain_matches(program, domain, launch.max_matches, cancellation)
         {
+            if cancellation.is_cancelled() {
+                return Self::cancelled_report(program, domain, cancellation);
+            }
             if cpu_matches != matches {
                 return AcceleratorReport {
                     mode: RuntimeMode::CpuFallback,
@@ -921,9 +927,15 @@ impl AcceleratorRuntime {
                 },
             };
         }
+        if cancellation.is_cancelled() {
+            return Self::cancelled_report(program, domain, cancellation);
+        }
         if let Some(cpu_matches) =
             exact_small_domain_matches(program, domain, launch.max_matches, cancellation)
         {
+            if cancellation.is_cancelled() {
+                return Self::cancelled_report(program, domain, cancellation);
+            }
             if cpu_matches != matches {
                 return AcceleratorReport {
                     mode: RuntimeMode::CpuFallback,
