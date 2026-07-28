@@ -91,6 +91,33 @@ class VerifyScriptTests(unittest.TestCase):
                 self.assertNotEqual(-1, first_hardware_test_index)
                 self.assertLess(doctor_index, first_hardware_test_index)
 
+    def test_hardware_profile_builds_adapter_binaries_before_doctor_probe(self):
+        adapter_packages = [
+            "atlas-gpu-opencl-adapter",
+            "atlas-gpu-vulkan-adapter",
+            "atlas-gpu-wgpu-adapter",
+            "atlas-gpu-cuda-adapter",
+            "atlas-gpu-hip-adapter",
+        ]
+        scripts = [
+            ROOT / "scripts" / "verify.ps1",
+            ROOT / "scripts" / "verify.sh",
+        ]
+
+        for script in scripts:
+            with self.subTest(script=script.name):
+                text = script.read_text(encoding="utf-8")
+                doctor_index = text.find("run -q -p atlas-cli -- doctor")
+                self.assertNotEqual(-1, doctor_index)
+                build_index = text.find("build -p atlas-gpu-opencl-adapter")
+                self.assertNotEqual(-1, build_index, f"{script.name} missing adapter build command")
+                self.assertLess(build_index, doctor_index)
+                build_line_end = text.find("\n", build_index)
+                build_line = text[build_index : build_line_end if build_line_end != -1 else len(text)]
+                for package in adapter_packages:
+                    package_token = f"-p {package}"
+                    self.assertIn(package_token, build_line, f"{script.name} missing {package_token}")
+
     def test_hardware_profile_records_forced_gpu_benchmark_before_device_tests(self):
         scripts = [
             ROOT / "scripts" / "verify.ps1",

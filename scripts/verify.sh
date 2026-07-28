@@ -390,6 +390,7 @@ if [[ "$profile" == "full" ]]; then
 fi
 
 if [[ "$profile" == "hardware" ]]; then
+  run_hardware_step "GPU adapter binary build" "$cargo_cmd" build -p atlas-gpu-opencl-adapter -p atlas-gpu-vulkan-adapter -p atlas-gpu-wgpu-adapter -p atlas-gpu-cuda-adapter -p atlas-gpu-hip-adapter
   echo "==> GPU doctor diagnostics"
   set +e
   hardware_doctor_json=$("$cargo_cmd" run -q -p atlas-cli -- doctor)

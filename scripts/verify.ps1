@@ -377,6 +377,9 @@ if ($Profile -eq "full") {
 
 if ($Profile -eq "hardware") {
     $HardwareDoctor = $null
+    Invoke-HardwareStep "GPU adapter binary build" {
+        cargo build -p atlas-gpu-opencl-adapter -p atlas-gpu-vulkan-adapter -p atlas-gpu-wgpu-adapter -p atlas-gpu-cuda-adapter -p atlas-gpu-hip-adapter
+    }
     Invoke-HardwareStep "GPU doctor diagnostics" {
         $Output = cargo run -q -p atlas-cli -- doctor
         $Status = $LASTEXITCODE
