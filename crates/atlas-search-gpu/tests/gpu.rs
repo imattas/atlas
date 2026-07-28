@@ -1855,6 +1855,38 @@ fn runtime_skips_plain_vulkan_for_64_bit_programs() {
 
     let report = AcceleratorRuntime::execute_with_detected_driver_and_policy(
         &program,
+        SearchDomain::new(0, 1_000_000),
+        &sdks,
+        &token,
+        RuntimePolicy { force_gpu: false },
+        &[],
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    assert!(report.telemetry.rationale.contains("CUDA"));
+    assert!(!report.telemetry.rationale.contains("Vulkan"));
+}
+
+#[test]
+fn runtime_force_gpu_attempts_plain_vulkan_for_64_bit_programs() {
+    let program = SearchProgram::new(64, vec![SearchOp::XorEq { mask: 0, target: 0 }]).unwrap();
+    let token = CancellationToken::new();
+    let sdks = [GpuSdk::Vulkan {
+        sdk: "plain Vulkan runtime".to_owned(),
+    }];
+    let runner = CountingDriverRunner {
+        calls: RefCell::new(0),
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![0],
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_detected_driver_and_policy(
+        &program,
         SearchDomain::new(0, 64),
         &sdks,
         &token,
@@ -1864,8 +1896,8 @@ fn runtime_skips_plain_vulkan_for_64_bit_programs() {
     );
 
     assert_eq!(report.mode, RuntimeMode::DeviceValidated);
-    assert!(report.telemetry.rationale.contains("CUDA"));
-    assert!(!report.telemetry.rationale.contains("Vulkan"));
+    assert_eq!(*runner.calls.borrow(), 1);
+    assert!(report.telemetry.rationale.contains("Vulkan"));
 }
 
 #[test]
