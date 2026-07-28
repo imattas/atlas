@@ -248,6 +248,34 @@ fn hip_runtime_library_candidates_prefer_newest_standard_rocm_runtime() {
     );
 }
 
+#[cfg(windows)]
+#[test]
+fn hip_runtime_library_candidates_do_not_emit_duplicate_bin_segments() {
+    let root =
+        std::env::temp_dir().join(format!("atlas-hip-standard-clean-{}", std::process::id()));
+    let rocm_root = root.join("AMD").join("ROCm").join("6.1");
+    fs::create_dir_all(rocm_root.join("bin")).unwrap();
+    let original_program_files = std::env::var_os("ProgramFiles");
+    let original_program_files_x86 = std::env::var_os("ProgramFiles(x86)");
+    std::env::set_var("ProgramFiles", &root);
+    std::env::remove_var("ProgramFiles(x86)");
+
+    let candidates = hip_runtime_library_candidates_from_host_roots();
+
+    restore_env("ProgramFiles", original_program_files);
+    restore_env("ProgramFiles(x86)", original_program_files_x86);
+    let _ = fs::remove_dir_all(root);
+    assert!(
+        !candidates.iter().any(|candidate| candidate
+            .components()
+            .collect::<Vec<_>>()
+            .windows(2)
+            .any(|components| components[0].as_os_str() == "bin"
+                && components[1].as_os_str() == "bin")),
+        "expected HIP runtime candidates without duplicate bin segments, got {candidates:?}"
+    );
+}
+
 #[test]
 #[ignore = "requires hipcc, HIP runtime, and an AMD HIP-capable device"]
 fn generated_hip_kernel_runs_on_device_and_preserves_full_candidates() {

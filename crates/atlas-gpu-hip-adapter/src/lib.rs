@@ -578,7 +578,6 @@ fn hip_standard_root_dirs() -> Vec<PathBuf> {
             for path in versioned_roots {
                 roots.push(path.clone());
                 push_existing_dir(&mut roots, path.join("hip"));
-                push_existing_dir(&mut roots, path.join("bin"));
             }
             push_existing_dir(&mut roots, rocm_base.clone());
         }
