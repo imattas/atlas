@@ -1776,7 +1776,7 @@ fn artifact_file_is_reusable_for_plan(plan: &DriverCommandPlan) -> bool {
         }
         GpuSdk::Hip { .. } => {
             artifact_has_elf_magic(path)
-                && artifact_bytes_contain(path, ATLAS_SEARCH_ENTRY_BYTES)
+                && artifact_bytes_contain_symbol(path, ATLAS_SEARCH_ENTRY_BYTES)
                 && artifact_matches_binary_launch_abi(path, plan)
         }
     }
@@ -1817,6 +1817,26 @@ fn ptx_entry_name(text_after_entry: &str) -> Option<&str> {
 
 fn artifact_bytes_contain(path: &Path, needle: &[u8]) -> bool {
     fs::read(path).is_ok_and(|bytes| bytes.windows(needle.len()).any(|window| window == needle))
+}
+
+fn artifact_bytes_contain_symbol(path: &Path, symbol: &[u8]) -> bool {
+    fs::read(path).is_ok_and(|bytes| bytes_contain_symbol(&bytes, symbol))
+}
+
+fn bytes_contain_symbol(bytes: &[u8], symbol: &[u8]) -> bool {
+    !symbol.is_empty()
+        && bytes
+            .windows(symbol.len())
+            .enumerate()
+            .any(|(index, window)| {
+                window == symbol
+                    && symbol_boundary(bytes.get(index.wrapping_sub(1)).copied())
+                    && symbol_boundary(bytes.get(index + symbol.len()).copied())
+            })
+}
+
+fn symbol_boundary(byte: Option<u8>) -> bool {
+    byte.is_none_or(|byte| !(byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'$'))
 }
 
 fn artifact_matches_opencl_launch_abi(path: &Path, plan: &DriverCommandPlan) -> bool {
