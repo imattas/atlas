@@ -622,6 +622,8 @@ pub struct AcceleratorReport {
 pub struct AcceleratorRuntime;
 
 const DEFAULT_GPU_LOCAL_SIZE: u64 = 256;
+const DEFAULT_GPU_RETAINED_MATCHES: usize = 1024;
+const MAX_GPU_RETAINED_MATCHES: usize = 65_536;
 const MAX_DRIVER_LAUNCH_GLOBAL_SIZE: u64 = u32::MAX as u64;
 const ATLAS_SEARCH_ENTRY_BYTES: &[u8] = b"atlas_search";
 const ATLAS_SEARCH_U32_ABI_BYTES: &[u8] = b"atlas_search_u32_abi";
@@ -1021,8 +1023,12 @@ impl AcceleratorRuntime {
                 telemetry: sdk_runtime_telemetry(launch, sdk, base_rationale, 0),
             };
         }
-        let validation =
-            validate_device_matches(program, domain, &reported_matches, launch.max_matches);
+        let validation = validate_device_matches(
+            program,
+            domain,
+            &reported_matches,
+            DEFAULT_GPU_RETAINED_MATCHES,
+        );
         let matches = validation.matches;
         if matches.is_empty() {
             return AcceleratorReport {
@@ -1180,8 +1186,11 @@ fn collect_driver_output(
                 cancellation,
             )));
         }
-        let chunk_launch =
-            AcceleratorRuntime::plan_launch(launch_domain, DEFAULT_GPU_LOCAL_SIZE, 1024);
+        let chunk_launch = AcceleratorRuntime::plan_launch(
+            launch_domain,
+            DEFAULT_GPU_LOCAL_SIZE,
+            retained_match_capacity(launch_domain),
+        );
         let output = runner.run(&DriverCommandPlan::for_launch(
             sdk,
             program,
@@ -1208,7 +1217,8 @@ fn device_match_count_overflow(
     output: &DriverRunOutput,
     launch: LaunchConfig,
 ) -> Option<DeviceMatchCountOverflow> {
-    let device_match_count = DriverRunOutput::parse_reported_match_count(&output.stdout)?;
+    let device_match_count = DriverRunOutput::parse_reported_match_count(&output.stdout)
+        .unwrap_or(output.reported_matches.len());
     (device_match_count > launch.max_matches).then_some(DeviceMatchCountOverflow {
         device_match_count,
         max_matches: launch.max_matches,
@@ -1782,6 +1792,13 @@ fn driver_launch_domains(domain: SearchDomain) -> Vec<SearchDomain> {
         start = end;
     }
     domains
+}
+
+fn retained_match_capacity(domain: SearchDomain) -> usize {
+    let candidates = domain.end.saturating_sub(domain.start);
+    usize::try_from(candidates).map_or(MAX_GPU_RETAINED_MATCHES, |count| {
+        count.clamp(DEFAULT_GPU_RETAINED_MATCHES, MAX_GPU_RETAINED_MATCHES)
+    })
 }
 
 fn max_driver_launch_candidates(local_size: u64) -> u64 {

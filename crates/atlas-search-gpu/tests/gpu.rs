@@ -3142,7 +3142,7 @@ fn runtime_accepts_explicit_zero_match_count_without_cpu_fallback() {
 
     let report = AcceleratorRuntime::execute_with_driver(
         &program,
-        SearchDomain::new(0, 2_000),
+        SearchDomain::new(0, 64),
         &sdk,
         &token,
         &runner,
@@ -3173,7 +3173,7 @@ fn runtime_honors_cancellation_after_explicit_zero_match_gpu_launch() {
 
     let report = AcceleratorRuntime::execute_with_driver(
         &program,
-        SearchDomain::new(0, 2_000),
+        SearchDomain::new(0, 64),
         &sdk,
         &token,
         &runner,
@@ -3255,6 +3255,47 @@ fn runtime_falls_back_when_aggregate_multi_launch_matches_exceed_buffer() {
 }
 
 #[test]
+fn runtime_keeps_bounded_dense_gpu_results_when_device_reports_all_matches() {
+    let program = SearchProgram::new(
+        16,
+        vec![SearchOp::ChecksumEq {
+            modulus: 1,
+            target: 0,
+        }],
+    )
+    .unwrap();
+    let token = CancellationToken::new();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "test OpenCL".to_owned(),
+    };
+    let runner = FixtureDriverRunner {
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: (0..1_500).collect(),
+            stdout: "match_count=1500\n".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_driver(
+        &program,
+        SearchDomain::new(0, 1_500),
+        &sdk,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    assert_eq!(
+        report.matches,
+        NativeSearcher::search(&program, SearchDomain::new(0, 1_500), &token)
+    );
+    assert!(report.telemetry.rationale.contains("driver exit 0"));
+    assert_eq!(report.telemetry.launch.max_matches, 1_500);
+    assert_eq!(report.telemetry.launch.output_buffer_bytes, 12_000);
+}
+
+#[test]
 fn runtime_rejects_driver_output_that_exceeds_launch_capacity() {
     let program = SearchProgram::new(
         16,
@@ -3279,7 +3320,7 @@ fn runtime_rejects_driver_output_that_exceeds_launch_capacity() {
 
     let report = AcceleratorRuntime::execute_with_driver(
         &program,
-        SearchDomain::new(0, 2_000),
+        SearchDomain::new(0, 64),
         &sdk,
         &token,
         &runner,
@@ -3288,12 +3329,12 @@ fn runtime_rejects_driver_output_that_exceeds_launch_capacity() {
     assert_eq!(report.mode, RuntimeMode::CpuFallback);
     assert_eq!(
         report.matches,
-        NativeSearcher::search(&program, SearchDomain::new(0, 2_000), &token)
+        NativeSearcher::search(&program, SearchDomain::new(0, 64), &token)
     );
     assert!(report
         .telemetry
         .rationale
-        .contains("full device buffer omitted match_count"));
+        .contains("device match count 1500 exceeds buffer 1024"));
 }
 
 #[test]
@@ -4274,15 +4315,15 @@ fn runtime_falls_back_to_canonical_cpu_results_when_device_match_count_overflows
     let runner = FixtureDriverRunner {
         output: DriverRunOutput {
             exit_code: 0,
-            reported_matches: (0..1024).rev().collect(),
-            stdout: "match_count=1500\n".to_owned(),
+            reported_matches: (0..65_536).rev().collect(),
+            stdout: "match_count=70000\n".to_owned(),
             stderr: String::new(),
         },
     };
 
     let report = AcceleratorRuntime::execute_with_driver(
         &program,
-        SearchDomain::new(0, 1_500),
+        SearchDomain::new(0, 70_000),
         &sdk,
         &token,
         &runner,
@@ -4291,12 +4332,12 @@ fn runtime_falls_back_to_canonical_cpu_results_when_device_match_count_overflows
     assert_eq!(report.mode, RuntimeMode::CpuFallback);
     assert_eq!(
         report.matches,
-        NativeSearcher::search(&program, SearchDomain::new(0, 1_500), &token)
+        NativeSearcher::search(&program, SearchDomain::new(0, 70_000), &token)
     );
     assert!(report
         .telemetry
         .rationale
-        .contains("device match count 1500 exceeds buffer 1024"));
+        .contains("device match count 70000 exceeds buffer 65536"));
 }
 
 #[test]
@@ -4316,7 +4357,7 @@ fn runtime_falls_back_when_full_device_buffer_omits_match_count() {
     let runner = FixtureDriverRunner {
         output: DriverRunOutput {
             exit_code: 0,
-            reported_matches: (0..1024).collect(),
+            reported_matches: (0..65_536).collect(),
             stdout: String::new(),
             stderr: String::new(),
         },
@@ -4324,7 +4365,7 @@ fn runtime_falls_back_when_full_device_buffer_omits_match_count() {
 
     let report = AcceleratorRuntime::execute_with_driver(
         &program,
-        SearchDomain::new(0, 1_500),
+        SearchDomain::new(0, 70_000),
         &sdk,
         &token,
         &runner,
@@ -4333,7 +4374,7 @@ fn runtime_falls_back_when_full_device_buffer_omits_match_count() {
     assert_eq!(report.mode, RuntimeMode::CpuFallback);
     assert_eq!(
         report.matches,
-        NativeSearcher::search(&program, SearchDomain::new(0, 1_500), &token)
+        NativeSearcher::search(&program, SearchDomain::new(0, 70_000), &token)
     );
     assert!(report
         .telemetry
