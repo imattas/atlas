@@ -434,6 +434,9 @@ impl AcceleratorRuntime {
         cancellation: &CancellationToken,
         reported_device_matches: &[u64],
     ) -> AcceleratorReport {
+        if cancellation.is_cancelled() {
+            return Self::cancelled_report(program, domain, cancellation);
+        }
         let launch = Self::plan_launch(domain, 256, 1024);
         let plan = GpuSdkPlan::choose(detected_sdks, true);
         if reported_device_matches.is_empty() {

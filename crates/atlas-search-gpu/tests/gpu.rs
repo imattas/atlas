@@ -487,6 +487,23 @@ fn runtime_validates_reported_device_matches_before_returning_them() {
 }
 
 #[test]
+fn public_execute_honors_cancellation_before_promoting_reported_device_matches() {
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    token.cancel();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "test OpenCL".to_owned(),
+    };
+
+    let report =
+        AcceleratorRuntime::execute(&program, SearchDomain::new(0, 64), &[sdk], &token, &[3]);
+
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert!(report.matches.is_empty());
+    assert!(report.telemetry.rationale.contains("cancelled"));
+}
+
+#[test]
 fn driver_command_plan_selects_sdk_specific_sources_and_compilers() {
     let program = SearchProgram::try_from_fixture("xor").unwrap();
 
