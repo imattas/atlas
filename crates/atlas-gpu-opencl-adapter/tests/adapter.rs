@@ -21,7 +21,7 @@ fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
 struct FixtureLauncher;
 
 impl Launcher for FixtureLauncher {
-    fn compile_check(&self, _source: &str) -> Result<(), String> {
+    fn compile_check(&self, _source: &str, _output: Option<&str>) -> Result<(), String> {
         Ok(())
     }
 
@@ -38,7 +38,7 @@ impl Launcher for FixtureLauncher {
 
 #[derive(Debug)]
 struct RecordingLauncher {
-    compile_checked: RefCell<Vec<String>>,
+    compile_checked: RefCell<Vec<(String, Option<String>)>>,
 }
 
 impl RecordingLauncher {
@@ -50,8 +50,10 @@ impl RecordingLauncher {
 }
 
 impl Launcher for RecordingLauncher {
-    fn compile_check(&self, source: &str) -> Result<(), String> {
-        self.compile_checked.borrow_mut().push(source.to_owned());
+    fn compile_check(&self, source: &str, output: Option<&str>) -> Result<(), String> {
+        self.compile_checked
+            .borrow_mut()
+            .push((source.to_owned(), output.map(str::to_owned)));
         Ok(())
     }
 
@@ -97,6 +99,26 @@ fn parses_compile_check_command() {
         command,
         AdapterCommand::CompileCheck {
             source: "target/atlas-gpu/atlas_search.cl".to_owned(),
+            output: None,
+        }
+    );
+}
+
+#[test]
+fn parses_compile_check_source_and_output_command() {
+    let command = AdapterCommand::parse(&[
+        "--compile-check".to_owned(),
+        "target/atlas-gpu/atlas_search.cl".to_owned(),
+        "-o".to_owned(),
+        "target/atlas-gpu/atlas_search.opencl.bin".to_owned(),
+    ])
+    .unwrap();
+
+    assert_eq!(
+        command,
+        AdapterCommand::CompileCheck {
+            source: "target/atlas-gpu/atlas_search.cl".to_owned(),
+            output: Some("target/atlas-gpu/atlas_search.opencl.bin".to_owned()),
         }
     );
 }
@@ -117,8 +139,28 @@ fn cli_compile_check_invokes_launcher_backend() {
     assert_eq!(output, "");
     assert_eq!(
         launcher.compile_checked.borrow().as_slice(),
-        ["target/atlas-gpu/atlas_search.cl"]
+        &[("target/atlas-gpu/atlas_search.cl".to_owned(), None)]
     );
+}
+
+#[test]
+fn compile_check_writes_checked_source_artifact() {
+    let root = std::env::temp_dir().join(format!("atlas-opencl-artifact-{}", std::process::id()));
+    fs::create_dir_all(&root).unwrap();
+    let source = root.join("atlas_search.cl");
+    let artifact = root.join("atlas_search.opencl.bin");
+    let source_text = GpuSearcher::compile_opencl(&SearchProgram::try_from_fixture("xor").unwrap());
+    fs::write(&source, &source_text).unwrap();
+    let source = source.to_string_lossy().into_owned();
+    let artifact_text = artifact.to_string_lossy().into_owned();
+
+    atlas_gpu_opencl_adapter::OpenClLauncher
+        .compile_check(&source, Some(&artifact_text))
+        .unwrap();
+
+    let written = fs::read_to_string(&artifact).unwrap();
+    let _ = fs::remove_dir_all(root);
+    assert_eq!(written, source_text);
 }
 
 #[test]

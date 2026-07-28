@@ -35,6 +35,8 @@ pub enum AdapterCommand {
     CompileCheck {
         /// Generated OpenCL source path.
         source: String,
+        /// Optional checked source artifact output path.
+        output: Option<String>,
     },
     /// Launch an OpenCL search.
     Launch(LaunchArgs),
@@ -53,6 +55,7 @@ impl AdapterCommand {
             };
             return Ok(Self::CompileCheck {
                 source: source.clone(),
+                output: optional_output_path(args)?,
             });
         }
         LaunchArgs::parse(args).map(Self::Launch)
@@ -102,7 +105,7 @@ pub trait Launcher {
     /// # Errors
     ///
     /// Returns an error when source cannot be built for the selected device.
-    fn compile_check(&self, source: &str) -> Result<(), String>;
+    fn compile_check(&self, source: &str, output: Option<&str>) -> Result<(), String>;
 
     /// Runs the launch and returns device-reported matches.
     ///
@@ -117,9 +120,12 @@ pub trait Launcher {
 pub struct OpenClLauncher;
 
 impl Launcher for OpenClLauncher {
-    fn compile_check(&self, source: &str) -> Result<(), String> {
+    fn compile_check(&self, source: &str, output: Option<&str>) -> Result<(), String> {
         let source = fs::read_to_string(source).map_err(|error| error.to_string())?;
         let (_context, _queue, _program) = build_opencl_program(&source)?;
+        if let Some(output) = output {
+            write_opencl_source(output, &source)?;
+        }
         Ok(())
     }
 
@@ -135,8 +141,8 @@ impl Launcher for OpenClLauncher {
 /// Returns parse or launcher errors.
 pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, String> {
     match AdapterCommand::parse(args)? {
-        AdapterCommand::CompileCheck { source } => {
-            launcher.compile_check(&source)?;
+        AdapterCommand::CompileCheck { source, output } => {
+            launcher.compile_check(&source, output.as_deref())?;
             Ok(String::new())
         }
         AdapterCommand::Launch(launch_args) => {
@@ -171,6 +177,24 @@ fn flag_value<'a>(args: &'a [String], flag: &str) -> Result<&'a str, String> {
     args.windows(2)
         .find_map(|window| (window[0] == flag).then_some(window[1].as_str()))
         .ok_or_else(|| format!("missing {flag}"))
+}
+
+fn optional_output_path(args: &[String]) -> Result<Option<String>, String> {
+    let Some(index) = args.iter().position(|arg| arg == "-o" || arg == "--output") else {
+        return Ok(None);
+    };
+    args.get(index + 1)
+        .cloned()
+        .map(Some)
+        .ok_or_else(|| "missing output path after -o".to_owned())
+}
+
+fn write_opencl_source(path: &str, source: &str) -> Result<(), String> {
+    if let Some(parent) = Path::new(path).parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("cannot create OpenCL output directory: {error}"))?;
+    }
+    fs::write(path, source).map_err(|error| format!("cannot write OpenCL artifact {path}: {error}"))
 }
 
 fn launch_opencl(args: &LaunchArgs) -> Result<Vec<u64>, String> {

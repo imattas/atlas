@@ -1055,10 +1055,16 @@ fn opencl_driver_plan_carries_generated_semantic_kernel_source() {
         .compile_command
         .iter()
         .any(|arg| arg == "--compile-check"));
+    assert!(plan.compile_command.iter().any(|arg| arg == "-o"));
+    assert!(plan
+        .compile_command
+        .iter()
+        .any(|arg| arg == &plan.artifact_file));
     assert!(plan
         .compile_command
         .iter()
         .any(|arg| arg == &plan.source_file));
+    assert_eq!(plan.launch_command[1], plan.artifact_file);
 }
 
 #[test]
@@ -1367,7 +1373,7 @@ fn driver_launch_plan_carries_domain_and_output_capacity() {
         .launch_command
         .windows(2)
         .any(|args| args == ["--global-size", "128"]));
-    assert_eq!(plan.launch_command[1], plan.source_file);
+    assert_eq!(plan.launch_command[1], plan.artifact_file);
 }
 
 fn write_adjacent_test_adapter(name: &str) -> PathBuf {
