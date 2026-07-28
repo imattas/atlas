@@ -1,0 +1,17 @@
+name = "atlas-track2-specialized-micro-benchmarks"
+schema_major = 1
+
+[[case]]
+id = "xor-linear"
+category = "gf2"
+expected = "assignments"
+
+[[case]]
+id = "modular-linear"
+category = "modular-matrix"
+expected = "residues"
+
+[[case]]
+id = "rsa-recognition"
+category = "crypto"
+expected = "requires-confirmation"

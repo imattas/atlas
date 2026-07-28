@@ -1,0 +1,4 @@
+name = "gf2"
+category = "attack-strategy"
+soundness = "exact"
+outputs = ["assignments"]

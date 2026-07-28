@@ -1,0 +1,4 @@
+name = "lattice"
+category = "attack-strategy"
+soundness = "candidate-producing"
+outputs = ["basis-variants", "candidates"]

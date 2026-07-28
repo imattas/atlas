@@ -70,6 +70,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "atlas-strategies"
+version = "0.1.0"
+dependencies = [
+ "atlas-facts",
+]
+
+[[package]]
 name = "atlas-ucir"
 version = "0.1.0"
 

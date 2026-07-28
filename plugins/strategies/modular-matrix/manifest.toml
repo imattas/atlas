@@ -1,0 +1,4 @@
+name = "modular-matrix"
+category = "attack-strategy"
+soundness = "exact"
+outputs = ["residues"]

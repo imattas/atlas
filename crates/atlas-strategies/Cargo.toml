@@ -1,0 +1,17 @@
+[package]
+name = "atlas-strategies"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+atlas-facts = { path = "../atlas-facts" }
+
+[lib]
+name = "atlas_strategies"
+path = "src/lib.rs"
+
+[lints]
+workspace = true

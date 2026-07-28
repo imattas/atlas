@@ -1,0 +1,5 @@
+name = "crypto-recognizers"
+category = "recognizer"
+soundness = "structural"
+requires_confirmation = true
+outputs = ["recognized-structure"]
