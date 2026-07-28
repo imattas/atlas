@@ -317,15 +317,22 @@ fn vulkan_standard_loader_roots() -> Vec<PathBuf> {
     {
         if let Some(drive) = std::env::var_os("SystemDrive").map(PathBuf::from) {
             let vulkan_base = drive.join("VulkanSDK");
-            push_existing_dir(&mut roots, vulkan_base.clone());
+            let mut versioned_roots = Vec::new();
             if let Ok(entries) = fs::read_dir(&vulkan_base) {
-                roots.extend(
+                versioned_roots.extend(
                     entries
                         .filter_map(Result::ok)
                         .map(|entry| entry.path())
                         .filter(|path| path.is_dir()),
                 );
             }
+            versioned_roots.sort_by(|left, right| {
+                sdk_version_key(right)
+                    .cmp(&sdk_version_key(left))
+                    .then_with(|| right.cmp(left))
+            });
+            roots.extend(versioned_roots);
+            push_existing_dir(&mut roots, vulkan_base.clone());
         }
     }
     #[cfg(not(windows))]
@@ -334,6 +341,19 @@ fn vulkan_standard_loader_roots() -> Vec<PathBuf> {
         roots.push(PathBuf::from("/usr/local"));
     }
     roots
+}
+
+fn sdk_version_key(path: &Path) -> Vec<u32> {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.trim_start_matches('v'))
+        .map(|version| {
+            version
+                .split('.')
+                .map(|component| component.parse::<u32>().unwrap_or(0))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
 }
 
 fn push_existing_dir(paths: &mut Vec<PathBuf>, path: PathBuf) {

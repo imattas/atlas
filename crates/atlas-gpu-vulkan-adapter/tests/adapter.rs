@@ -272,6 +272,41 @@ fn vulkan_loader_candidates_include_standard_systemdrive_sdk_layout() {
     );
 }
 
+#[cfg(windows)]
+#[test]
+fn vulkan_loader_candidates_prefer_newest_standard_sdk_loader() {
+    let root = std::env::temp_dir().join(format!(
+        "atlas-vulkan-standard-order-{}",
+        std::process::id()
+    ));
+    let vulkan_base = root.join("VulkanSDK");
+    let base_loader = vulkan_base.join("Bin").join("vulkan-1.dll");
+    let old_loader = vulkan_base
+        .join("1.2.198.0")
+        .join("Bin")
+        .join("vulkan-1.dll");
+    let new_loader = vulkan_base
+        .join("1.3.290.0")
+        .join("Bin")
+        .join("vulkan-1.dll");
+    for loader in [&base_loader, &old_loader, &new_loader] {
+        fs::create_dir_all(loader.parent().unwrap()).unwrap();
+        fs::write(loader, []).unwrap();
+    }
+    let original_system_drive = std::env::var_os("SystemDrive");
+    std::env::set_var("SystemDrive", &root);
+
+    let candidates = vulkan_loader_candidates_from_host_roots();
+
+    restore_env("SystemDrive", original_system_drive);
+    let _ = fs::remove_dir_all(root);
+    assert_eq!(
+        candidates.first(),
+        Some(&new_loader),
+        "expected newest Vulkan SDK loader first, got {candidates:?}"
+    );
+}
+
 #[test]
 #[ignore = "requires Vulkan runtime and a Vulkan compute-capable device"]
 fn generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates() {
