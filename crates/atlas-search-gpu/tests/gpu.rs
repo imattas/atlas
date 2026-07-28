@@ -1997,6 +1997,30 @@ fn process_driver_runner_reuses_cached_compiled_artifact_without_recompile() {
 }
 
 #[test]
+fn process_driver_runner_recompiles_zero_byte_cached_artifact() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let sdk = GpuSdk::Vulkan {
+        sdk: "Vulkan runtime".to_owned(),
+    };
+    let output_dir =
+        std::env::temp_dir().join(format!("atlas-gpu-empty-cache-{}", std::process::id()));
+    let output_dir_text = output_dir.to_string_lossy().into_owned();
+    let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
+    fs::create_dir_all(Path::new(&plan.artifact_file).parent().unwrap()).unwrap();
+    fs::write(&plan.artifact_file, []).unwrap();
+    let runner = RecordingCommandRunner::new();
+
+    let output = ProcessDriverRunner::run_with_command_runner(&plan, &runner);
+
+    assert_eq!(output.exit_code, 0);
+    assert_eq!(
+        runner.commands.borrow().as_slice(),
+        &[plan.compile_command, plan.launch_command]
+    );
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
 fn process_driver_runner_resolves_adjacent_adapter_command_when_not_on_path() {
     let adapter_name = "atlas-gpu-fallback-test-run";
     let adapter_path = write_adjacent_test_adapter(adapter_name);
@@ -3260,6 +3284,53 @@ fn host_runtime_uses_persisted_kernel_cache_for_warmed_gpu_threshold() {
     assert_eq!(report.mode, RuntimeMode::DeviceValidated);
     assert_eq!(report.matches, vec![3]);
     assert!(report.telemetry.rationale.contains("driver exit 0"));
+}
+
+#[test]
+fn path_detected_runtime_ignores_zero_byte_persisted_kernel_cache_for_warmed_gpu_threshold() {
+    let tool_dir =
+        std::env::temp_dir().join(format!("atlas-gpu-empty-host-cache-{}", std::process::id()));
+    fs::create_dir_all(&tool_dir).unwrap();
+    fs::write(tool_dir.join("clinfo.exe"), "").unwrap();
+
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let domain = SearchDomain::new(0, 100_000);
+    let sdk = GpuSdk::OpenCl {
+        sdk: "Khronos OpenCL-compatible toolchain".to_owned(),
+    };
+    let launch = AcceleratorRuntime::plan_launch(domain, 256, 1024);
+    let cached_plan =
+        DriverCommandPlan::for_launch(&sdk, &program, domain, launch, "target/atlas-gpu");
+    fs::create_dir_all(Path::new(&cached_plan.artifact_file).parent().unwrap()).unwrap();
+    fs::write(&cached_plan.artifact_file, []).unwrap();
+    let artifact_root = Path::new(&cached_plan.artifact_file)
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    let runner = CountingDriverRunner {
+        calls: RefCell::new(0),
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![3],
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        },
+    };
+    let token = CancellationToken::new();
+
+    let report = AcceleratorRuntime::execute_with_path_detected_driver(
+        &program,
+        domain,
+        [tool_dir.clone()],
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert_eq!(*runner.calls.borrow(), 0);
+    assert!(report.telemetry.rationale.contains("Scalar"));
+    let _ = fs::remove_dir_all(tool_dir);
+    let _ = fs::remove_dir_all(artifact_root);
 }
 
 #[test]

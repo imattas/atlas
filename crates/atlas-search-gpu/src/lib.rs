@@ -1658,7 +1658,12 @@ fn can_reuse_compiled_artifact(plan: &DriverCommandPlan) -> bool {
     plan.launch_command
         .get(1)
         .is_some_and(|launch_input| launch_input == &plan.artifact_file)
-        && Path::new(&plan.artifact_file).is_file()
+        && artifact_file_is_reusable(Path::new(&plan.artifact_file))
+}
+
+fn artifact_file_is_reusable(path: &Path) -> bool {
+    path.metadata()
+        .is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
 }
 
 fn persisted_kernel_cache_keys(
@@ -1672,9 +1677,7 @@ fn persisted_kernel_cache_keys(
         .iter()
         .filter_map(|sdk| {
             let plan = DriverCommandPlan::for_launch(sdk, program, domain, launch, output_dir);
-            Path::new(&plan.artifact_file)
-                .is_file()
-                .then_some(plan.cache_key)
+            artifact_file_is_reusable(Path::new(&plan.artifact_file)).then_some(plan.cache_key)
         })
         .collect()
 }
