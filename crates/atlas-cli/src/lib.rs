@@ -9,6 +9,7 @@ use atlas_search_ir::{SearchDomain, SearchProgram};
 use atlas_search_native::NativeSearcher;
 use atlas_validator::ResultLevel;
 use std::path::PathBuf;
+use std::process::Command;
 use std::time::Instant;
 
 /// Runs the CLI with explicit args and returns stdout.
@@ -50,8 +51,23 @@ fn doctor() -> String {
         })
         .collect::<Vec<_>>()
         .join(",");
+    let gpu_features = gpu_adapter_commands()
+        .iter()
+        .map(|adapter| {
+            let features = adapter_runtime_features(adapter.command)
+                .into_iter()
+                .map(|feature| format!("\"{}\"", json_escape(&feature)))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!(
+                "{{\"name\":\"{}\",\"features\":[{}]}}",
+                adapter.name, features
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
     format!(
-        "{{\"schema_major\":1,\"kind\":\"doctor\",\"gpu_sdks\":[{sdk_names}],\"adapter_binaries\":[{adapter_binaries}]}}\n"
+        "{{\"schema_major\":1,\"kind\":\"doctor\",\"gpu_sdks\":[{sdk_names}],\"adapter_binaries\":[{adapter_binaries}],\"gpu_features\":[{gpu_features}]}}\n"
     )
 }
 
@@ -278,10 +294,30 @@ fn gpu_adapter_commands() -> [GpuAdapterCommand; 4] {
 }
 
 fn command_available(command: &str) -> bool {
-    adapter_search_dirs().into_iter().any(|dir| {
+    adapter_command_path(command).is_some()
+}
+
+fn adapter_runtime_features(command: &str) -> Vec<String> {
+    let Some(path) = adapter_command_path(command) else {
+        return Vec::new();
+    };
+    let Ok(output) = Command::new(path).arg("--features").output() else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("feature=").map(str::to_owned))
+        .collect()
+}
+
+fn adapter_command_path(command: &str) -> Option<PathBuf> {
+    adapter_search_dirs().into_iter().find_map(|dir| {
         command_candidates(&dir, command)
             .into_iter()
-            .any(|path| path.is_file())
+            .find(|path| path.is_file())
     })
 }
 

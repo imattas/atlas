@@ -2,11 +2,36 @@
 
 use atlas_cli::run;
 use std::fs;
+use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+}
+
+fn write_feature_adapter(dir: &Path, command: &str, line: &str) -> std::io::Result<()> {
+    let path = dir.join(if cfg!(windows) {
+        format!("{command}.cmd")
+    } else {
+        command.to_owned()
+    });
+    fs::write(
+        &path,
+        if cfg!(windows) {
+            format!("@echo off\r\necho {line}\r\n")
+        } else {
+            format!("#!/bin/sh\necho '{line}'\n")
+        },
+    )?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(&path)?.permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&path, permissions)?;
+    }
+    Ok(())
 }
 
 #[test]
@@ -304,6 +329,34 @@ fn doctor_reports_gpu_adapter_binary_availability() {
     assert!(output.contains("\"name\":\"CUDA\""));
     assert!(output.contains("\"command\":\"atlas-gpu-cuda-run\""));
     assert!(output.contains("\"available\":false"));
+}
+
+#[test]
+fn doctor_reports_gpu_adapter_runtime_features() {
+    let _env_guard = env_lock();
+    let tool_dir =
+        std::env::temp_dir().join(format!("atlas-cli-doctor-features-{}", std::process::id()));
+    fs::create_dir_all(&tool_dir).unwrap();
+    for tool in ["clinfo.exe", "vulkaninfo.exe", "hipcc.exe"] {
+        fs::write(tool_dir.join(tool), "").unwrap();
+    }
+    write_feature_adapter(&tool_dir, "atlas-gpu-opencl-run", "feature=int64").unwrap();
+    write_feature_adapter(&tool_dir, "atlas-gpu-vulkan-run", "feature=shaderInt64").unwrap();
+    write_feature_adapter(&tool_dir, "atlas-gpu-hip-run", "feature=int64").unwrap();
+    let original_path = std::env::var_os("PATH").unwrap_or_default();
+    let joined_path = std::env::join_paths(std::iter::once(tool_dir.clone())).unwrap();
+    std::env::set_var("PATH", &joined_path);
+
+    let output = run(&["doctor".to_owned()]).unwrap();
+
+    std::env::set_var("PATH", original_path);
+    let _ = fs::remove_dir_all(tool_dir);
+    assert!(output.contains("\"gpu_features\""));
+    assert!(output.contains("\"name\":\"OpenCL\""));
+    assert!(output.contains("\"features\":[\"int64\"]"));
+    assert!(output.contains("\"name\":\"Vulkan\""));
+    assert!(output.contains("\"features\":[\"shaderInt64\"]"));
+    assert!(output.contains("\"name\":\"HIP\""));
 }
 
 #[test]
