@@ -737,12 +737,15 @@ impl GpuSdkDetector {
                 sdk: "Vulkan compute toolchain".to_owned(),
             });
         }
-        if normalized
-            .iter()
-            .any(|tool| tool == "nvcc" || tool.contains("cuda"))
-        {
+        if normalized.iter().any(|tool| {
+            tool == "nvcc"
+                || tool == "nvidia-smi"
+                || tool.starts_with("nvrtc64_")
+                || tool.starts_with("nvrtc")
+                || tool.contains("cuda")
+        }) {
             detected.push(GpuSdk::Cuda {
-                sdk: "NVIDIA CUDA Toolkit".to_owned(),
+                sdk: "NVIDIA CUDA runtime/toolchain".to_owned(),
             });
         }
         if normalized
@@ -758,7 +761,10 @@ impl GpuSdkDetector {
 }
 
 fn normalize_tool_name(name: &str) -> String {
-    name.strip_suffix(".exe").unwrap_or(name).to_owned()
+    name.strip_suffix(".exe")
+        .or_else(|| name.strip_suffix(".dll"))
+        .unwrap_or(name)
+        .to_owned()
 }
 
 /// GPU searcher boundary.

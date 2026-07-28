@@ -390,6 +390,19 @@ fn detects_gpu_sdks_from_tool_names_without_touching_host_environment() {
 }
 
 #[test]
+fn detects_cuda_from_runtime_and_driver_tools_without_nvcc() {
+    let detected = GpuSdkDetector::detect_from_tools(&[
+        "nvidia-smi.exe".to_owned(),
+        "nvrtc64_120_0.dll".to_owned(),
+    ]);
+
+    assert!(detected.iter().any(|sdk| matches!(
+        sdk,
+        GpuSdk::Cuda { sdk } if sdk.contains("runtime")
+    )));
+}
+
+#[test]
 fn detects_gpu_sdks_from_path_directories() {
     let tool_dir = std::env::temp_dir().join(format!("atlas-gpu-tools-{}", std::process::id()));
     fs::create_dir_all(&tool_dir).unwrap();
