@@ -352,6 +352,26 @@ fn detects_gpu_sdks_from_tool_names_without_touching_host_environment() {
 }
 
 #[test]
+fn detects_gpu_sdks_from_path_directories() {
+    let tool_dir = std::env::temp_dir().join(format!("atlas-gpu-tools-{}", std::process::id()));
+    fs::create_dir_all(&tool_dir).unwrap();
+    for tool in ["clinfo.exe", "vulkaninfo.exe", "hipcc.exe"] {
+        fs::write(tool_dir.join(tool), "").unwrap();
+    }
+
+    let detected = GpuSdkDetector::detect_from_path_dirs([tool_dir.clone()]);
+
+    assert!(detected
+        .iter()
+        .any(|sdk| matches!(sdk, GpuSdk::OpenCl { .. })));
+    assert!(detected
+        .iter()
+        .any(|sdk| matches!(sdk, GpuSdk::Vulkan { .. })));
+    assert!(detected.iter().any(|sdk| matches!(sdk, GpuSdk::Hip { .. })));
+    let _ = fs::remove_dir_all(tool_dir);
+}
+
+#[test]
 fn launch_config_bounds_workgroups_and_output_transfer_capacity() {
     let config = AcceleratorRuntime::plan_launch(SearchDomain::new(0, 1_000_000), 256, 1024);
 
@@ -665,6 +685,37 @@ fn runtime_selects_detected_sdk_and_executes_driver_runner() {
     assert_eq!(report.matches, vec![3]);
     assert!(report.telemetry.rationale.contains("OpenCL"));
     assert!(report.telemetry.rationale.contains("driver exit 0"));
+}
+
+#[test]
+fn runtime_discovers_host_path_sdks_and_executes_driver_runner() {
+    let tool_dir =
+        std::env::temp_dir().join(format!("atlas-gpu-runtime-tools-{}", std::process::id()));
+    fs::create_dir_all(&tool_dir).unwrap();
+    fs::write(tool_dir.join("clinfo.exe"), "").unwrap();
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    let runner = FixtureDriverRunner {
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![3],
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_path_detected_driver(
+        &program,
+        SearchDomain::new(0, 64),
+        [tool_dir.clone()],
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    assert_eq!(report.matches, vec![3]);
+    assert!(report.telemetry.rationale.contains("OpenCL"));
+    let _ = fs::remove_dir_all(tool_dir);
 }
 
 #[test]

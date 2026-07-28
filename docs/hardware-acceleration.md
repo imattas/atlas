@@ -14,6 +14,8 @@ Recommended SDK order:
 Runtime behavior:
 
 - detected SDKs are ranked by `GpuSdkPlan`;
+- host SDK discovery can scan `PATH` for adapter/compiler/runtime tools and
+  route through the selected process-backed driver;
 - missing SDKs produce a precise diagnostic and scalar/SIMD fallback;
 - CUDA, HIP, OpenCL, and Vulkan compute sources are generated from the same
   restricted IR boundary;

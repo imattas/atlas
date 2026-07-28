@@ -5,7 +5,7 @@ use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram};
 use atlas_search_native::NativeSearcher;
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Kernel cache key.
@@ -484,6 +484,38 @@ impl AcceleratorRuntime {
         Self::execute_with_driver(program, domain, &selected, cancellation, runner)
     }
 
+    /// Detects SDKs from supplied PATH directories, executes through the best
+    /// available GPU driver runner, and validates device-reported matches.
+    #[must_use]
+    pub fn execute_with_path_detected_driver(
+        program: &SearchProgram,
+        domain: SearchDomain,
+        path_dirs: impl IntoIterator<Item = PathBuf>,
+        cancellation: &CancellationToken,
+        runner: &dyn DriverRunner,
+    ) -> AcceleratorReport {
+        let detected_sdks = GpuSdkDetector::detect_from_path_dirs(path_dirs);
+        Self::execute_with_detected_driver(program, domain, &detected_sdks, cancellation, runner)
+    }
+
+    /// Detects SDKs from the host `PATH`, executes through the process-backed
+    /// GPU driver, and validates device-reported matches.
+    #[must_use]
+    pub fn execute_with_host_driver(
+        program: &SearchProgram,
+        domain: SearchDomain,
+        cancellation: &CancellationToken,
+    ) -> AcceleratorReport {
+        let detected_sdks = GpuSdkDetector::detect_from_host_path();
+        Self::execute_with_detected_driver(
+            program,
+            domain,
+            &detected_sdks,
+            cancellation,
+            &ProcessDriverRunner,
+        )
+    }
+
     /// Executes through a GPU driver runner and validates device-reported matches.
     #[must_use]
     pub fn execute_with_driver(
@@ -594,6 +626,31 @@ fn parse_match_token(token: &str) -> Option<u64> {
 pub struct GpuSdkDetector;
 
 impl GpuSdkDetector {
+    /// Detects SDKs by scanning executable names in the current host `PATH`.
+    #[must_use]
+    pub fn detect_from_host_path() -> Vec<GpuSdk> {
+        let Some(path) = std::env::var_os("PATH") else {
+            return Vec::new();
+        };
+        Self::detect_from_path_dirs(std::env::split_paths(&path))
+    }
+
+    /// Detects SDKs by scanning executable names in supplied path directories.
+    ///
+    /// Unreadable directories are ignored so optional SDK absence produces an
+    /// empty detection result rather than a hard failure.
+    #[must_use]
+    pub fn detect_from_path_dirs(paths: impl IntoIterator<Item = PathBuf>) -> Vec<GpuSdk> {
+        let tools = paths
+            .into_iter()
+            .filter_map(|path| fs::read_dir(path).ok())
+            .flat_map(|entries| entries.filter_map(Result::ok))
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            .map(|name| normalize_tool_name(&name))
+            .collect::<Vec<_>>();
+        Self::detect_from_tools(&tools)
+    }
+
     /// Detects SDKs from an explicit tool-name list.
     ///
     /// This is deterministic and does not inspect the host. Runtime callers can
@@ -637,6 +694,10 @@ impl GpuSdkDetector {
         }
         detected
     }
+}
+
+fn normalize_tool_name(name: &str) -> String {
+    name.strip_suffix(".exe").unwrap_or(name).to_owned()
 }
 
 /// GPU searcher boundary.
