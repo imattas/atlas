@@ -1600,6 +1600,35 @@ fn runtime_splits_driver_launches_before_device_match_counter_can_wrap() {
 }
 
 #[test]
+fn runtime_telemetry_reports_multi_launch_driver_execution() {
+    let program = SearchProgram::new(
+        64,
+        vec![SearchOp::ChecksumEq {
+            modulus: 1,
+            target: 0,
+        }],
+    )
+    .unwrap();
+    let token = CancellationToken::new();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "test OpenCL".to_owned(),
+    };
+    let runner = RecordingPlanRunner::new();
+    let counter_capacity = u64::from(u32::MAX);
+
+    let report = AcceleratorRuntime::execute_with_driver(
+        &program,
+        SearchDomain::new(0, counter_capacity + 2),
+        &sdk,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    assert!(report.telemetry.rationale.contains("driver launches 2"));
+}
+
+#[test]
 fn runtime_enforces_launch_output_capacity_after_cpu_validation() {
     let program = SearchProgram::new(
         16,

@@ -726,7 +726,11 @@ impl AcceleratorRuntime {
             }
             reported_matches.extend(output.reported_matches);
         }
-        let base_rationale = format!("{}; driver exit 0", sdk.name());
+        let base_rationale = format!(
+            "{}; driver exit 0; driver launches {}",
+            sdk.name(),
+            launch_domains.len()
+        );
         if reported_matches.is_empty() {
             return AcceleratorReport {
                 mode: RuntimeMode::CpuFallback,
