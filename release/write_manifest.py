@@ -196,8 +196,8 @@ def render_manifest() -> str:
         (
             "track3-device-benchmark",
             "benchmarks/track3/manifest.toml",
-            "OpenCL GPU device probe on Windows host",
-            "scalar/simd/device-GPU repeated samples and two-worker equivalence",
+            "OpenCL and WGPU GPU device probes on Windows host",
+            "scalar/simd/multi-backend-device-GPU repeated samples and two-worker equivalence",
         ),
         (
             "track3-placement-calibration",

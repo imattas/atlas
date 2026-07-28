@@ -25,3 +25,18 @@ simd_ms = [10.7640, 10.6730, 11.1838]
 gpu_compile_ms = [0.0, 0.0, 0.0]
 gpu_device_ms = [2122.2657, 1848.8946, 1824.9714]
 distributed_overhead_ms = [1.0, 1.0, 1.0]
+
+[[sample]]
+id = "wgpu-device-xor-100k-2026-07-28"
+hardware = "WGPU device probe on Windows host"
+gpu_backend = "WGPU"
+fixture = "xor"
+domain_start = 0
+domain_end = 100000
+mode = "DeviceValidated"
+samples = 3
+scalar_ms = [0.0290, 0.0134, 0.0140]
+simd_ms = [9.9604, 10.0798, 10.6862]
+gpu_compile_ms = [0.0, 0.0, 0.0]
+gpu_device_ms = [2475.7867, 2419.6182, 2370.9994]
+distributed_overhead_ms = [1.0, 1.0, 1.0]

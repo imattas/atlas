@@ -26,9 +26,9 @@ class Track3BenchmarkManifestTest(unittest.TestCase):
             with self.subTest(sample=sample["id"]):
                 self.assertRegex(
                     sample["hardware"],
-                    r"(OpenCL|Vulkan|HIP|CUDA|GPU|Radeon|NVIDIA|AMD|Intel)",
+                    r"(OpenCL|Vulkan|WGPU|HIP|CUDA|GPU|Radeon|NVIDIA|AMD|Intel)",
                 )
-                self.assertIn(sample["gpu_backend"], {"OpenCL", "Vulkan", "HIP", "CUDA"})
+                self.assertIn(sample["gpu_backend"], {"OpenCL", "Vulkan", "WGPU", "HIP", "CUDA"})
                 timing_fields = [
                     "scalar_ms",
                     "simd_ms",
@@ -41,6 +41,17 @@ class Track3BenchmarkManifestTest(unittest.TestCase):
                     self.assertTrue(all(value >= 0 for value in sample[field]))
                 timing_vectors = tuple(tuple(sample[field]) for field in timing_fields)
                 self.assertNotEqual(len(set(timing_vectors)), 1)
+
+    def test_track3_benchmark_includes_cross_platform_wgpu_device_sample(self):
+        manifest = tomllib.loads(TRACK3_BENCHMARK.read_text(encoding="utf-8"))
+
+        wgpu_samples = [
+            sample
+            for sample in manifest["sample"]
+            if sample["gpu_backend"] == "WGPU" and sample["mode"] == "DeviceValidated"
+        ]
+
+        self.assertTrue(wgpu_samples, "expected a real WGPU DeviceValidated benchmark sample")
 
 
 if __name__ == "__main__":

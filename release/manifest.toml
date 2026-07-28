@@ -219,9 +219,9 @@ digest = "493505280fda5265921e83ee11afdba3c3b1a80d32691a11d41b3d4d66cc7ce0"
 [[benchmarks]]
 name = "track3-device-benchmark"
 path = "benchmarks/track3/manifest.toml"
-hardware = "OpenCL GPU device probe on Windows host"
-sample_metadata = "scalar/simd/device-GPU repeated samples and two-worker equivalence"
-digest = "f5344d45a8c1e832c6baa2c75f760cd8f5966421ab49a1a78370569f4d6708ab"
+hardware = "OpenCL and WGPU GPU device probes on Windows host"
+sample_metadata = "scalar/simd/multi-backend-device-GPU repeated samples and two-worker equivalence"
+digest = "d3df64ca78c9874781ac2a19327af719da44fcefaec88c4d989842c986a8f78f"
 
 [[benchmarks]]
 name = "track3-placement-calibration"
