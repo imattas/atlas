@@ -159,11 +159,15 @@ dependencies = [
  "atlas-scheduler",
  "atlas-search-ir",
  "atlas-search-native",
+ "atlas-search-simd",
 ]
 
 [[package]]
 name = "atlas-search-ir"
 version = "0.1.0"
+dependencies = [
+ "atlas-scheduler",
+]
 
 [[package]]
 name = "atlas-search-native"

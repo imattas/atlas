@@ -1,7 +1,7 @@
 //! Hardware-independent SIMD-style batched bounded search.
 
 use atlas_scheduler::CancellationToken;
-use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram};
+use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram, Searcher};
 use wide::u64x4;
 
 const OUTPUT_LIMIT: usize = 1024;
@@ -92,6 +92,16 @@ impl SimdSearcher {
             engine: SimdEngine::WideU64x4,
             matches,
         }
+    }
+}
+
+impl Searcher for SimdSearcher {
+    fn search(
+        program: &SearchProgram,
+        domain: SearchDomain,
+        cancellation: &CancellationToken,
+    ) -> Vec<u64> {
+        SimdSearcher::search(program, domain, cancellation, 8)
     }
 }
 

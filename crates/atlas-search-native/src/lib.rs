@@ -1,7 +1,7 @@
 //! Verified scalar bounded search.
 
 use atlas_scheduler::CancellationToken;
-use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram};
+use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram, Searcher};
 
 /// Candidate match stream.
 pub type MatchStream = Vec<u64>;
@@ -105,6 +105,16 @@ impl NativeSearcher {
             candidates_evaluated,
             used_closed_form: false,
         }
+    }
+}
+
+impl Searcher for NativeSearcher {
+    fn search(
+        program: &SearchProgram,
+        domain: SearchDomain,
+        cancellation: &CancellationToken,
+    ) -> MatchStream {
+        NativeSearcher::search(program, domain, cancellation)
     }
 }
 

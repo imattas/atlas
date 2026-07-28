@@ -4,7 +4,7 @@ use atlas_placement::{
     PlacementCalibration, PlacementCapabilities, PlacementModel, PlacementTarget, SearchFeatures,
 };
 use atlas_scheduler::CancellationToken;
-use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram};
+use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram, Searcher};
 use atlas_search_native::NativeSearcher;
 use std::collections::BTreeSet;
 use std::fs;
@@ -2898,6 +2898,16 @@ void main() {{
             .copied()
             .filter(|candidate| program.accepts(*candidate))
             .collect()
+    }
+}
+
+impl Searcher for GpuSearcher {
+    fn search(
+        program: &SearchProgram,
+        domain: SearchDomain,
+        cancellation: &CancellationToken,
+    ) -> Vec<u64> {
+        GpuSearcher::search(program, domain, cancellation)
     }
 }
 

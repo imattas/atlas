@@ -12,6 +12,9 @@ atlas-search-ir = { path = "../atlas-search-ir" }
 atlas-search-native = { path = "../atlas-search-native" }
 atlas-scheduler = { path = "../atlas-scheduler" }
 
+[dev-dependencies]
+atlas-search-simd = { path = "../atlas-search-simd" }
+
 [lib]
 name = "atlas_search_gpu"
 path = "src/lib.rs"

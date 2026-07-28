@@ -6,6 +6,9 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[dependencies]
+atlas-scheduler = { path = "../atlas-scheduler" }
+
 [lib]
 name = "atlas_search_ir"
 path = "src/lib.rs"

@@ -1,5 +1,7 @@
 //! Restricted bounded-search IR.
 
+use atlas_scheduler::CancellationToken;
+
 /// Supported search operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SearchOp {
@@ -67,6 +69,16 @@ pub struct SearchDomain {
     pub start: u64,
     /// Exclusive end candidate.
     pub end: u64,
+}
+
+/// Common bounded-search execution interface for scalar and accelerator backends.
+pub trait Searcher {
+    /// Searches a bounded domain and returns matching candidates.
+    fn search(
+        program: &SearchProgram,
+        domain: SearchDomain,
+        cancellation: &CancellationToken,
+    ) -> Vec<u64>;
 }
 
 /// Lowering validation error.

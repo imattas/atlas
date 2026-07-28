@@ -6,8 +6,9 @@ use atlas_search_gpu::{
     GpuSdkDetector, GpuSdkPlan, GpuSearcher, KernelCacheKey, LaunchConfig, ProcessDriverRunner,
     RuntimeMode, RuntimePolicy,
 };
-use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram};
+use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram, Searcher};
 use atlas_search_native::NativeSearcher;
+use atlas_search_simd::SimdSearcher;
 use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -466,6 +467,31 @@ fn gpu_boundary_matches_native_without_hardware() {
             NativeSearcher::search(&program, domain, &token)
         );
     }
+}
+
+#[test]
+fn native_simd_and_gpu_implement_common_searcher_trait() {
+    fn run_searcher<T: Searcher>(
+        program: &SearchProgram,
+        domain: SearchDomain,
+        cancellation: &CancellationToken,
+    ) -> Vec<u64> {
+        T::search(program, domain, cancellation)
+    }
+
+    let token = CancellationToken::new();
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let domain = SearchDomain::new(0, 512);
+    let native = run_searcher::<NativeSearcher>(&program, domain, &token);
+
+    assert_eq!(
+        run_searcher::<SimdSearcher>(&program, domain, &token),
+        native
+    );
+    assert_eq!(
+        run_searcher::<GpuSearcher>(&program, domain, &token),
+        native
+    );
 }
 
 #[test]
