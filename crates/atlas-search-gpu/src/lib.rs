@@ -478,15 +478,28 @@ impl ProcessDriverRunner {
         } else {
             let compile = runner.run_command(&plan.compile_command);
             if compile.exit_code != 0 {
-                return compile;
+                return phase_failure_output("compile", compile);
             }
             compile
         };
         let mut launch = runner.run_command(&plan.launch_command);
         launch.stdout = [compile.stdout, launch.stdout].join("");
         launch.stderr = [compile.stderr, launch.stderr].join("");
+        if launch.exit_code != 0 {
+            return phase_failure_output("launch", launch);
+        }
         launch
     }
+}
+
+fn phase_failure_output(phase: &str, mut output: DriverRunOutput) -> DriverRunOutput {
+    let detail = output.stderr.trim();
+    output.stderr = if detail.is_empty() {
+        format!("{phase} phase failed")
+    } else {
+        format!("{phase} phase failed: {detail}")
+    };
+    output
 }
 
 /// GPU launch configuration.

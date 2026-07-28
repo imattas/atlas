@@ -58,6 +58,55 @@ impl CommandRunner for RecordingCommandRunner {
 }
 
 #[derive(Debug)]
+struct CompileFailureCommandRunner;
+
+impl CommandRunner for CompileFailureCommandRunner {
+    fn run_command(&self, _command: &[String]) -> DriverRunOutput {
+        DriverRunOutput {
+            exit_code: 31,
+            reported_matches: Vec::new(),
+            stdout: String::new(),
+            stderr: "compiler rejected generated kernel".to_owned(),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct LaunchFailureCommandRunner {
+    calls: RefCell<usize>,
+}
+
+impl LaunchFailureCommandRunner {
+    fn new() -> Self {
+        Self {
+            calls: RefCell::new(0),
+        }
+    }
+}
+
+impl CommandRunner for LaunchFailureCommandRunner {
+    fn run_command(&self, _command: &[String]) -> DriverRunOutput {
+        let mut calls = self.calls.borrow_mut();
+        *calls += 1;
+        if *calls == 1 {
+            DriverRunOutput {
+                exit_code: 0,
+                reported_matches: Vec::new(),
+                stdout: String::new(),
+                stderr: String::new(),
+            }
+        } else {
+            DriverRunOutput {
+                exit_code: 41,
+                reported_matches: Vec::new(),
+                stdout: String::new(),
+                stderr: "device launch failed".to_owned(),
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
 struct VulkanFeaturesCommandRunner {
     stdout: &'static str,
 }
@@ -1884,6 +1933,45 @@ fn process_driver_runner_writes_generated_source_before_compile() {
     assert_eq!(output.exit_code, 0);
     assert!(written_source.contains("uint raw_candidate = raw_low"));
     assert_eq!(runner.commands.borrow().len(), 2);
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+fn process_driver_runner_tags_compile_phase_failures() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "Khronos OpenCL SDK".to_owned(),
+    };
+    let output_dir =
+        std::env::temp_dir().join(format!("atlas-gpu-compile-failure-{}", std::process::id()));
+    let output_dir_text = output_dir.to_string_lossy().into_owned();
+    let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
+
+    let output = ProcessDriverRunner::run_with_command_runner(&plan, &CompileFailureCommandRunner);
+
+    assert_eq!(output.exit_code, 31);
+    assert!(output.stderr.contains("compile phase failed"));
+    assert!(output.stderr.contains("compiler rejected generated kernel"));
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+fn process_driver_runner_tags_launch_phase_failures() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "Khronos OpenCL SDK".to_owned(),
+    };
+    let output_dir =
+        std::env::temp_dir().join(format!("atlas-gpu-launch-failure-{}", std::process::id()));
+    let output_dir_text = output_dir.to_string_lossy().into_owned();
+    let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
+    let runner = LaunchFailureCommandRunner::new();
+
+    let output = ProcessDriverRunner::run_with_command_runner(&plan, &runner);
+
+    assert_eq!(output.exit_code, 41);
+    assert!(output.stderr.contains("launch phase failed"));
+    assert!(output.stderr.contains("device launch failed"));
     let _ = fs::remove_dir_all(output_dir);
 }
 
