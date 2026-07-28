@@ -202,43 +202,31 @@ fn rotate_right_width(value: u64, rotate_left: u32, width: u32) -> u64 {
 fn checksum_matches(
     program: &SearchProgram,
     domain: SearchDomain,
-    mask: u64,
+    _mask: u64,
     modulus: u64,
     target: u64,
 ) -> Option<MatchStream> {
     if modulus == 0 || target >= modulus {
         return Some(Vec::new());
     }
-    let stride = mask.saturating_add(1);
-    let residues = checksum_residues(mask, modulus, target)?;
-    let mut base = (domain.start / stride).checked_mul(stride)?;
     let mut matches = Vec::new();
-    while base < domain.end && matches.len() < 1024 {
-        for residue in &residues {
-            let Some(candidate) = base.checked_add(*residue) else {
-                continue;
-            };
-            if candidate >= domain.start
-                && candidate < domain.end
-                && program.accepts(candidate)
-                && matches.len() < 1024
-            {
-                matches.push(candidate);
-            }
+    let mut candidate = first_checksum_candidate_at_or_above(domain.start, modulus, target)?;
+    while candidate < domain.end && matches.len() < 1024 {
+        if program.accepts(candidate) {
+            matches.push(candidate);
         }
-        base = base.checked_add(stride)?;
+        candidate = candidate.checked_add(modulus)?;
     }
     Some(matches)
 }
 
-fn checksum_residues(mask: u64, modulus: u64, target: u64) -> Option<Vec<u64>> {
-    let mut residues = Vec::new();
-    let mut residue = target;
-    while residue <= mask {
-        residues.push(residue);
-        residue = residue.checked_add(modulus)?;
+fn first_checksum_candidate_at_or_above(start: u64, modulus: u64, target: u64) -> Option<u64> {
+    let remainder = start % modulus;
+    if remainder <= target {
+        start.checked_add(target - remainder)
+    } else {
+        start.checked_add(modulus - (remainder - target))
     }
-    Some(residues)
 }
 
 fn residue_matches(

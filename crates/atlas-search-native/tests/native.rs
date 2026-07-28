@@ -67,6 +67,28 @@ fn native_search_solves_checksum_residues_without_enumerating_domain() {
 }
 
 #[test]
+fn native_search_handles_64_bit_checksum_modulus_one_without_enumerating_residues() {
+    let program = SearchProgram::new(
+        64,
+        vec![SearchOp::ChecksumEq {
+            modulus: 1,
+            target: 0,
+        }],
+    )
+    .unwrap();
+    let token = CancellationToken::new();
+
+    let result =
+        NativeSearcher::search_with_stats(&program, SearchDomain::new(0, u64::MAX), &token);
+
+    assert_eq!(result.matches.len(), 1024);
+    assert_eq!(result.matches[0], 0);
+    assert_eq!(result.matches[1023], 1023);
+    assert!(result.candidates_evaluated <= 1024);
+    assert!(result.used_closed_form);
+}
+
+#[test]
 fn native_search_solves_ctf_rotate_xor_and_muladd_checks_without_enumerating() {
     let token = CancellationToken::new();
     let rotate_program = SearchProgram::new(
