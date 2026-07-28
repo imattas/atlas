@@ -1455,8 +1455,25 @@ fn cuda_root_dirs() -> Vec<PathBuf> {
         .filter_map(std::env::var_os)
         .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
         .collect::<Vec<_>>();
+    roots.extend(versioned_cuda_path_env_dirs());
     roots.extend(default_cuda_sdk_root_candidates());
     dedup_paths(roots)
+}
+
+fn versioned_cuda_path_env_dirs() -> Vec<PathBuf> {
+    let mut values = std::env::vars_os()
+        .filter_map(|(name, value)| {
+            let name = name.to_string_lossy().to_ascii_uppercase();
+            name.starts_with("CUDA_PATH_V")
+                .then_some((name, value))
+                .filter(|(_, value)| !value.is_empty())
+        })
+        .collect::<Vec<_>>();
+    values.sort_by(|left, right| left.0.cmp(&right.0));
+    values
+        .into_iter()
+        .flat_map(|(_, value)| std::env::split_paths(&value).collect::<Vec<_>>())
+        .collect()
 }
 
 fn default_cuda_sdk_root_candidates() -> Vec<PathBuf> {
@@ -1656,6 +1673,23 @@ unsafe fn platform_close(handle: *mut c_void) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
+        if let Some(value) = original {
+            std::env::set_var(name, value);
+        } else {
+            std::env::remove_var(name);
+        }
+    }
 
     #[test]
     fn cuda_artifact_marker_selects_u32_launch_abi() {
@@ -1715,6 +1749,34 @@ mod tests {
 
         assert_eq!(found, Some(library.to_string_lossy().into_owned()));
         let _ = std::fs::remove_dir_all(cuda_root);
+    }
+
+    #[test]
+    fn cuda_root_dirs_include_versioned_cuda_path_env_vars() {
+        let _env_guard = env_lock();
+        let cuda_root =
+            std::env::temp_dir().join(format!("atlas-cuda-versioned-env-{}", std::process::id()));
+        std::fs::create_dir_all(&cuda_root).unwrap();
+        let original_cuda_path = std::env::var_os("CUDA_PATH");
+        let original_cuda_home = std::env::var_os("CUDA_HOME");
+        let original_cuda_root = std::env::var_os("CUDA_ROOT");
+        let original_cuda_path_v12_4 = std::env::var_os("CUDA_PATH_V12_4");
+        std::env::remove_var("CUDA_PATH");
+        std::env::remove_var("CUDA_HOME");
+        std::env::remove_var("CUDA_ROOT");
+        std::env::set_var("CUDA_PATH_V12_4", &cuda_root);
+
+        let roots = cuda_root_dirs();
+
+        restore_env("CUDA_PATH", original_cuda_path);
+        restore_env("CUDA_HOME", original_cuda_home);
+        restore_env("CUDA_ROOT", original_cuda_root);
+        restore_env("CUDA_PATH_V12_4", original_cuda_path_v12_4);
+        let _ = std::fs::remove_dir_all(&cuda_root);
+        assert!(
+            roots.contains(&cuda_root),
+            "expected CUDA_PATH_V12_4 root in {roots:?}"
+        );
     }
 
     #[test]
