@@ -44,18 +44,29 @@ def run_z3() -> list[dict[str, Any]]:
 
     import z3
 
-    cases = [
-        ("xor_width20", lambda x: x ^ 0xAAAAA == 0xFFFFF),
-        ("add_width20", lambda x: x + 1 == 424_242),
-        ("checksum_width20", lambda x: z3.URem(x, z3.BitVecVal(997, 20)) == 313),
+    cases: list[tuple[str, int, Any]] = [
+        ("xor_width20", 20, lambda x: x ^ 0xAAAAA == 0xFFFFF),
+        ("add_width20", 20, lambda x: x + 1 == 424_242),
+        ("checksum_width20", 20, lambda x: z3.URem(x, z3.BitVecVal(997, 20)) == 313),
+        ("rotxor_width24", 24, lambda x: z3.RotateLeft(x, 7) ^ 0xA5_A5_A5 == 0x12_34_56),
+        ("muladd_width24", 24, lambda x: x * 65_537 + 0x1337 == 0xC0_FF_EE),
+        (
+            "serial_bytes_width32",
+            32,
+            lambda x: z3.And(
+                z3.Extract(7, 0, x) == ord("C"),
+                z3.Extract(15, 8, x) == ord("T"),
+                z3.Extract(23, 16, x) == ord("F"),
+            ),
+        ),
     ]
     results: list[dict[str, Any]] = []
-    for name, build_constraint in cases:
+    for name, width, build_constraint in cases:
         samples: list[int] = []
         model_value = None
         iterations = 100
         for _ in range(iterations):
-            x = z3.BitVec("x", 20)
+            x = z3.BitVec("x", width)
             solver = z3.Solver()
             solver.add(build_constraint(x))
             start = time.perf_counter_ns()
@@ -81,19 +92,28 @@ def run_python_scalar() -> list[dict[str, Any]]:
     """Run a dependency-free scalar enumeration baseline."""
 
     cases = [
-        ("xor_width20", lambda candidate: (candidate ^ 0xAAAAA) & ((1 << 20) - 1) == 0xFFFFF),
-        ("add_width20", lambda candidate: (candidate + 1) & ((1 << 20) - 1) == 424_242),
-        ("checksum_width20", lambda candidate: candidate % 997 == 313),
+        ("xor_width20", 20, lambda candidate: (candidate ^ 0xAAAAA) & ((1 << 20) - 1) == 0xFFFFF),
+        ("add_width20", 20, lambda candidate: (candidate + 1) & ((1 << 20) - 1) == 424_242),
+        ("checksum_width20", 20, lambda candidate: candidate % 997 == 313),
+        (
+            "rotxor_width24",
+            24,
+            lambda candidate: ((((candidate << 7) | (candidate >> (24 - 7))) & ((1 << 24) - 1)) ^ 0xA5_A5_A5)
+            == 0x12_34_56,
+        ),
+        ("muladd_width24", 24, lambda candidate: (candidate * 65_537 + 0x1337) & ((1 << 24) - 1) == 0xC0_FF_EE),
+        ("serial_bytes_width32", 32, lambda candidate: candidate & 0x00FF_FFFF == 0x0046_5443),
     ]
     results: list[dict[str, Any]] = []
-    for name, accepts in cases:
+    for name, width, accepts in cases:
         samples: list[int] = []
         match_count = 0
         iterations = 3
+        scan_end = min(1 << width, 1 << 24)
         for _ in range(iterations):
             start = time.perf_counter_ns()
             matches = []
-            for candidate in range(1 << 20):
+            for candidate in range(scan_end):
                 if accepts(candidate):
                     matches.append(candidate)
                     if len(matches) >= 1024:
@@ -107,7 +127,7 @@ def run_python_scalar() -> list[dict[str, Any]]:
                 "iterations": iterations,
                 "mean_ns": int(mean(samples)),
                 "matches": match_count,
-                "candidates_evaluated": None,
+                "candidates_evaluated": scan_end,
                 "used_closed_form": False,
             }
         )

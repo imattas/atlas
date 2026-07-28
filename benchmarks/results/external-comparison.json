@@ -4,7 +4,7 @@
     "engine": "atlas-native",
     "iterations": 2000,
     "matches": 1,
-    "mean_ns": 35,
+    "mean_ns": 64,
     "name": "xor_width20",
     "used_closed_form": true
   },
@@ -13,7 +13,7 @@
     "engine": "atlas-native",
     "iterations": 2000,
     "matches": 1,
-    "mean_ns": 51,
+    "mean_ns": 38,
     "name": "add_width20",
     "used_closed_form": true
   },
@@ -22,35 +22,89 @@
     "engine": "atlas-native",
     "iterations": 20,
     "matches": 1024,
-    "mean_ns": 6395,
+    "mean_ns": 6460,
     "name": "checksum_width20",
     "used_closed_form": true
   },
   {
-    "candidates_evaluated": null,
+    "candidates_evaluated": 1,
+    "engine": "atlas-native",
+    "iterations": 2000,
+    "matches": 1,
+    "mean_ns": 44,
+    "name": "rotxor_width24",
+    "used_closed_form": true
+  },
+  {
+    "candidates_evaluated": 1,
+    "engine": "atlas-native",
+    "iterations": 2000,
+    "matches": 1,
+    "mean_ns": 54,
+    "name": "muladd_width24",
+    "used_closed_form": true
+  },
+  {
+    "candidates_evaluated": 256,
+    "engine": "atlas-native",
+    "iterations": 200,
+    "matches": 256,
+    "mean_ns": 3271,
+    "name": "serial_bytes_width32",
+    "used_closed_form": true
+  },
+  {
+    "candidates_evaluated": 1048576,
     "engine": "python-scalar",
     "iterations": 3,
     "matches": 1,
-    "mean_ns": 88663000,
+    "mean_ns": 80995333,
     "name": "xor_width20",
     "used_closed_form": false
   },
   {
-    "candidates_evaluated": null,
+    "candidates_evaluated": 1048576,
     "engine": "python-scalar",
     "iterations": 3,
     "matches": 1,
-    "mean_ns": 79692000,
+    "mean_ns": 78207966,
     "name": "add_width20",
     "used_closed_form": false
   },
   {
-    "candidates_evaluated": null,
+    "candidates_evaluated": 1048576,
     "engine": "python-scalar",
     "iterations": 3,
     "matches": 1024,
-    "mean_ns": 62699933,
+    "mean_ns": 61269633,
     "name": "checksum_width20",
+    "used_closed_form": false
+  },
+  {
+    "candidates_evaluated": 16777216,
+    "engine": "python-scalar",
+    "iterations": 3,
+    "matches": 1,
+    "mean_ns": 2389236500,
+    "name": "rotxor_width24",
+    "used_closed_form": false
+  },
+  {
+    "candidates_evaluated": 16777216,
+    "engine": "python-scalar",
+    "iterations": 3,
+    "matches": 1,
+    "mean_ns": 1839236266,
+    "name": "muladd_width24",
+    "used_closed_form": false
+  },
+  {
+    "candidates_evaluated": 16777216,
+    "engine": "python-scalar",
+    "iterations": 3,
+    "matches": 1,
+    "mean_ns": 1019182900,
+    "name": "serial_bytes_width32",
     "used_closed_form": false
   },
   {
@@ -58,7 +112,7 @@
     "engine": "z3-python-first-model",
     "iterations": 100,
     "matches": 1,
-    "mean_ns": 892567,
+    "mean_ns": 933292,
     "name": "xor_width20",
     "used_closed_form": false
   },
@@ -67,7 +121,7 @@
     "engine": "z3-python-first-model",
     "iterations": 100,
     "matches": 1,
-    "mean_ns": 297418,
+    "mean_ns": 287174,
     "name": "add_width20",
     "used_closed_form": false
   },
@@ -76,8 +130,35 @@
     "engine": "z3-python-first-model",
     "iterations": 100,
     "matches": 1,
-    "mean_ns": 3958632,
+    "mean_ns": 4169851,
     "name": "checksum_width20",
+    "used_closed_form": false
+  },
+  {
+    "candidates_evaluated": null,
+    "engine": "z3-python-first-model",
+    "iterations": 100,
+    "matches": 1,
+    "mean_ns": 589055,
+    "name": "rotxor_width24",
+    "used_closed_form": false
+  },
+  {
+    "candidates_evaluated": null,
+    "engine": "z3-python-first-model",
+    "iterations": 100,
+    "matches": 1,
+    "mean_ns": 289176,
+    "name": "muladd_width24",
+    "used_closed_form": false
+  },
+  {
+    "candidates_evaluated": null,
+    "engine": "z3-python-first-model",
+    "iterations": 100,
+    "matches": 1,
+    "mean_ns": 816416,
+    "name": "serial_bytes_width32",
     "used_closed_form": false
   },
   {

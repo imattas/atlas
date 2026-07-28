@@ -24,6 +24,31 @@ pub enum SearchOp {
         /// Target value.
         target: u64,
     },
+    /// Candidate multiplied by `multiplier` plus `addend` equals target modulo width.
+    MulAddEq {
+        /// Multiplicative constant.
+        multiplier: u64,
+        /// Additive constant.
+        addend: u64,
+        /// Target value.
+        target: u64,
+    },
+    /// Candidate rotated left within its declared width and XOR-ed with mask equals target.
+    RotateXorEq {
+        /// Left rotation amount.
+        rotate_left: u32,
+        /// XOR mask.
+        mask: u64,
+        /// Target value.
+        target: u64,
+    },
+    /// Candidate byte at little-endian `byte_index` equals value.
+    ByteEq {
+        /// Zero-based little-endian byte index.
+        byte_index: u32,
+        /// Required byte value.
+        value: u8,
+    },
 }
 
 /// Restricted search program.
@@ -125,7 +150,38 @@ impl SearchProgram {
             SearchOp::ChecksumEq { modulus, target } => {
                 modulus != 0 && candidate % modulus == target
             }
+            SearchOp::MulAddEq {
+                multiplier,
+                addend,
+                target,
+            } => candidate.wrapping_mul(multiplier).wrapping_add(addend) & mask == target,
+            SearchOp::RotateXorEq {
+                rotate_left,
+                mask: xor_mask,
+                target,
+            } => {
+                rotate_left_width(candidate, rotate_left, self.width) ^ (xor_mask & mask) == target
+            }
+            SearchOp::ByteEq { byte_index, value } => {
+                let shift = byte_index.saturating_mul(8);
+                shift < self.width && ((candidate >> shift) & 0xff) == u64::from(value)
+            }
         })
+    }
+}
+
+fn rotate_left_width(value: u64, rotate_left: u32, width: u32) -> u64 {
+    let mask = if width == 64 {
+        u64::MAX
+    } else {
+        (1_u64 << width) - 1
+    };
+    let value = value & mask;
+    let amount = rotate_left % width;
+    if amount == 0 {
+        value
+    } else {
+        ((value << amount) | (value >> (width - amount))) & mask
     }
 }
 
