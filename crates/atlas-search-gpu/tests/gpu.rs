@@ -1978,6 +1978,45 @@ fn runtime_executes_driver_output_and_cpu_validates_matches() {
 }
 
 #[test]
+fn runtime_falls_back_when_small_domain_device_result_omits_valid_matches() {
+    let program = SearchProgram::new(
+        16,
+        vec![SearchOp::ChecksumEq {
+            modulus: 1,
+            target: 0,
+        }],
+    )
+    .unwrap();
+    let token = CancellationToken::new();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "test OpenCL".to_owned(),
+    };
+    let runner = FixtureDriverRunner {
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![0],
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_driver(
+        &program,
+        SearchDomain::new(0, 4),
+        &sdk,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert_eq!(report.matches, vec![0, 1, 2, 3]);
+    assert!(report
+        .telemetry
+        .rationale
+        .contains("incomplete device matches"));
+}
+
+#[test]
 fn runtime_splits_driver_launches_that_exceed_single_dispatch_capacity() {
     let program = SearchProgram::new(
         64,

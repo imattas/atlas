@@ -610,6 +610,25 @@ impl AcceleratorRuntime {
                 },
             };
         }
+        if let Some(cpu_matches) =
+            exact_small_domain_matches(program, domain, launch.max_matches, cancellation)
+        {
+            if cpu_matches != matches {
+                return AcceleratorReport {
+                    mode: RuntimeMode::CpuFallback,
+                    matches: cpu_matches,
+                    telemetry: RuntimeTelemetry {
+                        launch,
+                        rationale: format!(
+                            "{}; incomplete device matches after CPU completeness audit",
+                            plan.rationale
+                        ),
+                        cpu_validated: true,
+                        rejected_device_matches: validation.rejected,
+                    },
+                };
+            }
+        }
         AcceleratorReport {
             mode: RuntimeMode::DeviceValidated,
             telemetry: RuntimeTelemetry {
@@ -902,6 +921,22 @@ impl AcceleratorRuntime {
                 },
             };
         }
+        if let Some(cpu_matches) =
+            exact_small_domain_matches(program, domain, launch.max_matches, cancellation)
+        {
+            if cpu_matches != matches {
+                return AcceleratorReport {
+                    mode: RuntimeMode::CpuFallback,
+                    matches: cpu_matches,
+                    telemetry: RuntimeTelemetry {
+                        launch,
+                        rationale: format!("{base_rationale}; incomplete device matches"),
+                        cpu_validated: true,
+                        rejected_device_matches: validation.rejected,
+                    },
+                };
+            }
+        }
         AcceleratorReport {
             mode: RuntimeMode::DeviceValidated,
             telemetry: RuntimeTelemetry {
@@ -1001,6 +1036,19 @@ fn validate_device_matches(
         matches.truncate(max_matches);
     }
     DeviceValidation { matches, rejected }
+}
+
+fn exact_small_domain_matches(
+    program: &SearchProgram,
+    domain: SearchDomain,
+    max_matches: usize,
+    cancellation: &CancellationToken,
+) -> Option<Vec<u64>> {
+    let candidates = domain.end.saturating_sub(domain.start);
+    if candidates > u64::try_from(max_matches).ok()? {
+        return None;
+    }
+    Some(NativeSearcher::search(program, domain, cancellation))
 }
 
 fn driver_launch_domains(domain: SearchDomain) -> Vec<SearchDomain> {
