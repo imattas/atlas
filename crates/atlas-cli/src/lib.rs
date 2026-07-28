@@ -2,7 +2,9 @@
 
 use atlas_report::SolveReportV1;
 use atlas_scheduler::CancellationToken;
-use atlas_search_gpu::{AcceleratorRuntime, RuntimeMode};
+use atlas_search_gpu::{
+    AcceleratorRuntime, GpuSdkDetector, ProcessDriverRunner, RuntimeMode, RuntimePolicy,
+};
 use atlas_search_ir::{SearchDomain, SearchProgram};
 use atlas_validator::ResultLevel;
 
@@ -38,10 +40,24 @@ fn solve(args: &[String]) -> Result<String, String> {
     if end <= start {
         return Err("--end must be greater than --start".to_owned());
     }
+    let force_gpu = has_flag(args, "--force-gpu");
     let program = SearchProgram::try_from_fixture(fixture).map_err(|error| format!("{error:?}"))?;
     let domain = SearchDomain::new(start, end);
     let token = CancellationToken::new();
-    let report = AcceleratorRuntime::execute_with_host_driver(&program, domain, &token);
+    let report = if force_gpu {
+        let detected_sdks = GpuSdkDetector::detect_from_host_path();
+        AcceleratorRuntime::execute_with_detected_driver_and_policy(
+            &program,
+            domain,
+            &detected_sdks,
+            &token,
+            RuntimePolicy { force_gpu },
+            &[],
+            &ProcessDriverRunner,
+        )
+    } else {
+        AcceleratorRuntime::execute_with_host_driver(&program, domain, &token)
+    };
     let result_level = if report.matches.is_empty() {
         ResultLevel::Unknown
     } else {
@@ -67,6 +83,10 @@ fn solve(args: &[String]) -> Result<String, String> {
 fn optional_flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.windows(2)
         .find_map(|window| (window[0] == name).then_some(window[1].as_str()))
+}
+
+fn has_flag(args: &[String], name: &str) -> bool {
+    args.iter().any(|arg| arg == name)
 }
 
 fn parse_u64(value: &str) -> Result<u64, String> {
