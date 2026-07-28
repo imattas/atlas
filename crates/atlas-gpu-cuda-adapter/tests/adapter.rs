@@ -691,7 +691,7 @@ fn write_fake_clang_cuda_compiler(bin_dir: &std::path::Path) {
             let path = bin_dir.join(name);
             fs::write(
                 &path,
-                "#!/bin/sh\nprintf '%s\\n' \"$@\" | grep -- '--cuda-device-only' >/dev/null || exit 3\nprintf '%s\\n' \"$@\" | grep -- '-nocudainc' >/dev/null || exit 4\nprintf '%s\\n' \"$@\" | grep -- '-nocudalib' >/dev/null || exit 5\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = \"-o\" ]; then shift; printf '.version 8.0\\n.target sm_52\\n.visible .entry atlas_search() { ret; }\\n' > \"$1\"; exit 0; fi\n  shift\ndone\nexit 6\n",
+                "#!/bin/sh\nhas_device=0\nhas_nocudainc=0\nhas_nocudalib=0\noutput=''\nwhile [ \"$#\" -gt 0 ]; do\n  case \"$1\" in\n    --cuda-device-only) has_device=1 ;;\n    -nocudainc) has_nocudainc=1 ;;\n    -nocudalib) has_nocudalib=1 ;;\n    -o) shift; output=\"$1\" ;;\n  esac\n  shift\ndone\n[ \"$has_device\" = 1 ] || exit 3\n[ \"$has_nocudainc\" = 1 ] || exit 4\n[ \"$has_nocudalib\" = 1 ] || exit 5\n[ -n \"$output\" ] || exit 6\nprintf '.version 8.0\\n.target sm_52\\n.visible .entry atlas_search() { ret; }\\n' > \"$output\"\n",
             )
             .unwrap();
             let mut permissions = fs::metadata(&path).unwrap().permissions();
