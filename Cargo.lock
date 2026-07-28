@@ -52,6 +52,14 @@ name = "atlas-facts"
 version = "0.1.0"
 
 [[package]]
+name = "atlas-gpu-cuda-adapter"
+version = "0.1.0"
+dependencies = [
+ "atlas-search-gpu",
+ "atlas-search-ir",
+]
+
+[[package]]
 name = "atlas-gpu-opencl-adapter"
 version = "0.1.0"
 dependencies = [

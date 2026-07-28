@@ -28,6 +28,9 @@ Runtime behavior:
 - the OpenCL adapter uses dynamic OpenCL loading, build-checks generated source,
   launches the generated `atlas_search` kernel, and prints `match=<candidate>`
   lines for CPU validation by the runtime;
+- the CUDA adapter uses dynamic CUDA Driver API loading, validates generated PTX,
+  launches the `atlas_search` kernel, and prints `match=<candidate>` lines for
+  CPU validation by the runtime;
 - production driver execution is isolated behind a runner boundary so host
   adapters can compile/launch kernels without changing search semantics;
 - process-backed execution writes generated per-program kernel source into the
@@ -50,6 +53,8 @@ Checked adapter artifacts:
 
 - `crates/atlas-gpu-opencl-adapter/src/lib.rs`
 - `crates/atlas-gpu-opencl-adapter/src/main.rs`
+- `crates/atlas-gpu-cuda-adapter/src/lib.rs`
+- `crates/atlas-gpu-cuda-adapter/src/main.rs`
 
 Primary GPU references checked while implementing this boundary:
 

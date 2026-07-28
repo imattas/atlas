@@ -1,0 +1,19 @@
+[package]
+name = "atlas-gpu-cuda-adapter"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dev-dependencies]
+atlas-search-gpu = { path = "../atlas-search-gpu" }
+atlas-search-ir = { path = "../atlas-search-ir" }
+
+[[bin]]
+name = "atlas-gpu-cuda-run"
+path = "src/main.rs"
+
+[lib]
+name = "atlas_gpu_cuda_adapter"
+path = "src/lib.rs"

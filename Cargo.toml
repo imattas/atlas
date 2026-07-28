@@ -19,6 +19,7 @@ members = [
     "crates/atlas-search-simd",
     "crates/atlas-search-gpu",
     "crates/atlas-gpu-opencl-adapter",
+    "crates/atlas-gpu-cuda-adapter",
     "crates/atlas-placement",
     "crates/atlas-worker",
     "crates/atlas-coordinator",
