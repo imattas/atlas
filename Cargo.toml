@@ -21,6 +21,7 @@ members = [
     "crates/atlas-gpu-opencl-adapter",
     "crates/atlas-gpu-cuda-adapter",
     "crates/atlas-gpu-hip-adapter",
+    "crates/atlas-gpu-vulkan-adapter",
     "crates/atlas-placement",
     "crates/atlas-worker",
     "crates/atlas-coordinator",

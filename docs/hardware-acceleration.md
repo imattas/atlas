@@ -25,7 +25,8 @@ Runtime behavior:
   64-bit shader predicates with bounded atomic match output;
 - per-SDK command plans select checked-in kernel artifacts, compilers
   (`glslc`, `nvcc`, `hipcc`), and launcher frontends
-  (`atlas-gpu-opencl-run`, `atlas-gpu-cuda-run`, `atlas-gpu-hip-run`);
+  (`atlas-gpu-opencl-run`, `atlas-gpu-vulkan-run`, `atlas-gpu-cuda-run`,
+  `atlas-gpu-hip-run`);
 - the OpenCL adapter uses dynamic OpenCL loading, build-checks generated source,
   launches the generated `atlas_search` kernel, and prints `match=<candidate>`
   lines for CPU validation by the runtime;
@@ -35,6 +36,9 @@ Runtime behavior:
 - the HIP adapter uses dynamic HIP runtime loading, validates generated code
   objects, launches the `atlas_search` kernel, and prints `match=<candidate>`
   lines for CPU validation by the runtime;
+- the Vulkan adapter uses dynamic Vulkan loading, validates generated SPIR-V,
+  dispatches the compute shader, and prints `match=<candidate>` lines for CPU
+  validation by the runtime;
 - production driver execution is isolated behind a runner boundary so host
   adapters can compile/launch kernels without changing search semantics;
 - process-backed execution writes generated per-program kernel source into the
@@ -61,6 +65,8 @@ Checked adapter artifacts:
 - `crates/atlas-gpu-cuda-adapter/src/main.rs`
 - `crates/atlas-gpu-hip-adapter/src/lib.rs`
 - `crates/atlas-gpu-hip-adapter/src/main.rs`
+- `crates/atlas-gpu-vulkan-adapter/src/lib.rs`
+- `crates/atlas-gpu-vulkan-adapter/src/main.rs`
 
 Primary GPU references checked while implementing this boundary:
 
