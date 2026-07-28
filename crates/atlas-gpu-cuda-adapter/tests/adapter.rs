@@ -3,8 +3,8 @@
 use atlas_gpu_cuda_adapter::{
     cuda_driver_library_candidates_from_roots, cuda_sdk_root_candidates_from_bases,
     nvcc_command_candidates_from_roots, nvcc_ptx_output_path_for_source,
-    nvrtc_library_candidates_from_roots, run_cli, AdapterCommand, CudaPtxLauncher, LaunchAbi,
-    LaunchArgs, LaunchOutput, Launcher,
+    nvrtc_library_candidates_from_roots, run_cli, AdapterCommand, CudaPtxLauncher, FeatureReport,
+    LaunchAbi, LaunchArgs, LaunchOutput, Launcher,
 };
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::{SearchOp, SearchProgram};
@@ -32,8 +32,11 @@ fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
 struct FixtureLauncher;
 
 impl Launcher for FixtureLauncher {
-    fn features(&self) -> Result<Vec<String>, String> {
-        Ok(vec!["int64".to_owned()])
+    fn features(&self) -> Result<FeatureReport, String> {
+        Ok(FeatureReport {
+            hardware: "NVIDIA GeForce RTX 4090 via CUDA".to_owned(),
+            features: vec!["int64".to_owned()],
+        })
     }
 
     fn compile_check(&self, _input: &str, _output: Option<&str>) -> Result<(), String> {
@@ -68,8 +71,11 @@ impl RecordingLauncher {
 }
 
 impl Launcher for RecordingLauncher {
-    fn features(&self) -> Result<Vec<String>, String> {
-        Ok(Vec::new())
+    fn features(&self) -> Result<FeatureReport, String> {
+        Ok(FeatureReport {
+            hardware: "Fixture CUDA device".to_owned(),
+            features: Vec::new(),
+        })
     }
 
     fn compile_check(&self, input: &str, output: Option<&str>) -> Result<(), String> {
@@ -142,7 +148,7 @@ fn cli_features_emits_launcher_capabilities() {
 
     assert_eq!(
         output,
-        "hardware=CUDA driver device\nfeature=int64\nfeature=launchAbiU32\nfeature=launchAbiU64\n"
+        "hardware=NVIDIA GeForce RTX 4090 via CUDA\nfeature=int64\nfeature=launchAbiU32\nfeature=launchAbiU64\n"
     );
 }
 

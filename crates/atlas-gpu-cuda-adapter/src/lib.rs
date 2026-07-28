@@ -165,7 +165,7 @@ pub trait Launcher {
     /// # Errors
     ///
     /// Returns an error when CUDA driver loading or context creation fails.
-    fn features(&self) -> Result<Vec<String>, String>;
+    fn features(&self) -> Result<FeatureReport, String>;
 
     /// Checks generated PTX can provide the expected `atlas_search` kernel.
     ///
@@ -184,15 +184,29 @@ pub trait Launcher {
     fn launch(&self, args: &LaunchArgs) -> Result<LaunchOutput, String>;
 }
 
+/// Runtime/device feature report emitted by `--features`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FeatureReport {
+    /// Concrete hardware/runtime identity selected by the adapter.
+    pub hardware: String,
+    /// Kernel capabilities available for generated CUDA code.
+    pub features: Vec<String>,
+}
+
 /// CUDA Driver API backed PTX launcher.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CudaPtxLauncher;
 
 impl Launcher for CudaPtxLauncher {
-    fn features(&self) -> Result<Vec<String>, String> {
+    fn features(&self) -> Result<FeatureReport, String> {
         let driver = CudaDriver::load()?;
-        let _context = driver.create_context()?;
-        Ok(features_from_int64_probe(probe_cuda_int64(&driver)))
+        let device = driver.first_device()?;
+        let hardware = driver.device_identity(device);
+        let _context = driver.create_context_for(device)?;
+        Ok(FeatureReport {
+            hardware,
+            features: features_from_int64_probe(probe_cuda_int64(&driver)),
+        })
     }
 
     fn compile_check(&self, artifact: &str, output: Option<&str>) -> Result<(), String> {
@@ -239,8 +253,8 @@ impl Launcher for CudaPtxLauncher {
 pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, String> {
     match AdapterCommand::parse(args)? {
         AdapterCommand::Features => {
-            let features = launcher.features()?;
-            Ok(format_features(&features))
+            let report = launcher.features()?;
+            Ok(format_features(&report))
         }
         AdapterCommand::CompileCheck { input, output } => {
             launcher.compile_check(&input, output.as_deref())?;
@@ -253,10 +267,11 @@ pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, Strin
     }
 }
 
-fn format_features(features: &[String]) -> String {
-    let mut text = "hardware=CUDA driver device\n".to_owned();
+fn format_features(report: &FeatureReport) -> String {
+    let mut text = format!("hardware={}\n", report.hardware);
     text.push_str(
-        &features
+        &report
+            .features
             .iter()
             .map(|feature| format!("feature={feature}\n"))
             .collect::<String>(),
@@ -933,11 +948,19 @@ impl CudaDriver {
     }
 
     fn create_context(&self) -> Result<CudaContext<'_>, String> {
+        self.create_context_for(self.first_device()?)
+    }
+
+    fn first_device(&self) -> Result<CuDevice, String> {
         let mut device = 0;
         self.check(
             unsafe { (self.api.cu_device_get)(&mut device, 0) },
             "cuDeviceGet",
         )?;
+        Ok(device)
+    }
+
+    fn create_context_for(&self, device: CuDevice) -> Result<CudaContext<'_>, String> {
         let mut context = ptr::null_mut();
         self.check(
             unsafe { (self.api.cu_ctx_create)(&mut context, 0, device) },
@@ -947,6 +970,30 @@ impl CudaDriver {
             driver: self,
             raw: context,
         })
+    }
+
+    fn device_identity(&self, device: CuDevice) -> String {
+        let mut name = [0 as c_char; 256];
+        let result = unsafe {
+            (self.api.cu_device_get_name)(
+                name.as_mut_ptr(),
+                c_int::try_from(name.len()).expect("CUDA device name buffer length fits c_int"),
+                device,
+            )
+        };
+        if result != CUDA_SUCCESS {
+            return "CUDA driver device via CUDA".to_owned();
+        }
+        let name = unsafe { CStr::from_ptr(name.as_ptr()) }
+            .to_string_lossy()
+            .trim()
+            .to_owned();
+        let name = if name.is_empty() {
+            "CUDA driver device"
+        } else {
+            name.as_str()
+        };
+        format!("{name} via CUDA")
     }
 
     fn load_module(&self, ptx: &CStr) -> Result<CudaModule<'_>, String> {
@@ -1053,6 +1100,7 @@ fn cuda_driver_load_error(
 struct CudaApi {
     cu_init: unsafe extern "C" fn(c_uint) -> CuResult,
     cu_device_get: unsafe extern "C" fn(*mut CuDevice, c_int) -> CuResult,
+    cu_device_get_name: unsafe extern "C" fn(*mut c_char, c_int, CuDevice) -> CuResult,
     cu_ctx_create: unsafe extern "C" fn(*mut CuContext, c_uint, CuDevice) -> CuResult,
     cu_ctx_destroy: unsafe extern "C" fn(CuContext) -> CuResult,
     cu_ctx_synchronize: unsafe extern "C" fn() -> CuResult,
@@ -1084,6 +1132,7 @@ impl CudaApi {
         Ok(Self {
             cu_init: library.symbol("cuInit")?,
             cu_device_get: library.symbol("cuDeviceGet")?,
+            cu_device_get_name: library.symbol("cuDeviceGetName")?,
             cu_ctx_create: library.symbol("cuCtxCreate_v2")?,
             cu_ctx_destroy: library.symbol("cuCtxDestroy_v2")?,
             cu_ctx_synchronize: library.symbol("cuCtxSynchronize")?,
