@@ -574,6 +574,44 @@ fn generated_hip_kernel_runs_on_device_and_preserves_full_candidates() {
 }
 
 #[test]
+#[ignore = "requires hipcc, HIP runtime, and an AMD HIP-capable device"]
+fn generated_hip_dense_kernel_retains_full_device_buffer() {
+    let program = SearchProgram::try_from_fixture("dense").unwrap();
+    let source = GpuSearcher::compile_hip(&program);
+    let output_dir =
+        std::env::temp_dir().join(format!("atlas-hip-dense-e2e-{}", std::process::id()));
+    fs::create_dir_all(&output_dir).unwrap();
+    let source_path = output_dir.join("atlas_search.hip");
+    let code_object_path = output_dir.join("atlas_search.hsaco");
+    fs::write(&source_path, source).unwrap();
+    let arch = detect_hip_arch().unwrap_or_else(|| "gfx1100".to_owned());
+
+    let source_path_text = source_path.to_string_lossy().into_owned();
+    let code_object_path_text = code_object_path.to_string_lossy().into_owned();
+    HipModuleLauncher
+        .compile_check(&source_path_text, Some(&code_object_path_text))
+        .unwrap_or_else(|error| {
+            panic!("HIP dense source compile failed for detected arch {arch}: {error}")
+        });
+    let args = LaunchArgs {
+        artifact: code_object_path.to_string_lossy().into_owned(),
+        start: 0,
+        end: 1500,
+        max_matches: 1500,
+        global_size: 1536,
+        local_size: 64,
+        launch_abi: Some(HipLaunchAbi::U32),
+    };
+
+    let output = HipModuleLauncher.launch(&args).unwrap();
+
+    let expected = (0..1500).collect::<Vec<_>>();
+    assert_eq!(output.matches, expected);
+    assert_eq!(output.match_count, 1500);
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
 #[ignore = "requires hipcc, HIP runtime, and an AMD HIP-capable device with int64 support"]
 fn generated_hip_64_bit_kernel_runs_on_device() {
     let program = SearchProgram::new(

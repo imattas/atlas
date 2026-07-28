@@ -500,6 +500,35 @@ fn generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates() {
 }
 
 #[test]
+#[ignore = "requires Vulkan runtime and a Vulkan compute-capable device"]
+fn generated_vulkan_dense_kernel_retains_full_device_buffer() {
+    let program = SearchProgram::try_from_fixture("dense").unwrap();
+    let source = GpuSearcher::compile_vulkan_glsl(&program);
+    let output_dir =
+        std::env::temp_dir().join(format!("atlas-vulkan-dense-e2e-{}", std::process::id()));
+    fs::create_dir_all(&output_dir).unwrap();
+    let source_path = output_dir.join("atlas_search.comp");
+    fs::write(&source_path, source).unwrap();
+
+    let args = LaunchArgs {
+        artifact: source_path.to_string_lossy().into_owned(),
+        start: 0,
+        end: 1500,
+        max_matches: 1500,
+        global_size: 1536,
+        local_size: 256,
+        launch_abi: Some(VulkanLaunchAbi::U32),
+    };
+
+    let output = VulkanSpirvLauncher.launch(&args).unwrap();
+
+    let expected = (0..1500).collect::<Vec<_>>();
+    assert_eq!(output.matches, expected);
+    assert_eq!(output.match_count, 1500);
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
 #[ignore = "requires Vulkan runtime with shaderInt64 support and a Vulkan compute-capable device"]
 fn generated_vulkan_64_bit_kernel_runs_on_device() {
     let program = SearchProgram::new(

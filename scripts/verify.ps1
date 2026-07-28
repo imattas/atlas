@@ -366,6 +366,9 @@ if ($Profile -eq "hardware") {
     if (Get-GpuFeatureProbeOk $HardwareDoctor "OpenCL") {
         Invoke-ForcedGpuBenchmark "Forced-GPU OpenCL benchmark" "opencl" "OpenCL"
         Invoke-ForcedGpuBenchmark "Forced-GPU OpenCL dense benchmark" "opencl" "OpenCL" "dense" "0" "1500" 1500
+        Invoke-HardwareStep "OpenCL dense real-device search" {
+            cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_dense_kernel_retains_full_device_buffer -- --ignored --nocapture
+        }
         Invoke-HardwareStep "OpenCL real-device search" {
             cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
         }
@@ -382,12 +385,16 @@ if ($Profile -eq "hardware") {
         Skip-HardwareStep "Forced-GPU OpenCL benchmark" "OpenCL runtime feature probe unavailable"
         Skip-HardwareStep "Forced-GPU OpenCL dense benchmark" "OpenCL runtime feature probe unavailable"
         Skip-HardwareStep "Forced-GPU OpenCL int64 benchmark" "OpenCL runtime feature probe unavailable"
+        Skip-HardwareStep "OpenCL dense real-device search" "OpenCL runtime feature probe unavailable"
         Skip-HardwareStep "OpenCL real-device search" "OpenCL runtime feature probe unavailable"
         Skip-HardwareStep "OpenCL int64 real-device search" "OpenCL runtime feature probe unavailable"
     }
     if (Get-GpuFeatureProbeOk $HardwareDoctor "Vulkan") {
         Invoke-ForcedGpuBenchmark "Forced-GPU Vulkan benchmark" "vulkan" "Vulkan"
         Invoke-ForcedGpuBenchmark "Forced-GPU Vulkan dense benchmark" "vulkan" "Vulkan" "dense" "0" "1500" 1500
+        Invoke-HardwareStep "Vulkan dense real-device search" {
+            cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_dense_kernel_retains_full_device_buffer -- --ignored --nocapture
+        }
         Invoke-HardwareStep "Vulkan real-device search" {
             cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
         }
@@ -404,12 +411,16 @@ if ($Profile -eq "hardware") {
         Skip-HardwareStep "Forced-GPU Vulkan benchmark" "Vulkan runtime feature probe unavailable"
         Skip-HardwareStep "Forced-GPU Vulkan dense benchmark" "Vulkan runtime feature probe unavailable"
         Skip-HardwareStep "Forced-GPU Vulkan int64 benchmark" "Vulkan runtime feature probe unavailable"
+        Skip-HardwareStep "Vulkan dense real-device search" "Vulkan runtime feature probe unavailable"
         Skip-HardwareStep "Vulkan real-device search" "Vulkan runtime feature probe unavailable"
         Skip-HardwareStep "Vulkan shaderInt64 real-device search" "Vulkan runtime feature probe unavailable"
     }
     if (Get-GpuFeatureProbeOk $HardwareDoctor "CUDA") {
         Invoke-ForcedGpuBenchmark "Forced-GPU CUDA benchmark" "cuda" "CUDA"
         Invoke-ForcedGpuBenchmark "Forced-GPU CUDA dense benchmark" "cuda" "CUDA" "dense" "0" "1500" 1500
+        Invoke-HardwareStep "CUDA dense real-device search" {
+            cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_dense_kernel_retains_full_device_buffer -- --ignored --nocapture
+        }
         Invoke-HardwareStep "CUDA real-device search" {
             cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
         }
@@ -426,12 +437,16 @@ if ($Profile -eq "hardware") {
         Skip-HardwareStep "Forced-GPU CUDA benchmark" "CUDA runtime feature probe unavailable"
         Skip-HardwareStep "Forced-GPU CUDA dense benchmark" "CUDA runtime feature probe unavailable"
         Skip-HardwareStep "Forced-GPU CUDA int64 benchmark" "CUDA runtime feature probe unavailable"
+        Skip-HardwareStep "CUDA dense real-device search" "CUDA runtime feature probe unavailable"
         Skip-HardwareStep "CUDA real-device search" "CUDA runtime feature probe unavailable"
         Skip-HardwareStep "CUDA int64 real-device search" "CUDA runtime feature probe unavailable"
     }
     if (Get-GpuFeatureProbeOk $HardwareDoctor "HIP") {
         Invoke-ForcedGpuBenchmark "Forced-GPU HIP benchmark" "hip" "HIP"
         Invoke-ForcedGpuBenchmark "Forced-GPU HIP dense benchmark" "hip" "HIP" "dense" "0" "1500" 1500
+        Invoke-HardwareStep "HIP dense real-device search" {
+            cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_dense_kernel_retains_full_device_buffer -- --ignored --nocapture
+        }
         Invoke-HardwareStep "HIP real-device search" {
             cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
         }
@@ -448,6 +463,7 @@ if ($Profile -eq "hardware") {
         Skip-HardwareStep "Forced-GPU HIP benchmark" "HIP runtime feature probe unavailable"
         Skip-HardwareStep "Forced-GPU HIP dense benchmark" "HIP runtime feature probe unavailable"
         Skip-HardwareStep "Forced-GPU HIP int64 benchmark" "HIP runtime feature probe unavailable"
+        Skip-HardwareStep "HIP dense real-device search" "HIP runtime feature probe unavailable"
         Skip-HardwareStep "HIP real-device search" "HIP runtime feature probe unavailable"
         Skip-HardwareStep "HIP int64 real-device search" "HIP runtime feature probe unavailable"
     }

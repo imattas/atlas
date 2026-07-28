@@ -418,6 +418,36 @@ fn generated_opencl_kernel_runs_on_device_and_preserves_full_candidates() {
 }
 
 #[test]
+#[ignore = "requires a local OpenCL runtime and device"]
+fn generated_opencl_dense_kernel_retains_full_device_buffer() {
+    let program = SearchProgram::try_from_fixture("dense").unwrap();
+    let source = GpuSearcher::compile_opencl(&program);
+    let output_dir =
+        std::env::temp_dir().join(format!("atlas-opencl-dense-e2e-{}", std::process::id()));
+    fs::create_dir_all(&output_dir).unwrap();
+    let source_path = output_dir.join("atlas_search.cl");
+    fs::write(&source_path, source).unwrap();
+    let args = LaunchArgs {
+        artifact: source_path.to_string_lossy().into_owned(),
+        start: 0,
+        end: 1500,
+        max_matches: 1500,
+        global_size: 1536,
+        local_size: 1,
+        launch_abi: Some(OpenClLaunchAbi::U32),
+    };
+
+    let output = atlas_gpu_opencl_adapter::OpenClLauncher
+        .launch(&args)
+        .unwrap();
+
+    let expected = (0..1500).collect::<Vec<_>>();
+    assert_eq!(output.matches, expected);
+    assert_eq!(output.match_count, 1500);
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
 #[ignore = "requires a local OpenCL runtime and device with int64 support"]
 fn generated_opencl_64_bit_kernel_runs_on_device() {
     let program = SearchProgram::new(
