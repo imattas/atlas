@@ -143,7 +143,8 @@ fn hip_driver_plan_uses_generated_hip_kernel_source() {
     );
 
     assert_eq!(plan.template_file, "gpu/hip/atlas_search.hip");
-    assert_eq!(plan.source_file, "target/atlas-gpu/atlas_search.hip");
+    assert!(plan.source_file.starts_with("target/atlas-gpu/"));
+    assert!(plan.source_file.ends_with("/atlas_search.hip"));
     assert!(plan.kernel_source.contains("#include <hip/hip_runtime.h>"));
     assert!(plan.kernel_source.contains("__global__ void atlas_search"));
     assert!(plan
@@ -162,7 +163,8 @@ fn hip_driver_plan_compiles_loadable_code_object_for_adapter() {
         "target/atlas-gpu",
     );
 
-    assert_eq!(plan.artifact_file, "target/atlas-gpu/atlas_search.hsaco");
+    assert!(plan.artifact_file.starts_with("target/atlas-gpu/"));
+    assert!(plan.artifact_file.ends_with("/atlas_search.hsaco"));
     assert_eq!(plan.compile_command[0], "hipcc");
     assert!(plan.compile_command.iter().any(|arg| arg == "--genco"));
     assert!(plan
@@ -323,6 +325,24 @@ fn driver_cache_key_changes_across_detected_device_identity() {
         "OpenCL AMD Radeon RX 7900 XTX driver 1"
     );
     assert_ne!(first_runtime.cache_key, second_runtime.cache_key);
+}
+
+#[test]
+fn driver_plan_uses_cache_keyed_output_paths_for_distinct_kernels() {
+    let add = SearchProgram::try_from_fixture("add").unwrap();
+    let xor = SearchProgram::try_from_fixture("xor").unwrap();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "test OpenCL runtime".to_owned(),
+    };
+
+    let add_plan = DriverCommandPlan::for_sdk(&sdk, &add, "target/atlas-gpu");
+    let xor_plan = DriverCommandPlan::for_sdk(&sdk, &xor, "target/atlas-gpu");
+
+    assert_ne!(add_plan.cache_key, xor_plan.cache_key);
+    assert_ne!(add_plan.source_file, xor_plan.source_file);
+    assert_ne!(add_plan.artifact_file, xor_plan.artifact_file);
+    assert!(add_plan.source_file.starts_with("target/atlas-gpu/"));
+    assert!(xor_plan.source_file.starts_with("target/atlas-gpu/"));
 }
 
 #[test]
@@ -493,7 +513,8 @@ fn driver_command_plan_selects_sdk_specific_sources_and_compilers() {
     );
 
     assert_eq!(opencl.template_file, "gpu/opencl/atlas_search.cl");
-    assert_eq!(opencl.source_file, "target/atlas-gpu/atlas_search.cl");
+    assert!(opencl.source_file.starts_with("target/atlas-gpu/"));
+    assert!(opencl.source_file.ends_with("/atlas_search.cl"));
     assert_eq!(opencl.compile_command[0], "atlas-gpu-opencl-run");
     assert!(opencl
         .compile_command
@@ -535,11 +556,9 @@ fn vulkan_driver_plan_uses_adapter_compiler_without_external_glslc() {
         .compile_command
         .iter()
         .any(|arg| arg == "--compile-check"));
-    assert_eq!(
-        plan.compile_command[2],
-        "target/atlas-gpu/atlas_search.comp"
-    );
-    assert_eq!(plan.launch_command[1], "target/atlas-gpu/atlas_search.comp");
+    assert!(plan.compile_command[2].starts_with("target/atlas-gpu/"));
+    assert!(plan.compile_command[2].ends_with("/atlas_search.comp"));
+    assert_eq!(plan.launch_command[1], plan.source_file);
 }
 
 #[test]
@@ -563,8 +582,9 @@ fn cuda_driver_plan_uses_adapter_compiler_without_external_nvcc() {
         .compile_command
         .iter()
         .any(|arg| arg == "--compile-check"));
-    assert_eq!(plan.compile_command[2], "target/atlas-gpu/atlas_search.cu");
-    assert_eq!(plan.launch_command[1], "target/atlas-gpu/atlas_search.cu");
+    assert!(plan.compile_command[2].starts_with("target/atlas-gpu/"));
+    assert!(plan.compile_command[2].ends_with("/atlas_search.cu"));
+    assert_eq!(plan.launch_command[1], plan.source_file);
 }
 
 #[test]
@@ -607,7 +627,8 @@ fn opencl_driver_plan_carries_generated_semantic_kernel_source() {
 
     let plan = DriverCommandPlan::for_sdk(&sdk, &program, "target/atlas-gpu");
 
-    assert_eq!(plan.source_file, "target/atlas-gpu/atlas_search.cl");
+    assert!(plan.source_file.starts_with("target/atlas-gpu/"));
+    assert!(plan.source_file.ends_with("/atlas_search.cl"));
     assert!(plan.kernel_source.contains("candidate = start + gid"));
     assert!(plan
         .kernel_source
@@ -620,7 +641,7 @@ fn opencl_driver_plan_carries_generated_semantic_kernel_source() {
     assert!(plan
         .compile_command
         .iter()
-        .any(|arg| arg == "target/atlas-gpu/atlas_search.cl"));
+        .any(|arg| arg == &plan.source_file));
 }
 
 #[test]
@@ -675,7 +696,7 @@ fn driver_launch_plan_carries_domain_and_output_capacity() {
         .launch_command
         .windows(2)
         .any(|args| args == ["--global-size", "128"]));
-    assert_eq!(plan.launch_command[1], "target/atlas-gpu/atlas_search.cl");
+    assert_eq!(plan.launch_command[1], plan.source_file);
 }
 
 #[test]

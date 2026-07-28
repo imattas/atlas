@@ -222,8 +222,15 @@ impl DriverCommandPlan {
                     GpuSearcher::compile_hip(program),
                 ),
             };
-        let source_file = join_path(output_dir, source_name);
-        let artifact_file = join_path(output_dir, artifact_name);
+        let cache_key = KernelCacheKey::new(
+            format!("{program:?}"),
+            compiler,
+            sdk.runtime_identity(),
+            options,
+        );
+        let cache_dir = join_path(output_dir, &kernel_cache_id(&cache_key));
+        let source_file = join_path(&cache_dir, source_name);
+        let artifact_file = join_path(&cache_dir, artifact_name);
         let compile_command = compile_command_for(compiler, options, &source_file, &artifact_file);
         let launch_input = if matches!(
             sdk,
@@ -255,12 +262,7 @@ impl DriverCommandPlan {
             artifact_file,
             compile_command,
             launch_command,
-            cache_key: KernelCacheKey::new(
-                format!("{program:?}"),
-                compiler,
-                sdk.runtime_identity(),
-                options,
-            ),
+            cache_key,
         }
     }
 }
@@ -637,6 +639,17 @@ fn compile_command_for(
 fn join_path(output_dir: &str, artifact_name: &str) -> String {
     let output_dir = output_dir.trim_end_matches(['/', '\\']);
     format!("{output_dir}/{artifact_name}")
+}
+
+fn kernel_cache_id(key: &KernelCacheKey) -> String {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for field in [&key.program, &key.compiler, &key.device, &key.options] {
+        for byte in field.as_bytes().iter().copied().chain([0]) {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+    format!("{hash:016x}")
 }
 
 fn write_generated_source(plan: &DriverCommandPlan) -> Result<(), String> {
