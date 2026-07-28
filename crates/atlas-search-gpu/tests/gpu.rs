@@ -1593,6 +1593,7 @@ fn detects_cuda_from_versioned_cuda_path_env_vars() {
 }
 
 #[test]
+#[cfg(windows)]
 fn detects_cuda_from_standard_program_files_toolkit_layout() {
     let _env_guard = env_lock();
     let root = std::env::temp_dir().join(format!("atlas-gpu-program-files-{}", std::process::id()));
@@ -1655,6 +1656,7 @@ fn detects_cuda_from_windows_command_wrapper_tools() {
 }
 
 #[test]
+#[cfg(windows)]
 fn detects_hip_from_standard_program_files_rocm_layout() {
     let _env_guard = env_lock();
     let root = std::env::temp_dir().join(format!("atlas-gpu-amd-files-{}", std::process::id()));
@@ -1686,6 +1688,7 @@ fn detects_hip_from_standard_program_files_rocm_layout() {
 }
 
 #[test]
+#[cfg(windows)]
 fn detects_vulkan_from_standard_sdk_layout() {
     let _env_guard = env_lock();
     let root = std::env::temp_dir().join(format!("atlas-gpu-khr-files-{}", std::process::id()));
@@ -1716,6 +1719,7 @@ fn detects_vulkan_from_standard_sdk_layout() {
 }
 
 #[test]
+#[cfg(windows)]
 fn detects_opencl_from_standard_sdk_layout() {
     let _env_guard = env_lock();
     let root = std::env::temp_dir().join(format!("atlas-gpu-open-files-{}", std::process::id()));
@@ -1752,6 +1756,7 @@ fn detects_opencl_from_standard_sdk_layout() {
 }
 
 #[test]
+#[cfg(windows)]
 fn empty_standard_install_bases_do_not_report_gpu_sdks() {
     let _env_guard = env_lock();
     let root = std::env::temp_dir().join(format!("atlas-gpu-empty-bases-{}", std::process::id()));
