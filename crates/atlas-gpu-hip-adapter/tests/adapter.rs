@@ -26,6 +26,10 @@ fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
 struct FixtureLauncher;
 
 impl Launcher for FixtureLauncher {
+    fn features(&self) -> Result<Vec<String>, String> {
+        Ok(vec!["int64".to_owned()])
+    }
+
     fn compile_check(&self, _artifact: &str, _output: Option<&str>) -> Result<(), String> {
         Ok(())
     }
@@ -55,6 +59,10 @@ impl RecordingLauncher {
 }
 
 impl Launcher for RecordingLauncher {
+    fn features(&self) -> Result<Vec<String>, String> {
+        Ok(Vec::new())
+    }
+
     fn compile_check(&self, artifact: &str, output: Option<&str>) -> Result<(), String> {
         self.compile_checked
             .borrow_mut()
@@ -126,6 +134,20 @@ fn parses_compile_check_source_and_output_command() {
             output: Some("target/atlas-gpu/atlas_search.hsaco".to_owned()),
         }
     );
+}
+
+#[test]
+fn parses_features_command() {
+    let command = AdapterCommand::parse(&["--features".to_owned()]).unwrap();
+
+    assert_eq!(command, AdapterCommand::Features);
+}
+
+#[test]
+fn cli_features_emits_launcher_capabilities() {
+    let output = run_cli(&["--features".to_owned()], &FixtureLauncher).unwrap();
+
+    assert_eq!(output, "feature=int64\n");
 }
 
 #[test]

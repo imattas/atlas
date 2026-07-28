@@ -36,6 +36,8 @@ pub struct LaunchArgs {
 /// Adapter CLI command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdapterCommand {
+    /// Report runtime/device features understood by this adapter.
+    Features,
     /// Module-load-check a HIP code object without launching a search.
     CompileCheck {
         /// Generated HIP source or code object path.
@@ -54,6 +56,9 @@ impl AdapterCommand {
     ///
     /// Returns an error for malformed commands.
     pub fn parse(args: &[String]) -> Result<Self, String> {
+        if args.first().is_some_and(|arg| arg == "--features") {
+            return Ok(Self::Features);
+        }
         if args.first().is_some_and(|arg| arg == "--compile-check") {
             let Some(artifact) = args.get(1) else {
                 return Err("missing compile-check HIP artifact".to_owned());
@@ -117,6 +122,13 @@ impl LaunchArgs {
 
 /// Launches one parsed HIP request.
 pub trait Launcher {
+    /// Reports runtime/device features available to generated kernels.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when HIP runtime loading or device selection fails.
+    fn features(&self) -> Result<Vec<String>, String>;
+
     /// Checks generated HIP code object can provide the expected
     /// `atlas_search` kernel.
     ///
@@ -139,6 +151,13 @@ pub trait Launcher {
 pub struct HipModuleLauncher;
 
 impl Launcher for HipModuleLauncher {
+    fn features(&self) -> Result<Vec<String>, String> {
+        let runtime = HipRuntime::load()?;
+        runtime.init()?;
+        runtime.set_device(0)?;
+        Ok(vec!["int64".to_owned()])
+    }
+
     fn compile_check(&self, input: &str, output: Option<&str>) -> Result<(), String> {
         let artifact = read_hip_artifact(input, output)?;
         ensure_artifact_readable(artifact)?;
@@ -172,6 +191,10 @@ impl Launcher for HipModuleLauncher {
 /// Returns parse or launcher errors.
 pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, String> {
     match AdapterCommand::parse(args)? {
+        AdapterCommand::Features => {
+            let features = launcher.features()?;
+            Ok(format_features(&features))
+        }
         AdapterCommand::CompileCheck { input, output } => {
             launcher.compile_check(&input, output.as_deref())?;
             Ok(String::new())
@@ -181,6 +204,13 @@ pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, Strin
             Ok(format_matches(&matches))
         }
     }
+}
+
+fn format_features(features: &[String]) -> String {
+    features
+        .iter()
+        .map(|feature| format!("feature={feature}\n"))
+        .collect()
 }
 
 fn format_matches(matches: &[u64]) -> String {
