@@ -527,7 +527,7 @@ pub struct AcceleratorReport {
 pub struct AcceleratorRuntime;
 
 const DEFAULT_GPU_LOCAL_SIZE: u64 = 256;
-const MAX_DRIVER_LAUNCH_CANDIDATES: u64 = u32::MAX as u64;
+const MAX_DRIVER_LAUNCH_GLOBAL_SIZE: u64 = u32::MAX as u64;
 
 impl AcceleratorRuntime {
     /// Plans a bounded GPU launch and transfer shape.
@@ -1066,14 +1066,20 @@ fn exact_small_domain_matches(
 fn driver_launch_domains(domain: SearchDomain) -> Vec<SearchDomain> {
     let mut domains = Vec::new();
     let mut start = domain.start;
+    let max_launch_candidates = max_driver_launch_candidates(DEFAULT_GPU_LOCAL_SIZE);
     while start < domain.end {
         let remaining = domain.end - start;
-        let chunk_len = remaining.min(MAX_DRIVER_LAUNCH_CANDIDATES);
+        let chunk_len = remaining.min(max_launch_candidates);
         let end = start + chunk_len;
         domains.push(SearchDomain::new(start, end));
         start = end;
     }
     domains
+}
+
+fn max_driver_launch_candidates(local_size: u64) -> u64 {
+    let local_size = local_size.max(1);
+    (MAX_DRIVER_LAUNCH_GLOBAL_SIZE / local_size).max(1) * local_size
 }
 
 fn join_path(output_dir: &str, artifact_name: &str) -> String {

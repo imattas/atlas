@@ -166,6 +166,36 @@ impl DriverRunner for RecordingPlanRunner {
 }
 
 #[derive(Debug)]
+struct RecordingLaunchShapeRunner {
+    global_sizes: RefCell<Vec<u64>>,
+}
+
+impl RecordingLaunchShapeRunner {
+    fn new() -> Self {
+        Self {
+            global_sizes: RefCell::new(Vec::new()),
+        }
+    }
+}
+
+impl DriverRunner for RecordingLaunchShapeRunner {
+    fn run(&self, plan: &DriverCommandPlan) -> DriverRunOutput {
+        let global_size = plan
+            .launch_command
+            .windows(2)
+            .find_map(|args| (args[0] == "--global-size").then(|| args[1].parse::<u64>().unwrap()))
+            .unwrap();
+        self.global_sizes.borrow_mut().push(global_size);
+        DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![0],
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        }
+    }
+}
+
+#[derive(Debug)]
 struct FailingThenSuccessfulSdkRunner {
     attempted_sdks: RefCell<Vec<&'static str>>,
 }
@@ -2082,6 +2112,7 @@ fn runtime_splits_driver_launches_that_exceed_single_dispatch_capacity() {
         sdk: "test Vulkan".to_owned(),
     };
     let runner = RecordingPlanRunner::new();
+    let adapter_safe_dispatch_candidates = (u64::from(u32::MAX) / 256) * 256;
     let single_dispatch_capacity = u64::from(u32::MAX) * 256;
 
     let report = AcceleratorRuntime::execute_with_driver(
@@ -2097,12 +2128,13 @@ fn runtime_splits_driver_launches_that_exceed_single_dispatch_capacity() {
     assert!(launch_domains.len() > 2);
     assert_eq!(
         launch_domains.first(),
-        Some(&SearchDomain::new(0, u64::from(u32::MAX)))
+        Some(&SearchDomain::new(0, adapter_safe_dispatch_candidates))
     );
     assert_eq!(
         launch_domains.last(),
         Some(&SearchDomain::new(
-            single_dispatch_capacity,
+            (single_dispatch_capacity / adapter_safe_dispatch_candidates)
+                * adapter_safe_dispatch_candidates,
             single_dispatch_capacity + 2
         ))
     );
@@ -2110,6 +2142,42 @@ fn runtime_splits_driver_launches_that_exceed_single_dispatch_capacity() {
         .iter()
         .all(|domain| u32::try_from(domain.end - domain.start).is_ok()));
     assert_eq!(report.matches[0], 0);
+}
+
+#[test]
+fn runtime_splits_driver_launches_before_rounded_global_size_exceeds_adapter_uint() {
+    let program = SearchProgram::new(
+        64,
+        vec![SearchOp::ChecksumEq {
+            modulus: 1,
+            target: 0,
+        }],
+    )
+    .unwrap();
+    let token = CancellationToken::new();
+    let sdk = GpuSdk::Vulkan {
+        sdk: "test Vulkan".to_owned(),
+    };
+    let runner = RecordingLaunchShapeRunner::new();
+    let adapter_global_size_limit = u64::from(u32::MAX);
+
+    let report = AcceleratorRuntime::execute_with_driver(
+        &program,
+        SearchDomain::new(0, adapter_global_size_limit + 2),
+        &sdk,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    let global_sizes = runner.global_sizes.borrow();
+    assert!(global_sizes.len() > 1);
+    assert!(
+        global_sizes
+            .iter()
+            .all(|global_size| *global_size <= adapter_global_size_limit),
+        "expected all global sizes to fit adapter uint, got {global_sizes:?}"
+    );
 }
 
 #[test]
@@ -2127,7 +2195,7 @@ fn runtime_splits_driver_launches_before_device_match_counter_can_wrap() {
         sdk: "test OpenCL".to_owned(),
     };
     let runner = RecordingPlanRunner::new();
-    let counter_capacity = u64::from(u32::MAX);
+    let counter_capacity = (u64::from(u32::MAX) / 256) * 256;
 
     let report = AcceleratorRuntime::execute_with_driver(
         &program,
