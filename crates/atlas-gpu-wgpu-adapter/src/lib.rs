@@ -439,6 +439,7 @@ fn parse_output_bytes(
         let hi = u64::from(read_u32(bytes, base + 4)?);
         matches.push(lo | (hi << 32));
     }
+    matches.sort_unstable();
     Ok(LaunchOutput {
         matches,
         match_count,
