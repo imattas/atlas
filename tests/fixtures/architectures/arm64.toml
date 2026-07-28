@@ -1,0 +1,4 @@
+architecture = "arm64"
+pointer_width = 64
+endianness = "little"
+registers = ["x0", "x1", "x2", "x3", "sp", "lr"]

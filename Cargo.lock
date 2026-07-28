@@ -10,6 +10,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "atlas-architectures"
+version = "0.1.0"
+dependencies = [
+ "atlas-program",
+]
+
+[[package]]
 name = "atlas-benchmark-db"
 version = "0.1.0"
 

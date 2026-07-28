@@ -5,6 +5,12 @@
 pub enum Architecture {
     /// x86-64 machine code.
     X86_64,
+    /// x86-32 machine code.
+    X86_32,
+    /// ARM64 machine code.
+    Arm64,
+    /// WebAssembly module.
+    WebAssembly,
     /// Restricted C source.
     RestrictedC,
     /// Restricted Python checker.

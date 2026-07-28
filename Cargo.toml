@@ -24,6 +24,7 @@ members = [
     "crates/atlas-benchmark-db",
     "crates/atlas-learning",
     "crates/atlas-summaries",
+    "crates/atlas-architectures",
 ]
 resolver = "2"
 

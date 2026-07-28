@@ -1,0 +1,4 @@
+architecture = "wasm"
+pointer_width = 32
+endianness = "little"
+registers = ["stack", "memory", "local0", "local1"]
