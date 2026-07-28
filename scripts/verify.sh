@@ -82,6 +82,22 @@ PY
 }
 export -f validate_benchmark_equivalence
 
+validate_benchmark_hardware_identity() {
+  local benchmark_json="$1"
+  local context="$2"
+  BENCHMARK_JSON="$benchmark_json" BENCHMARK_CONTEXT="$context" python - <<'PY'
+import json
+import os
+
+context = os.environ["BENCHMARK_CONTEXT"]
+document = json.loads(os.environ["BENCHMARK_JSON"])
+accelerator = document["accelerator"]
+if not accelerator.get("hardware"):
+    raise SystemExit(f"expected {context} to report accelerator hardware")
+PY
+}
+export -f validate_benchmark_hardware_identity
+
 gpu_feature_probe_ok() {
   local doctor_json="$1"
   local name="$2"
@@ -160,6 +176,7 @@ run_forced_gpu_benchmark() {
     output=$("${command[@]}")
     printf "%s\n" "$output" | print_hardware_benchmark_summary
     validate_benchmark_equivalence "$output"
+    validate_benchmark_hardware_identity "$output" "benchmark"
     EXPECTED_ACTUAL_GPU_SDK="$2" BENCHMARK_JSON="$output" BENCHMARK_SAMPLES="$7" MIN_RETAINED_MATCHES="$8" python - <<'"'"'PY'"'"'
 import json
 import os
@@ -206,6 +223,7 @@ run_placement_selected_gpu_benchmark() {
     output=$("$1" run -q -p atlas-cli -- benchmark --fixture xor --start 0 --end 1000000 --samples "$2")
     printf "%s\n" "$output" | print_hardware_benchmark_summary
     validate_benchmark_equivalence "$output"
+    validate_benchmark_hardware_identity "$output" "placement-selected benchmark"
     BENCHMARK_JSON="$output" BENCHMARK_SAMPLES="$2" python - <<'"'"'PY'"'"'
 import json
 import os
@@ -244,6 +262,7 @@ run_warm_cache_placement_gpu_benchmark() {
     output=$("$1" run -q -p atlas-cli -- benchmark --fixture xor --start 0 --end 100000 --force-gpu --samples "$2")
     printf "%s\n" "$output" | print_hardware_benchmark_summary
     validate_benchmark_equivalence "$output"
+    validate_benchmark_hardware_identity "$output" "warm-cache benchmark"
     BENCHMARK_JSON="$output" BENCHMARK_SAMPLES="$2" python - <<'"'"'PY'"'"'
 import json
 import os
@@ -268,6 +287,7 @@ PY
     output=$("$1" run -q -p atlas-cli -- benchmark --fixture xor --start 0 --end 100000 --samples "$2")
     printf "%s\n" "$output" | print_hardware_benchmark_summary
     validate_benchmark_equivalence "$output"
+    validate_benchmark_hardware_identity "$output" "warm-cache auto-placement benchmark"
     BENCHMARK_JSON="$output" BENCHMARK_SAMPLES="$2" python - <<'"'"'PY'"'"'
 import json
 import os

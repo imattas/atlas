@@ -90,6 +90,13 @@ function Assert-BenchmarkEquivalence {
     }
 }
 
+function Assert-BenchmarkAcceleratorHardware {
+    param($Benchmark, [string]$Context)
+    if ([string]::IsNullOrEmpty([string]$Benchmark.accelerator.hardware)) {
+        throw "expected $Context to report accelerator hardware"
+    }
+}
+
 function Get-GpuFeatureProbeOk {
     param($Doctor, [string]$Name)
     if ($null -eq $Doctor -or $null -eq $Doctor.gpu_feature_probes) {
@@ -175,6 +182,7 @@ function Invoke-ForcedGpuBenchmark {
             throw "expected sample_count $BenchmarkSamples, got $($Benchmark.sample_count)"
         }
         Assert-BenchmarkEquivalence $Benchmark
+        Assert-BenchmarkAcceleratorHardware $Benchmark "benchmark"
         if (![string]::IsNullOrEmpty($ExpectedActualGpuSdk) -and $Benchmark.accelerator.actual_gpu_sdk -ne $ExpectedActualGpuSdk) {
             throw "expected actual_gpu_sdk $ExpectedActualGpuSdk, got $($Benchmark.accelerator.actual_gpu_sdk)"
         }
@@ -226,6 +234,7 @@ function Invoke-PlacementSelectedGpuBenchmark {
         if ([string]::IsNullOrEmpty([string]$Benchmark.accelerator.actual_gpu_sdk)) {
             throw "expected placement-selected benchmark to report actual_gpu_sdk"
         }
+        Assert-BenchmarkAcceleratorHardware $Benchmark "placement-selected benchmark"
         if ($Benchmark.accelerator.launch.global_size -lt 1000000) {
             throw "expected placement-selected benchmark global_size to cover 1000000 candidates, got $($Benchmark.accelerator.launch.global_size)"
         }
@@ -261,6 +270,7 @@ function Invoke-WarmCachePlacementGpuBenchmark {
         if ([string]::IsNullOrEmpty([string]$Benchmark.accelerator.actual_gpu_sdk)) {
             throw "expected warm-cache benchmark to report actual_gpu_sdk"
         }
+        Assert-BenchmarkAcceleratorHardware $Benchmark "warm-cache benchmark"
         $Telemetry = [string]$Benchmark.accelerator.telemetry
         foreach ($RequiredTelemetry in @("driver exit 0", "driver launches", "launch abi")) {
             if (!$Telemetry.Contains($RequiredTelemetry)) {
@@ -292,6 +302,7 @@ function Invoke-WarmCachePlacementGpuBenchmark {
         if ([string]::IsNullOrEmpty([string]$Benchmark.accelerator.actual_gpu_sdk)) {
             throw "expected warm-cache auto-placement benchmark to report actual_gpu_sdk"
         }
+        Assert-BenchmarkAcceleratorHardware $Benchmark "warm-cache auto-placement benchmark"
         if ($Benchmark.accelerator.launch.global_size -lt 100000) {
             throw "expected warm-cache auto-placement benchmark global_size to cover 100000 candidates, got $($Benchmark.accelerator.launch.global_size)"
         }
