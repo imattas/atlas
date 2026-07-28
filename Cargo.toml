@@ -19,6 +19,8 @@ members = [
     "crates/atlas-search-simd",
     "crates/atlas-search-gpu",
     "crates/atlas-placement",
+    "crates/atlas-worker",
+    "crates/atlas-coordinator",
 ]
 resolver = "2"
 

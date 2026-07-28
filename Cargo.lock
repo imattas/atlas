@@ -22,6 +22,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "atlas-coordinator"
+version = "0.1.0"
+dependencies = [
+ "atlas-worker",
+]
+
+[[package]]
 name = "atlas-executor"
 version = "0.1.0"
 dependencies = [
@@ -120,3 +127,7 @@ version = "0.1.0"
 dependencies = [
  "atlas-ucir",
 ]
+
+[[package]]
+name = "atlas-worker"
+version = "0.1.0"
