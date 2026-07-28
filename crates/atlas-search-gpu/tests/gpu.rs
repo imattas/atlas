@@ -591,6 +591,37 @@ fn detects_cuda_from_standard_program_files_toolkit_layout() {
 }
 
 #[test]
+fn detects_hip_from_standard_program_files_rocm_layout() {
+    let _env_guard = env_lock();
+    let root = std::env::temp_dir().join(format!("atlas-gpu-amd-files-{}", std::process::id()));
+    let hip = root.join("AMD").join("ROCm").join("6.1").join("hip");
+    fs::create_dir_all(&hip).unwrap();
+    let original_path = std::env::var_os("PATH");
+    let original_program_files = std::env::var_os("ProgramFiles");
+    let original_hip_path = std::env::var_os("HIP_PATH");
+    let original_rocm_path = std::env::var_os("ROCM_PATH");
+    let original_rocm_home = std::env::var_os("ROCM_HOME");
+    std::env::set_var("PATH", "");
+    std::env::set_var("ProgramFiles", &root);
+    std::env::remove_var("HIP_PATH");
+    std::env::remove_var("ROCM_PATH");
+    std::env::remove_var("ROCM_HOME");
+
+    let detected = GpuSdkDetector::detect_from_host_path();
+
+    restore_env("PATH", original_path);
+    restore_env("ProgramFiles", original_program_files);
+    restore_env("HIP_PATH", original_hip_path);
+    restore_env("ROCM_PATH", original_rocm_path);
+    restore_env("ROCM_HOME", original_rocm_home);
+    let _ = fs::remove_dir_all(root);
+    assert!(
+        detected.iter().any(|sdk| matches!(sdk, GpuSdk::Hip { .. })),
+        "expected HIP detection from standard ROCm layout, got {detected:?}"
+    );
+}
+
+#[test]
 fn launch_config_bounds_workgroups_and_output_transfer_capacity() {
     let config = AcceleratorRuntime::plan_launch(SearchDomain::new(0, 1_000_000), 256, 1024);
 

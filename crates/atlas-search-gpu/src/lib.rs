@@ -1008,6 +1008,17 @@ fn standard_sdk_root_dirs() -> Vec<PathBuf> {
                         }),
                 );
             }
+            let rocm_base = base.join("AMD").join("ROCm");
+            roots.push(rocm_base.clone());
+            if let Ok(entries) = fs::read_dir(&rocm_base) {
+                for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
+                    if path.is_dir() {
+                        roots.push(path.clone());
+                        roots.push(path.join("hip"));
+                        roots.push(path.join("bin"));
+                    }
+                }
+            }
         }
     }
     #[cfg(not(windows))]
