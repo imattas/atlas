@@ -673,8 +673,54 @@ __kernel void atlas_search(ulong start, ulong end, __global ulong* out, __global
     /// Generates Vulkan-compatible GLSL compute shader source for the restricted IR.
     #[must_use]
     pub fn compile_vulkan_glsl(program: &SearchProgram) -> String {
+        let mask = width_mask(program.width);
+        let predicates = program
+            .ops
+            .iter()
+            .map(|op| glsl_predicate(op, program.width))
+            .collect::<Vec<_>>()
+            .join(" &&\n      ");
         format!(
-            "#version 450\nlayout(local_size_x = 256) in;\nlayout(set = 0, binding = 0) buffer Matches {{ uint out_len; uint out_values[]; }} matches;\nvoid main() {{ /* width={} ops={} */ uint gid = gl_GlobalInvocationID.x; matches.out_len += gid & 0u; }}\n",
+            r"#version 450
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+layout(local_size_x = 256) in;
+
+layout(push_constant) uniform SearchParams {{
+  uint64_t start;
+  uint64_t end;
+  uint max_matches;
+}} params;
+
+layout(set = 0, binding = 0) buffer Matches {{
+  uint out_len;
+  uint64_t out_values[];
+}} matches;
+
+uint64_t rotate_left_width(uint64_t value, uint amount, uint width) {{
+  uint64_t mask = width == 64U ? 18446744073709551615UL : ((1UL << width) - 1UL);
+  value = value & mask;
+  amount = amount % width;
+  return amount == 0U ? value : (((value << amount) | (value >> (width - amount))) & mask);
+}}
+
+void main() {{
+  /* width={} ops={} */
+  uint64_t gid = uint64_t(gl_GlobalInvocationID.x);
+  uint64_t raw_candidate = params.start + gid;
+  uint64_t mask = {mask}UL;
+  if (raw_candidate >= params.end) {{
+    return;
+  }}
+  uint64_t candidate = raw_candidate & mask;
+  if ({predicates}) {{
+    uint slot = atomicAdd(matches.out_len, 1U);
+    if (slot < params.max_matches) {{
+      matches.out_values[slot] = raw_candidate;
+    }}
+  }}
+}}
+",
             program.width,
             program.ops.len()
         )
@@ -780,6 +826,43 @@ fn cuda_predicate(op: &SearchOp, width: u32) -> String {
             let shift = byte_index.saturating_mul(8);
             format!(
                 "((candidate >> {shift}U) & 255ULL) == {}ULL",
+                u64::from(value)
+            )
+        }
+    }
+}
+
+fn glsl_predicate(op: &SearchOp, width: u32) -> String {
+    match *op {
+        SearchOp::AddEq { addend, target } => {
+            format!("((candidate + {addend}UL) & mask) == {target}UL")
+        }
+        SearchOp::XorEq { mask, target } => {
+            format!("((candidate ^ {mask}UL) & mask) == {target}UL")
+        }
+        SearchOp::ChecksumEq { modulus, target } => {
+            format!("(candidate % {modulus}UL) == {target}UL")
+        }
+        SearchOp::MulAddEq {
+            multiplier,
+            addend,
+            target,
+        } => {
+            format!("((candidate * {multiplier}UL + {addend}UL) & mask) == {target}UL")
+        }
+        SearchOp::RotateXorEq {
+            rotate_left,
+            mask,
+            target,
+        } => {
+            format!(
+                "((rotate_left_width(candidate, {rotate_left}U, {width}U) ^ {mask}UL) & mask) == {target}UL"
+            )
+        }
+        SearchOp::ByteEq { byte_index, value } => {
+            let shift = byte_index.saturating_mul(8);
+            format!(
+                "((candidate >> {shift}U) & 255UL) == {}UL",
                 u64::from(value)
             )
         }

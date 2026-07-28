@@ -21,6 +21,8 @@ Runtime behavior:
   predicates for candidate filtering and bounded atomic match output;
 - CUDA/HIP code generation lowers the same restricted search operations into
   device predicates with full-candidate output for CPU validation;
+- Vulkan GLSL code generation lowers the same restricted search operations into
+  64-bit shader predicates with bounded atomic match output;
 - per-SDK command plans select checked-in kernel artifacts and compiler or
   launcher frontends (`atlas-gpu-opencl-run`, `glslc`, `nvcc`, or `hipcc`);
 - the OpenCL adapter uses dynamic OpenCL loading, build-checks generated source,

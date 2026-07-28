@@ -151,6 +151,55 @@ fn opencl_and_vulkan_codegen_are_hardware_independent_and_encode_shape() {
 }
 
 #[test]
+fn vulkan_codegen_emits_restricted_ir_predicates_and_preserves_full_candidate() {
+    let program = SearchProgram::new(
+        24,
+        vec![
+            SearchOp::XorEq {
+                mask: 0xaa,
+                target: 0xff,
+            },
+            SearchOp::AddEq {
+                addend: 1,
+                target: 4,
+            },
+            SearchOp::ChecksumEq {
+                modulus: 17,
+                target: 3,
+            },
+            SearchOp::MulAddEq {
+                multiplier: 65_537,
+                addend: 0x1337,
+                target: 0xC0_FF_EE,
+            },
+            SearchOp::RotateXorEq {
+                rotate_left: 7,
+                mask: 0xA5_A5_A5,
+                target: 0x12_34_56,
+            },
+            SearchOp::ByteEq {
+                byte_index: 1,
+                value: b'T',
+            },
+        ],
+    )
+    .unwrap();
+
+    let glsl = GpuSearcher::compile_vulkan_glsl(&program);
+
+    assert!(glsl.contains("uint64_t raw_candidate = params.start + gid"));
+    assert!(glsl.contains("uint64_t candidate = raw_candidate & mask"));
+    assert!(glsl.contains("((candidate ^ 170UL) & mask) == 255UL"));
+    assert!(glsl.contains("((candidate + 1UL) & mask) == 4UL"));
+    assert!(glsl.contains("(candidate % 17UL) == 3UL"));
+    assert!(glsl.contains("((candidate * 65537UL + 4919UL) & mask) == 12648430UL"));
+    assert!(glsl.contains("rotate_left_width(candidate, 7U, 24U)"));
+    assert!(glsl.contains("((candidate >> 8U) & 255UL) == 84UL"));
+    assert!(glsl.contains("atomicAdd(matches.out_len, 1U)"));
+    assert!(glsl.contains("matches.out_values[slot] = raw_candidate"));
+}
+
+#[test]
 fn opencl_codegen_emits_restricted_ir_predicates() {
     let program = SearchProgram::new(
         24,
