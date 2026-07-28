@@ -207,7 +207,7 @@ impl DriverCommandPlan {
                     "atlas_search.hsaco",
                     "hipcc",
                     "--genco -O2",
-                    GpuSearcher::compile_cuda(program),
+                    GpuSearcher::compile_hip(program),
                 ),
             };
         let source_file = join_path(output_dir, source_name);
@@ -604,6 +604,47 @@ impl GpuSearcher {
             .join(" &&\n      ");
         format!(
             r#"__device__ unsigned long long rotate_left_width(unsigned long long value, unsigned int amount, unsigned int width) {{
+  unsigned long long mask = width == 64U ? 18446744073709551615ULL : ((1ULL << width) - 1ULL);
+  value = value & mask;
+  amount = amount % width;
+  return amount == 0U ? value : (((value << amount) | (value >> (width - amount))) & mask);
+}}
+
+extern "C" __global__ void atlas_search(unsigned long long start, unsigned long long end, unsigned long long* out, unsigned int* out_len, unsigned int max_matches) {{
+  /* width={} ops={} */
+  unsigned long long gid = (unsigned long long)(blockIdx.x * blockDim.x + threadIdx.x);
+  unsigned long long raw_candidate = start + gid;
+  unsigned long long mask = {mask}ULL;
+  if (raw_candidate >= end) {{
+    return;
+  }}
+  unsigned long long candidate = raw_candidate & mask;
+  if ({predicates}) {{
+    unsigned int slot = atomicAdd(out_len, 1U);
+    if (slot < max_matches) {{
+      out[slot] = raw_candidate;
+    }}
+  }}
+}}"#,
+            program.width,
+            program.ops.len()
+        )
+    }
+
+    /// Generates HIP source for the restricted IR.
+    #[must_use]
+    pub fn compile_hip(program: &SearchProgram) -> String {
+        let mask = width_mask(program.width);
+        let predicates = program
+            .ops
+            .iter()
+            .map(|op| cuda_predicate(op, program.width))
+            .collect::<Vec<_>>()
+            .join(" &&\n      ");
+        format!(
+            r#"#include <hip/hip_runtime.h>
+
+__device__ unsigned long long rotate_left_width(unsigned long long value, unsigned int amount, unsigned int width) {{
   unsigned long long mask = width == 64U ? 18446744073709551615ULL : ((1ULL << width) - 1ULL);
   value = value & mask;
   amount = amount % width;

@@ -170,16 +170,18 @@ fn compile_check_rejects_missing_code_object_artifact() {
 #[ignore = "requires hipcc, HIP runtime, and an AMD HIP-capable device"]
 fn generated_hip_kernel_runs_on_device_and_preserves_full_candidates() {
     let program = SearchProgram::try_from_fixture("xor").unwrap();
-    let source = GpuSearcher::compile_cuda(&program);
+    let source = GpuSearcher::compile_hip(&program);
     let output_dir = std::env::temp_dir().join(format!("atlas-hip-e2e-{}", std::process::id()));
     fs::create_dir_all(&output_dir).unwrap();
     let source_path = output_dir.join("atlas_search.hip");
     let code_object_path = output_dir.join("atlas_search.hsaco");
     fs::write(&source_path, source).unwrap();
+    let arch = detect_hip_arch().unwrap_or_else(|| "gfx1100".to_owned());
 
     let compile = Command::new("hipcc")
         .arg("--genco")
         .arg("-O2")
+        .arg(format!("--offload-arch={arch}"))
         .arg(&source_path)
         .arg("-o")
         .arg(&code_object_path)
@@ -204,4 +206,14 @@ fn generated_hip_kernel_runs_on_device_and_preserves_full_candidates() {
 
     assert_eq!(matches, vec![0x55, 0x155]);
     let _ = fs::remove_dir_all(output_dir);
+}
+
+fn detect_hip_arch() -> Option<String> {
+    let output = Command::new("hipInfo").output().ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout.lines().find_map(|line| {
+        line.split_once("gcnArchName:")
+            .map(|(_, arch)| arch.trim().to_owned())
+            .filter(|arch| !arch.is_empty())
+    })
 }

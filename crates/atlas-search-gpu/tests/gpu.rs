@@ -131,6 +131,7 @@ fn hip_driver_plan_uses_generated_hip_kernel_source() {
 
     assert_eq!(plan.template_file, "gpu/hip/atlas_search.hip");
     assert_eq!(plan.source_file, "target/atlas-gpu/atlas_search.hip");
+    assert!(plan.kernel_source.contains("#include <hip/hip_runtime.h>"));
     assert!(plan.kernel_source.contains("__global__ void atlas_search"));
     assert!(plan
         .kernel_source

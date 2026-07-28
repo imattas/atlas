@@ -446,6 +446,8 @@ impl DynamicLibrary {
         #[cfg(windows)]
         {
             Self::open("amdhip64.dll")
+                .or_else(|_| Self::open("amdhip64_7.dll"))
+                .or_else(|_| Self::open("amdhip64_6.dll"))
         }
         #[cfg(target_os = "linux")]
         {
