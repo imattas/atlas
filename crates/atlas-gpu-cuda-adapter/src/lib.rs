@@ -1283,6 +1283,7 @@ pub fn cuda_driver_library_candidates_from_roots(
     candidates
 }
 
+#[cfg(windows)]
 fn find_windows_cuda_driver_library() -> Option<String> {
     cuda_system_driver_library_candidates()
         .into_iter()
