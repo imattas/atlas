@@ -71,7 +71,7 @@ class VerifyScriptTests(unittest.TestCase):
         for script in scripts:
             with self.subTest(script=script.name):
                 text = script.read_text(encoding="utf-8")
-                doctor_index = text.find("cargo run -q -p atlas-cli -- doctor")
+                doctor_index = text.find("run -q -p atlas-cli -- doctor")
                 first_hardware_test_index = text.find(
                     "generated_opencl_kernel_runs_on_device_and_preserves_full_candidates"
                 )
@@ -89,7 +89,7 @@ class VerifyScriptTests(unittest.TestCase):
             with self.subTest(script=script.name):
                 text = script.read_text(encoding="utf-8")
                 hardware_block_index = text.find("GPU doctor diagnostics")
-                doctor_index = text.find("cargo run -q -p atlas-cli -- doctor", hardware_block_index)
+                doctor_index = text.find("run -q -p atlas-cli -- doctor", hardware_block_index)
                 benchmark_index = text.find("Forced-GPU benchmark", hardware_block_index)
                 force_gpu_index = text.find("--force-gpu", benchmark_index)
                 first_hardware_test_index = text.find(
@@ -102,6 +102,17 @@ class VerifyScriptTests(unittest.TestCase):
                 self.assertNotEqual(-1, first_hardware_test_index)
                 self.assertLess(doctor_index, benchmark_index)
                 self.assertLess(benchmark_index, first_hardware_test_index)
+
+    def test_unix_verify_script_falls_back_to_windows_cargo_exe(self):
+        text = (ROOT / "scripts" / "verify.sh").read_text(encoding="utf-8")
+        for token in [
+            "resolve_cargo_command",
+            "cargo.exe",
+            "cargo.exe --version",
+            "cargo_cmd",
+            '"$cargo_cmd" run -q -p atlas-cli -- doctor',
+        ]:
+            self.assertIn(token, text)
 
     def test_hardware_profile_records_per_sdk_forced_gpu_benchmarks(self):
         scripts = [
