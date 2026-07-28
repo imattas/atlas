@@ -215,6 +215,36 @@ class VerifyScriptTests(unittest.TestCase):
                 for token in required_tokens:
                     self.assertIn(token, text)
 
+    def test_hardware_profile_gates_int64_gpu_checks_on_backend_features(self):
+        expectations = {
+            "verify.ps1": [
+                "Get-GpuFeatureProbeHasFeature",
+                "Get-AnyGpuFeatureProbeHasInt64",
+                '"int64"',
+                '"shaderInt64"',
+                "OpenCL int64 feature unavailable",
+                "Vulkan shaderInt64 feature unavailable",
+                "CUDA int64 feature unavailable",
+                "HIP int64 feature unavailable",
+            ],
+            "verify.sh": [
+                "gpu_feature_probe_has_feature",
+                "gpu_any_feature_probe_has_int64",
+                "int64",
+                "shaderInt64",
+                "OpenCL int64 feature unavailable",
+                "Vulkan shaderInt64 feature unavailable",
+                "CUDA int64 feature unavailable",
+                "HIP int64 feature unavailable",
+            ],
+        }
+
+        for script_name, required_tokens in expectations.items():
+            with self.subTest(script=script_name):
+                text = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+                for token in required_tokens:
+                    self.assertIn(token, text)
+
     def test_hardware_profile_attempts_every_backend_before_reporting_failure(self):
         expectations = {
             "verify.ps1": ["Invoke-HardwareStep", "$HardwareFailures", "$HardwareFailures.Count"],

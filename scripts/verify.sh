@@ -65,6 +65,32 @@ raise SystemExit(1)
 PY
 }
 
+gpu_feature_probe_has_feature() {
+  local doctor_json="$1"
+  local name="$2"
+  local feature="$3"
+  DOCTOR_JSON="$doctor_json" GPU_NAME="$name" GPU_FEATURE="$feature" python - <<'PY'
+import json
+import os
+import sys
+
+document = json.loads(os.environ["DOCTOR_JSON"])
+name = os.environ["GPU_NAME"]
+feature = os.environ["GPU_FEATURE"]
+for probe in document.get("gpu_feature_probes", []):
+    if probe.get("name") == name:
+        raise SystemExit(0 if probe.get("ok") and feature in probe.get("features", []) else 1)
+raise SystemExit(1)
+PY
+}
+
+gpu_any_feature_probe_has_int64() {
+  gpu_feature_probe_has_feature "$1" OpenCL int64 \
+    || gpu_feature_probe_has_feature "$1" Vulkan shaderInt64 \
+    || gpu_feature_probe_has_feature "$1" CUDA int64 \
+    || gpu_feature_probe_has_feature "$1" HIP int64
+}
+
 assert_gpu_feature_probes_have_launch_abi() {
   local doctor_json="$1"
   DOCTOR_JSON="$doctor_json" python - <<'PY'
@@ -218,44 +244,72 @@ if [[ "$profile" == "hardware" ]]; then
     assert_gpu_feature_probes_have_launch_abi "$hardware_doctor_json"
   fi
   run_forced_gpu_benchmark "Forced-GPU benchmark" "" ""
-  run_forced_gpu_benchmark "Forced-GPU int64 benchmark" "" "" xor64 0x8000000000000000 0x8000000000000002
+  if gpu_any_feature_probe_has_int64 "$hardware_doctor_json"; then
+    run_forced_gpu_benchmark "Forced-GPU int64 benchmark" "" "" xor64 0x8000000000000000 0x8000000000000002
+  else
+    skip_hardware_step "Forced-GPU int64 benchmark" "No GPU int64 feature probe available"
+  fi
   if gpu_feature_probe_ok "$hardware_doctor_json" OpenCL; then
     run_forced_gpu_benchmark "Forced-GPU OpenCL benchmark" opencl OpenCL
-    run_forced_gpu_benchmark "Forced-GPU OpenCL int64 benchmark" opencl OpenCL xor64 0x8000000000000000 0x8000000000000002
     run_hardware_step "OpenCL real-device search" "$cargo_cmd" test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
-    run_hardware_step "OpenCL int64 real-device search" "$cargo_cmd" test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_64_bit_kernel_runs_on_device -- --ignored --nocapture
+    if gpu_feature_probe_has_feature "$hardware_doctor_json" OpenCL int64; then
+      run_forced_gpu_benchmark "Forced-GPU OpenCL int64 benchmark" opencl OpenCL xor64 0x8000000000000000 0x8000000000000002
+      run_hardware_step "OpenCL int64 real-device search" "$cargo_cmd" test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_64_bit_kernel_runs_on_device -- --ignored --nocapture
+    else
+      skip_hardware_step "Forced-GPU OpenCL int64 benchmark" "OpenCL int64 feature unavailable"
+      skip_hardware_step "OpenCL int64 real-device search" "OpenCL int64 feature unavailable"
+    fi
   else
     skip_hardware_step "Forced-GPU OpenCL benchmark" "OpenCL runtime feature probe unavailable"
+    skip_hardware_step "Forced-GPU OpenCL int64 benchmark" "OpenCL runtime feature probe unavailable"
     skip_hardware_step "OpenCL real-device search" "OpenCL runtime feature probe unavailable"
     skip_hardware_step "OpenCL int64 real-device search" "OpenCL runtime feature probe unavailable"
   fi
   if gpu_feature_probe_ok "$hardware_doctor_json" Vulkan; then
     run_forced_gpu_benchmark "Forced-GPU Vulkan benchmark" vulkan Vulkan
-    run_forced_gpu_benchmark "Forced-GPU Vulkan int64 benchmark" vulkan Vulkan xor64 0x8000000000000000 0x8000000000000002
     run_hardware_step "Vulkan real-device search" "$cargo_cmd" test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
-    run_hardware_step "Vulkan shaderInt64 real-device search" "$cargo_cmd" test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_64_bit_kernel_runs_on_device -- --ignored --nocapture
+    if gpu_feature_probe_has_feature "$hardware_doctor_json" Vulkan shaderInt64; then
+      run_forced_gpu_benchmark "Forced-GPU Vulkan int64 benchmark" vulkan Vulkan xor64 0x8000000000000000 0x8000000000000002
+      run_hardware_step "Vulkan shaderInt64 real-device search" "$cargo_cmd" test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_64_bit_kernel_runs_on_device -- --ignored --nocapture
+    else
+      skip_hardware_step "Forced-GPU Vulkan int64 benchmark" "Vulkan shaderInt64 feature unavailable"
+      skip_hardware_step "Vulkan shaderInt64 real-device search" "Vulkan shaderInt64 feature unavailable"
+    fi
   else
     skip_hardware_step "Forced-GPU Vulkan benchmark" "Vulkan runtime feature probe unavailable"
+    skip_hardware_step "Forced-GPU Vulkan int64 benchmark" "Vulkan runtime feature probe unavailable"
     skip_hardware_step "Vulkan real-device search" "Vulkan runtime feature probe unavailable"
     skip_hardware_step "Vulkan shaderInt64 real-device search" "Vulkan runtime feature probe unavailable"
   fi
   if gpu_feature_probe_ok "$hardware_doctor_json" CUDA; then
     run_forced_gpu_benchmark "Forced-GPU CUDA benchmark" cuda CUDA
-    run_forced_gpu_benchmark "Forced-GPU CUDA int64 benchmark" cuda CUDA xor64 0x8000000000000000 0x8000000000000002
     run_hardware_step "CUDA real-device search" "$cargo_cmd" test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
-    run_hardware_step "CUDA int64 real-device search" "$cargo_cmd" test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_64_bit_kernel_runs_on_device -- --ignored --nocapture
+    if gpu_feature_probe_has_feature "$hardware_doctor_json" CUDA int64; then
+      run_forced_gpu_benchmark "Forced-GPU CUDA int64 benchmark" cuda CUDA xor64 0x8000000000000000 0x8000000000000002
+      run_hardware_step "CUDA int64 real-device search" "$cargo_cmd" test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_64_bit_kernel_runs_on_device -- --ignored --nocapture
+    else
+      skip_hardware_step "Forced-GPU CUDA int64 benchmark" "CUDA int64 feature unavailable"
+      skip_hardware_step "CUDA int64 real-device search" "CUDA int64 feature unavailable"
+    fi
   else
     skip_hardware_step "Forced-GPU CUDA benchmark" "CUDA runtime feature probe unavailable"
+    skip_hardware_step "Forced-GPU CUDA int64 benchmark" "CUDA runtime feature probe unavailable"
     skip_hardware_step "CUDA real-device search" "CUDA runtime feature probe unavailable"
     skip_hardware_step "CUDA int64 real-device search" "CUDA runtime feature probe unavailable"
   fi
   if gpu_feature_probe_ok "$hardware_doctor_json" HIP; then
     run_forced_gpu_benchmark "Forced-GPU HIP benchmark" hip HIP
-    run_forced_gpu_benchmark "Forced-GPU HIP int64 benchmark" hip HIP xor64 0x8000000000000000 0x8000000000000002
     run_hardware_step "HIP real-device search" "$cargo_cmd" test -p atlas-gpu-hip-adapter --test adapter generated_hip_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
-    run_hardware_step "HIP int64 real-device search" "$cargo_cmd" test -p atlas-gpu-hip-adapter --test adapter generated_hip_64_bit_kernel_runs_on_device -- --ignored --nocapture
+    if gpu_feature_probe_has_feature "$hardware_doctor_json" HIP int64; then
+      run_forced_gpu_benchmark "Forced-GPU HIP int64 benchmark" hip HIP xor64 0x8000000000000000 0x8000000000000002
+      run_hardware_step "HIP int64 real-device search" "$cargo_cmd" test -p atlas-gpu-hip-adapter --test adapter generated_hip_64_bit_kernel_runs_on_device -- --ignored --nocapture
+    else
+      skip_hardware_step "Forced-GPU HIP int64 benchmark" "HIP int64 feature unavailable"
+      skip_hardware_step "HIP int64 real-device search" "HIP int64 feature unavailable"
+    fi
   else
     skip_hardware_step "Forced-GPU HIP benchmark" "HIP runtime feature probe unavailable"
+    skip_hardware_step "Forced-GPU HIP int64 benchmark" "HIP runtime feature probe unavailable"
     skip_hardware_step "HIP real-device search" "HIP runtime feature probe unavailable"
     skip_hardware_step "HIP int64 real-device search" "HIP runtime feature probe unavailable"
   fi

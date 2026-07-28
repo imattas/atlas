@@ -69,6 +69,27 @@ function Get-GpuFeatureProbeOk {
     return $false
 }
 
+function Get-GpuFeatureProbeHasFeature {
+    param($Doctor, [string]$Name, [string]$Feature)
+    if ($null -eq $Doctor -or $null -eq $Doctor.gpu_feature_probes) {
+        return $false
+    }
+    foreach ($Probe in $Doctor.gpu_feature_probes) {
+        if ($Probe.name -eq $Name) {
+            return [bool]$Probe.ok -and $Probe.features -contains $Feature
+        }
+    }
+    return $false
+}
+
+function Get-AnyGpuFeatureProbeHasInt64 {
+    param($Doctor)
+    return (Get-GpuFeatureProbeHasFeature $Doctor "OpenCL" "int64") `
+        -or (Get-GpuFeatureProbeHasFeature $Doctor "Vulkan" "shaderInt64") `
+        -or (Get-GpuFeatureProbeHasFeature $Doctor "CUDA" "int64") `
+        -or (Get-GpuFeatureProbeHasFeature $Doctor "HIP" "int64")
+}
+
 function Assert-GpuFeatureProbeHasLaunchAbi {
     param($Doctor)
     if ($null -eq $Doctor -or $null -eq $Doctor.gpu_feature_probes) {
@@ -205,60 +226,88 @@ if ($Profile -eq "hardware") {
         $global:LASTEXITCODE = 0
     }
     Invoke-ForcedGpuBenchmark "Forced-GPU benchmark" $null $null
-    Invoke-ForcedGpuBenchmark "Forced-GPU int64 benchmark" $null $null "xor64" "0x8000000000000000" "0x8000000000000002"
+    if (Get-AnyGpuFeatureProbeHasInt64 $HardwareDoctor) {
+        Invoke-ForcedGpuBenchmark "Forced-GPU int64 benchmark" $null $null "xor64" "0x8000000000000000" "0x8000000000000002"
+    } else {
+        Skip-HardwareStep "Forced-GPU int64 benchmark" "No GPU int64 feature probe available"
+    }
     if (Get-GpuFeatureProbeOk $HardwareDoctor "OpenCL") {
         Invoke-ForcedGpuBenchmark "Forced-GPU OpenCL benchmark" "opencl" "OpenCL"
-        Invoke-ForcedGpuBenchmark "Forced-GPU OpenCL int64 benchmark" "opencl" "OpenCL" "xor64" "0x8000000000000000" "0x8000000000000002"
         Invoke-HardwareStep "OpenCL real-device search" {
             cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
         }
-        Invoke-HardwareStep "OpenCL int64 real-device search" {
-            cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_64_bit_kernel_runs_on_device -- --ignored --nocapture
+        if (Get-GpuFeatureProbeHasFeature $HardwareDoctor "OpenCL" "int64") {
+            Invoke-ForcedGpuBenchmark "Forced-GPU OpenCL int64 benchmark" "opencl" "OpenCL" "xor64" "0x8000000000000000" "0x8000000000000002"
+            Invoke-HardwareStep "OpenCL int64 real-device search" {
+                cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_64_bit_kernel_runs_on_device -- --ignored --nocapture
+            }
+        } else {
+            Skip-HardwareStep "Forced-GPU OpenCL int64 benchmark" "OpenCL int64 feature unavailable"
+            Skip-HardwareStep "OpenCL int64 real-device search" "OpenCL int64 feature unavailable"
         }
     } else {
         Skip-HardwareStep "Forced-GPU OpenCL benchmark" "OpenCL runtime feature probe unavailable"
+        Skip-HardwareStep "Forced-GPU OpenCL int64 benchmark" "OpenCL runtime feature probe unavailable"
         Skip-HardwareStep "OpenCL real-device search" "OpenCL runtime feature probe unavailable"
         Skip-HardwareStep "OpenCL int64 real-device search" "OpenCL runtime feature probe unavailable"
     }
     if (Get-GpuFeatureProbeOk $HardwareDoctor "Vulkan") {
         Invoke-ForcedGpuBenchmark "Forced-GPU Vulkan benchmark" "vulkan" "Vulkan"
-        Invoke-ForcedGpuBenchmark "Forced-GPU Vulkan int64 benchmark" "vulkan" "Vulkan" "xor64" "0x8000000000000000" "0x8000000000000002"
         Invoke-HardwareStep "Vulkan real-device search" {
             cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
         }
-        Invoke-HardwareStep "Vulkan shaderInt64 real-device search" {
-            cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_64_bit_kernel_runs_on_device -- --ignored --nocapture
+        if (Get-GpuFeatureProbeHasFeature $HardwareDoctor "Vulkan" "shaderInt64") {
+            Invoke-ForcedGpuBenchmark "Forced-GPU Vulkan int64 benchmark" "vulkan" "Vulkan" "xor64" "0x8000000000000000" "0x8000000000000002"
+            Invoke-HardwareStep "Vulkan shaderInt64 real-device search" {
+                cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_64_bit_kernel_runs_on_device -- --ignored --nocapture
+            }
+        } else {
+            Skip-HardwareStep "Forced-GPU Vulkan int64 benchmark" "Vulkan shaderInt64 feature unavailable"
+            Skip-HardwareStep "Vulkan shaderInt64 real-device search" "Vulkan shaderInt64 feature unavailable"
         }
     } else {
         Skip-HardwareStep "Forced-GPU Vulkan benchmark" "Vulkan runtime feature probe unavailable"
+        Skip-HardwareStep "Forced-GPU Vulkan int64 benchmark" "Vulkan runtime feature probe unavailable"
         Skip-HardwareStep "Vulkan real-device search" "Vulkan runtime feature probe unavailable"
         Skip-HardwareStep "Vulkan shaderInt64 real-device search" "Vulkan runtime feature probe unavailable"
     }
     if (Get-GpuFeatureProbeOk $HardwareDoctor "CUDA") {
         Invoke-ForcedGpuBenchmark "Forced-GPU CUDA benchmark" "cuda" "CUDA"
-        Invoke-ForcedGpuBenchmark "Forced-GPU CUDA int64 benchmark" "cuda" "CUDA" "xor64" "0x8000000000000000" "0x8000000000000002"
         Invoke-HardwareStep "CUDA real-device search" {
             cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
         }
-        Invoke-HardwareStep "CUDA int64 real-device search" {
-            cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_64_bit_kernel_runs_on_device -- --ignored --nocapture
+        if (Get-GpuFeatureProbeHasFeature $HardwareDoctor "CUDA" "int64") {
+            Invoke-ForcedGpuBenchmark "Forced-GPU CUDA int64 benchmark" "cuda" "CUDA" "xor64" "0x8000000000000000" "0x8000000000000002"
+            Invoke-HardwareStep "CUDA int64 real-device search" {
+                cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_64_bit_kernel_runs_on_device -- --ignored --nocapture
+            }
+        } else {
+            Skip-HardwareStep "Forced-GPU CUDA int64 benchmark" "CUDA int64 feature unavailable"
+            Skip-HardwareStep "CUDA int64 real-device search" "CUDA int64 feature unavailable"
         }
     } else {
         Skip-HardwareStep "Forced-GPU CUDA benchmark" "CUDA runtime feature probe unavailable"
+        Skip-HardwareStep "Forced-GPU CUDA int64 benchmark" "CUDA runtime feature probe unavailable"
         Skip-HardwareStep "CUDA real-device search" "CUDA runtime feature probe unavailable"
         Skip-HardwareStep "CUDA int64 real-device search" "CUDA runtime feature probe unavailable"
     }
     if (Get-GpuFeatureProbeOk $HardwareDoctor "HIP") {
         Invoke-ForcedGpuBenchmark "Forced-GPU HIP benchmark" "hip" "HIP"
-        Invoke-ForcedGpuBenchmark "Forced-GPU HIP int64 benchmark" "hip" "HIP" "xor64" "0x8000000000000000" "0x8000000000000002"
         Invoke-HardwareStep "HIP real-device search" {
             cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
         }
-        Invoke-HardwareStep "HIP int64 real-device search" {
-            cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_64_bit_kernel_runs_on_device -- --ignored --nocapture
+        if (Get-GpuFeatureProbeHasFeature $HardwareDoctor "HIP" "int64") {
+            Invoke-ForcedGpuBenchmark "Forced-GPU HIP int64 benchmark" "hip" "HIP" "xor64" "0x8000000000000000" "0x8000000000000002"
+            Invoke-HardwareStep "HIP int64 real-device search" {
+                cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_64_bit_kernel_runs_on_device -- --ignored --nocapture
+            }
+        } else {
+            Skip-HardwareStep "Forced-GPU HIP int64 benchmark" "HIP int64 feature unavailable"
+            Skip-HardwareStep "HIP int64 real-device search" "HIP int64 feature unavailable"
         }
     } else {
         Skip-HardwareStep "Forced-GPU HIP benchmark" "HIP runtime feature probe unavailable"
+        Skip-HardwareStep "Forced-GPU HIP int64 benchmark" "HIP runtime feature probe unavailable"
         Skip-HardwareStep "HIP real-device search" "HIP runtime feature probe unavailable"
         Skip-HardwareStep "HIP int64 real-device search" "HIP runtime feature probe unavailable"
     }
