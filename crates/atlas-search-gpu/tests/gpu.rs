@@ -1184,6 +1184,47 @@ fn process_driver_runner_resolves_nvcc_from_standard_cuda_toolkit_layout_when_no
     assert!(output.stdout.contains("standard-nvcc-ok"));
 }
 
+#[cfg(windows)]
+#[test]
+fn process_driver_runner_prefers_newest_standard_cuda_toolkit_nvcc() {
+    let _env_guard = env_lock();
+    let root = std::env::temp_dir().join(format!(
+        "atlas-cuda-standard-toolkit-order-{}",
+        std::process::id()
+    ));
+    let cuda_base = root.join("NVIDIA GPU Computing Toolkit").join("CUDA");
+    let base_nvcc_path = write_sdk_tool(&cuda_base, "nvcc", "base-nvcc", 7);
+    let old_nvcc_path = write_sdk_tool(&cuda_base.join("v9.0"), "nvcc", "old-nvcc", 8);
+    let new_nvcc_path = write_sdk_tool(&cuda_base.join("v12.4"), "nvcc", "new-nvcc", 9);
+    let original_path = std::env::var_os("PATH");
+    let original_cuda_path = std::env::var_os("CUDA_PATH");
+    let original_cuda_home = std::env::var_os("CUDA_HOME");
+    let original_cuda_root = std::env::var_os("CUDA_ROOT");
+    let original_program_files = std::env::var_os("ProgramFiles");
+    let original_program_files_x86 = std::env::var_os("ProgramFiles(x86)");
+    std::env::set_var("PATH", "");
+    std::env::remove_var("CUDA_PATH");
+    std::env::remove_var("CUDA_HOME");
+    std::env::remove_var("CUDA_ROOT");
+    std::env::set_var("ProgramFiles", &root);
+    std::env::remove_var("ProgramFiles(x86)");
+
+    let output = ProcessDriverRunner.run_command(&["nvcc".to_owned()]);
+
+    restore_env("PATH", original_path);
+    restore_env("CUDA_PATH", original_cuda_path);
+    restore_env("CUDA_HOME", original_cuda_home);
+    restore_env("CUDA_ROOT", original_cuda_root);
+    restore_env("ProgramFiles", original_program_files);
+    restore_env("ProgramFiles(x86)", original_program_files_x86);
+    let _ = fs::remove_file(base_nvcc_path);
+    let _ = fs::remove_file(old_nvcc_path);
+    let _ = fs::remove_file(new_nvcc_path);
+    let _ = fs::remove_dir_all(root);
+    assert_eq!(output.exit_code, 9);
+    assert!(output.stdout.contains("new-nvcc"));
+}
+
 #[test]
 fn process_driver_runner_resolves_hipcc_from_rocm_home_when_not_on_path() {
     let _env_guard = env_lock();
