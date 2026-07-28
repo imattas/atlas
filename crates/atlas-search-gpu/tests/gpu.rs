@@ -527,6 +527,43 @@ fn detects_gpu_sdks_from_common_sdk_root_alias_env_vars() {
 }
 
 #[test]
+fn detects_gpu_sdks_from_cuda_root_and_opencl_root_alias_env_vars() {
+    let _env_guard = env_lock();
+    let root =
+        std::env::temp_dir().join(format!("atlas-gpu-sdk-root-aliases-{}", std::process::id()));
+    let cuda = root.join("cuda-root");
+    let opencl = root.join("opencl-root");
+    for sdk_root in [&cuda, &opencl] {
+        fs::create_dir_all(sdk_root).unwrap();
+    }
+    let original_path = std::env::var_os("PATH");
+    let original_cuda_root = std::env::var_os("CUDA_ROOT");
+    let original_ocl_root = std::env::var_os("OCL_ROOT");
+    std::env::set_var("PATH", "");
+    std::env::set_var("CUDA_ROOT", &cuda);
+    std::env::set_var("OCL_ROOT", &opencl);
+
+    let detected = GpuSdkDetector::detect_from_host_path();
+
+    restore_env("PATH", original_path);
+    restore_env("CUDA_ROOT", original_cuda_root);
+    restore_env("OCL_ROOT", original_ocl_root);
+    let _ = fs::remove_dir_all(root);
+    assert!(
+        detected
+            .iter()
+            .any(|sdk| matches!(sdk, GpuSdk::Cuda { .. })),
+        "expected CUDA detection from CUDA_ROOT, got {detected:?}"
+    );
+    assert!(
+        detected
+            .iter()
+            .any(|sdk| matches!(sdk, GpuSdk::OpenCl { .. })),
+        "expected OpenCL detection from OCL_ROOT, got {detected:?}"
+    );
+}
+
+#[test]
 fn launch_config_bounds_workgroups_and_output_transfer_capacity() {
     let config = AcceleratorRuntime::plan_launch(SearchDomain::new(0, 1_000_000), 256, 1024);
 

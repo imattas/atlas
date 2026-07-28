@@ -844,12 +844,16 @@ impl GpuSdkDetector {
             [
                 "CUDA_PATH",
                 "CUDA_HOME",
+                "CUDA_ROOT",
                 "HIP_PATH",
                 "ROCM_PATH",
                 "ROCM_HOME",
                 "VULKAN_SDK",
                 "VK_SDK_PATH",
                 "OPENCL_SDK",
+                "OCL_ROOT",
+                "INTELOCLSDKROOT",
+                "AMDAPPSDKROOT",
             ]
             .into_iter()
             .filter_map(std::env::var_os)
