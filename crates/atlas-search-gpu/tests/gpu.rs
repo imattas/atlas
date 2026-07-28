@@ -585,7 +585,8 @@ fn cuda_driver_plan_uses_adapter_compiler_without_external_nvcc() {
         .any(|arg| arg == "--compile-check"));
     assert!(plan.compile_command[2].starts_with("target/atlas-gpu/"));
     assert!(plan.compile_command[2].ends_with("/atlas_search.cu"));
-    assert_eq!(plan.launch_command[1], plan.source_file);
+    assert_eq!(plan.launch_command[1], plan.artifact_file);
+    assert!(plan.artifact_file.ends_with("/atlas_search.ptx"));
 }
 
 #[test]

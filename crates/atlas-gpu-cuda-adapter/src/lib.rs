@@ -39,8 +39,10 @@ pub struct LaunchArgs {
 pub enum AdapterCommand {
     /// Build-check a PTX file without launching a search.
     CompileCheck {
-        /// Generated PTX path.
-        ptx: String,
+        /// Generated CUDA source or PTX path.
+        input: String,
+        /// Optional compiled PTX output path.
+        output: Option<String>,
     },
     /// Launch a CUDA search.
     Launch(LaunchArgs),
@@ -57,7 +59,10 @@ impl AdapterCommand {
             let Some(ptx) = args.get(1) else {
                 return Err("missing compile-check PTX".to_owned());
             };
-            return Ok(Self::CompileCheck { ptx: ptx.clone() });
+            return Ok(Self::CompileCheck {
+                input: ptx.clone(),
+                output: optional_output_path(args)?,
+            });
         }
         LaunchArgs::parse(args).map(Self::Launch)
     }
@@ -107,7 +112,7 @@ pub trait Launcher {
     ///
     /// Returns an error when the PTX cannot be loaded or lacks the expected
     /// kernel entry.
-    fn compile_check(&self, ptx: &str) -> Result<(), String>;
+    fn compile_check(&self, input: &str, output: Option<&str>) -> Result<(), String>;
 
     /// Runs the launch and returns device-reported matches.
     ///
@@ -123,9 +128,12 @@ pub trait Launcher {
 pub struct CudaPtxLauncher;
 
 impl Launcher for CudaPtxLauncher {
-    fn compile_check(&self, artifact: &str) -> Result<(), String> {
+    fn compile_check(&self, artifact: &str, output: Option<&str>) -> Result<(), String> {
         let ptx = read_cuda_artifact_as_ptx(artifact)?;
         ensure_atlas_entry(&ptx)?;
+        if let Some(output) = output {
+            write_ptx(output, &ptx)?;
+        }
         if let Ok(driver) = CudaDriver::load() {
             let _context = driver.create_context()?;
             let ptx = CString::new(ptx).map_err(|_| "PTX contains interior NUL".to_owned())?;
@@ -154,8 +162,8 @@ impl Launcher for CudaPtxLauncher {
 /// Returns parse or launcher errors.
 pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, String> {
     match AdapterCommand::parse(args)? {
-        AdapterCommand::CompileCheck { ptx } => {
-            launcher.compile_check(&ptx)?;
+        AdapterCommand::CompileCheck { input, output } => {
+            launcher.compile_check(&input, output.as_deref())?;
             Ok(String::new())
         }
         AdapterCommand::Launch(launch_args) => {
@@ -174,6 +182,14 @@ fn format_matches(matches: &[u64]) -> String {
 
 fn read_ptx(path: &str) -> Result<String, String> {
     fs::read_to_string(path).map_err(|error| error.to_string())
+}
+
+fn write_ptx(path: &str, ptx: &str) -> Result<(), String> {
+    if let Some(parent) = Path::new(path).parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("cannot create PTX output directory: {error}"))?;
+    }
+    fs::write(path, ptx).map_err(|error| format!("cannot write PTX {path}: {error}"))
 }
 
 fn read_cuda_artifact_as_ptx(path: &str) -> Result<String, String> {
@@ -214,6 +230,16 @@ fn flag_value<'a>(args: &'a [String], flag: &str) -> Result<&'a str, String> {
     args.windows(2)
         .find_map(|window| (window[0] == flag).then_some(window[1].as_str()))
         .ok_or_else(|| format!("missing {flag}"))
+}
+
+fn optional_output_path(args: &[String]) -> Result<Option<String>, String> {
+    let Some(index) = args.iter().position(|arg| arg == "-o" || arg == "--output") else {
+        return Ok(None);
+    };
+    args.get(index + 1)
+        .cloned()
+        .map(Some)
+        .ok_or_else(|| "missing output path after -o".to_owned())
 }
 
 fn launch_cuda(

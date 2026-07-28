@@ -10,7 +10,7 @@ use std::fs;
 struct FixtureLauncher;
 
 impl Launcher for FixtureLauncher {
-    fn compile_check(&self, _ptx: &str) -> Result<(), String> {
+    fn compile_check(&self, _input: &str, _output: Option<&str>) -> Result<(), String> {
         Ok(())
     }
 
@@ -39,8 +39,10 @@ impl RecordingLauncher {
 }
 
 impl Launcher for RecordingLauncher {
-    fn compile_check(&self, ptx: &str) -> Result<(), String> {
-        self.compile_checked.borrow_mut().push(ptx.to_owned());
+    fn compile_check(&self, input: &str, output: Option<&str>) -> Result<(), String> {
+        self.compile_checked
+            .borrow_mut()
+            .push(format!("{input}->{}", output.unwrap_or("")));
         Ok(())
     }
 
@@ -85,7 +87,8 @@ fn parses_compile_check_command() {
     assert_eq!(
         command,
         AdapterCommand::CompileCheck {
-            ptx: "target/atlas-gpu/atlas_search.ptx".to_owned(),
+            input: "target/atlas-gpu/atlas_search.ptx".to_owned(),
+            output: None,
         }
     );
 }
@@ -106,7 +109,7 @@ fn cli_compile_check_invokes_launcher_backend() {
     assert_eq!(output, "");
     assert_eq!(
         launcher.compile_checked.borrow().as_slice(),
-        ["target/atlas-gpu/atlas_search.ptx"]
+        ["target/atlas-gpu/atlas_search.ptx->"]
     );
 }
 
@@ -161,7 +164,7 @@ fn compile_check_rejects_ptx_without_atlas_kernel_entry() {
     fs::write(&ptx_path, ".version 8.0\n.target sm_52\n").unwrap();
 
     let error = CudaPtxLauncher
-        .compile_check(&ptx_path.to_string_lossy())
+        .compile_check(&ptx_path.to_string_lossy(), None)
         .unwrap_err();
 
     assert!(error.contains("missing atlas_search kernel entry"));
@@ -176,7 +179,7 @@ fn compile_check_routes_cuda_source_to_runtime_compiler_not_ptx_parser() {
     fs::write(&source_path, "this is not valid cuda").unwrap();
 
     let error = CudaPtxLauncher
-        .compile_check(&source_path.to_string_lossy())
+        .compile_check(&source_path.to_string_lossy(), None)
         .unwrap_err();
 
     assert!(
@@ -185,6 +188,34 @@ fn compile_check_routes_cuda_source_to_runtime_compiler_not_ptx_parser() {
             || error.contains("CUDA source compile failed"),
         "{error}"
     );
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+fn compile_check_writes_ptx_artifact_when_output_is_requested() {
+    let output_dir = std::env::temp_dir().join(format!("atlas-cuda-cache-{}", std::process::id()));
+    fs::create_dir_all(&output_dir).unwrap();
+    let input_path = output_dir.join("input.ptx");
+    let output_path = output_dir.join("atlas_search.ptx");
+    fs::write(
+        &input_path,
+        ".version 8.0\n.target sm_52\n.visible .entry atlas_search() { ret; }\n",
+    )
+    .unwrap();
+
+    run_cli(
+        &[
+            "--compile-check".to_owned(),
+            input_path.to_string_lossy().into_owned(),
+            "-o".to_owned(),
+            output_path.to_string_lossy().into_owned(),
+        ],
+        &CudaPtxLauncher,
+    )
+    .unwrap();
+
+    let ptx = fs::read_to_string(&output_path).unwrap();
+    assert!(ptx.contains(".entry atlas_search"));
     let _ = fs::remove_dir_all(output_dir);
 }
 
