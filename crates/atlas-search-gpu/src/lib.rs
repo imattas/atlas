@@ -786,7 +786,7 @@ impl AcceleratorRuntime {
             );
             let output = runner.run(&command_plan);
             if output.exit_code != 0 {
-                let base_rationale = format!("{}; driver exit {}", sdk.name(), output.exit_code);
+                let base_rationale = driver_failure_rationale(sdk, &output);
                 return AcceleratorReport {
                     mode: RuntimeMode::CpuFallback,
                     matches: NativeSearcher::search(program, domain, cancellation),
@@ -880,6 +880,33 @@ fn compile_command_for(
 struct DeviceValidation {
     matches: Vec<u64>,
     rejected: usize,
+}
+
+fn driver_failure_rationale(sdk: &GpuSdk, output: &DriverRunOutput) -> String {
+    let stderr = output.stderr.trim();
+    if stderr.is_empty() {
+        format!("{}; driver exit {}", sdk.name(), output.exit_code)
+    } else {
+        format!(
+            "{}; driver exit {}; stderr: {}",
+            sdk.name(),
+            output.exit_code,
+            single_line_summary(stderr)
+        )
+    }
+}
+
+fn single_line_summary(text: &str) -> String {
+    const MAX_SUMMARY_CHARS: usize = 240;
+
+    let summary = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if summary.chars().count() <= MAX_SUMMARY_CHARS {
+        summary
+    } else {
+        let mut truncated = summary.chars().take(MAX_SUMMARY_CHARS).collect::<String>();
+        truncated.push('…');
+        truncated
+    }
 }
 
 fn validate_device_matches(

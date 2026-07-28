@@ -2122,6 +2122,36 @@ fn runtime_selects_detected_sdk_and_executes_driver_runner() {
 }
 
 #[test]
+fn runtime_telemetry_includes_driver_stderr_on_gpu_launch_failure() {
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    let sdk = GpuSdk::Cuda {
+        sdk: "test CUDA".to_owned(),
+    };
+    let runner = FixtureDriverRunner {
+        output: DriverRunOutput {
+            exit_code: 1,
+            reported_matches: Vec::new(),
+            stdout: String::new(),
+            stderr: "failed to load CUDA driver library nvcuda.dll".to_owned(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_driver(
+        &program,
+        SearchDomain::new(0, 1_000_000),
+        &sdk,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert!(report.telemetry.rationale.contains("CUDA"));
+    assert!(report.telemetry.rationale.contains("driver exit 1"));
+    assert!(report.telemetry.rationale.contains("nvcuda.dll"));
+}
+
+#[test]
 fn runtime_honors_cancellation_before_launching_gpu_driver() {
     let program = SearchProgram::try_from_fixture("add").unwrap();
     let token = CancellationToken::new();
