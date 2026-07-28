@@ -71,7 +71,11 @@ run_forced_gpu_benchmark() {
   local expected_actual_gpu_sdk="$3"
   run_hardware_step "$name" bash -c '
     set -euo pipefail
-    output=$("$3" run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk "$1")
+    command=("$3" run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu)
+    if [[ -n "$1" ]]; then
+      command+=(--gpu-sdk "$1")
+    fi
+    output=$("${command[@]}")
     printf "%s\n" "$output"
     EXPECTED_ACTUAL_GPU_SDK="$2" BENCHMARK_JSON="$output" python - <<'"'"'PY'"'"'
 import json
@@ -83,7 +87,7 @@ accelerator = document["accelerator"]
 if accelerator["mode"] != "DeviceValidated":
     raise SystemExit(f"expected DeviceValidated, got {accelerator['mode']}")
 actual_gpu_sdk = accelerator.get("actual_gpu_sdk")
-if actual_gpu_sdk != expected_actual_gpu_sdk:
+if expected_actual_gpu_sdk and actual_gpu_sdk != expected_actual_gpu_sdk:
     raise SystemExit(f"expected actual_gpu_sdk {expected_actual_gpu_sdk}, got {actual_gpu_sdk}")
 telemetry = accelerator.get("telemetry") or ""
 for required in ["driver exit 0", "driver launches", "launch abi"]:
@@ -192,7 +196,7 @@ if [[ "$profile" == "hardware" ]]; then
   else
     printf "%s\n" "$hardware_doctor_json"
   fi
-  run_hardware_step "Forced-GPU benchmark" "$cargo_cmd" run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu
+  run_forced_gpu_benchmark "Forced-GPU benchmark" "" ""
   if gpu_feature_probe_ok "$hardware_doctor_json" OpenCL; then
     run_forced_gpu_benchmark "Forced-GPU OpenCL benchmark" opencl OpenCL
     run_hardware_step "OpenCL real-device search" "$cargo_cmd" test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture

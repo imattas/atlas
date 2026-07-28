@@ -76,7 +76,11 @@ function Invoke-ForcedGpuBenchmark {
         [string]$ExpectedActualGpuSdk
     )
     Invoke-HardwareStep $Name {
-        $Output = cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk $Sdk
+        $BenchmarkArgs = @("run", "-q", "-p", "atlas-cli", "--", "benchmark", "--fixture", "xor", "--start", "0x50", "--end", "0x60", "--force-gpu")
+        if (![string]::IsNullOrEmpty($Sdk)) {
+            $BenchmarkArgs += @("--gpu-sdk", $Sdk)
+        }
+        $Output = cargo @BenchmarkArgs
         $Status = $LASTEXITCODE
         if ($Status -ne 0) {
             $global:LASTEXITCODE = $Status
@@ -87,7 +91,7 @@ function Invoke-ForcedGpuBenchmark {
         if ($Benchmark.accelerator.mode -ne "DeviceValidated") {
             throw "expected DeviceValidated, got $($Benchmark.accelerator.mode)"
         }
-        if ($Benchmark.accelerator.actual_gpu_sdk -ne $ExpectedActualGpuSdk) {
+        if (![string]::IsNullOrEmpty($ExpectedActualGpuSdk) -and $Benchmark.accelerator.actual_gpu_sdk -ne $ExpectedActualGpuSdk) {
             throw "expected actual_gpu_sdk $ExpectedActualGpuSdk, got $($Benchmark.accelerator.actual_gpu_sdk)"
         }
         $Telemetry = [string]$Benchmark.accelerator.telemetry
@@ -179,9 +183,7 @@ if ($Profile -eq "hardware") {
         $script:HardwareDoctor = $Output | ConvertFrom-Json
         $global:LASTEXITCODE = 0
     }
-    Invoke-HardwareStep "Forced-GPU benchmark" {
-        cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu
-    }
+    Invoke-ForcedGpuBenchmark "Forced-GPU benchmark" $null $null
     if (Get-GpuFeatureProbeOk $HardwareDoctor "OpenCL") {
         Invoke-ForcedGpuBenchmark "Forced-GPU OpenCL benchmark" "opencl" "OpenCL"
         Invoke-HardwareStep "OpenCL real-device search" {

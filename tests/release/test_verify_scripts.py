@@ -91,7 +91,7 @@ class VerifyScriptTests(unittest.TestCase):
                 hardware_block_index = text.find("GPU doctor diagnostics")
                 doctor_index = text.find("run -q -p atlas-cli -- doctor", hardware_block_index)
                 benchmark_index = text.find("Forced-GPU benchmark", hardware_block_index)
-                force_gpu_index = text.find("--force-gpu", benchmark_index)
+                force_gpu_index = text.find("--force-gpu")
                 first_hardware_test_index = text.find(
                     "generated_opencl_kernel_runs_on_device_and_preserves_full_candidates"
                 )
@@ -131,6 +131,7 @@ class VerifyScriptTests(unittest.TestCase):
         expectations = {
             "verify.ps1": [
                 "Invoke-ForcedGpuBenchmark",
+                'Invoke-ForcedGpuBenchmark "Forced-GPU benchmark" $null $null',
                 "actual_gpu_sdk",
                 "DeviceValidated",
                 "expected actual_gpu_sdk",
@@ -140,6 +141,7 @@ class VerifyScriptTests(unittest.TestCase):
             ],
             "verify.sh": [
                 "run_forced_gpu_benchmark",
+                'run_forced_gpu_benchmark "Forced-GPU benchmark" "" ""',
                 "actual_gpu_sdk",
                 "DeviceValidated",
                 "expected actual_gpu_sdk",
