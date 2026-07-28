@@ -3783,6 +3783,9 @@ fn runtime_honors_cancellation_before_launching_gpu_driver() {
 
 #[test]
 fn runtime_uses_scalar_for_tiny_workloads_without_launching_gpu_driver() {
+    let _env_guard = env_lock();
+    let original_calibration = std::env::var_os("ATLAS_PLACEMENT_CALIBRATION");
+    std::env::remove_var("ATLAS_PLACEMENT_CALIBRATION");
     let program = SearchProgram::try_from_fixture("add").unwrap();
     let token = CancellationToken::new();
     let sdks = [GpuSdk::OpenCl {
@@ -3806,6 +3809,7 @@ fn runtime_uses_scalar_for_tiny_workloads_without_launching_gpu_driver() {
         &runner,
     );
 
+    restore_env("ATLAS_PLACEMENT_CALIBRATION", original_calibration);
     assert_eq!(report.mode, RuntimeMode::CpuFallback);
     assert_eq!(*runner.calls.borrow(), 0);
     assert!(report.telemetry.rationale.contains("Scalar"));
