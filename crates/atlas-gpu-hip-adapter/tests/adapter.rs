@@ -218,6 +218,36 @@ fn hip_runtime_library_candidates_include_standard_rocm_layout() {
     );
 }
 
+#[cfg(windows)]
+#[test]
+fn hip_runtime_library_candidates_prefer_newest_standard_rocm_runtime() {
+    let root =
+        std::env::temp_dir().join(format!("atlas-hip-standard-order-{}", std::process::id()));
+    let rocm_base = root.join("AMD").join("ROCm");
+    let base_runtime = rocm_base.join("bin").join("amdhip64.dll");
+    let old_runtime = rocm_base.join("5.0").join("bin").join("amdhip64.dll");
+    let new_runtime = rocm_base.join("6.1").join("bin").join("amdhip64.dll");
+    for runtime in [&base_runtime, &old_runtime, &new_runtime] {
+        fs::create_dir_all(runtime.parent().unwrap()).unwrap();
+        fs::write(runtime, []).unwrap();
+    }
+    let original_program_files = std::env::var_os("ProgramFiles");
+    let original_program_files_x86 = std::env::var_os("ProgramFiles(x86)");
+    std::env::set_var("ProgramFiles", &root);
+    std::env::remove_var("ProgramFiles(x86)");
+
+    let candidates = hip_runtime_library_candidates_from_host_roots();
+
+    restore_env("ProgramFiles", original_program_files);
+    restore_env("ProgramFiles(x86)", original_program_files_x86);
+    let _ = fs::remove_dir_all(root);
+    assert_eq!(
+        candidates.first(),
+        Some(&new_runtime),
+        "expected newest ROCm runtime first, got {candidates:?}"
+    );
+}
+
 #[test]
 #[ignore = "requires hipcc, HIP runtime, and an AMD HIP-capable device"]
 fn generated_hip_kernel_runs_on_device_and_preserves_full_candidates() {

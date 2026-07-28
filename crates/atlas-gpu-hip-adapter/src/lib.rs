@@ -562,16 +562,25 @@ fn hip_standard_root_dirs() -> Vec<PathBuf> {
             .map(PathBuf::from)
         {
             let rocm_base = base.join("AMD").join("ROCm");
-            push_existing_dir(&mut roots, rocm_base.clone());
+            let mut versioned_roots = Vec::new();
             if let Ok(entries) = fs::read_dir(&rocm_base) {
                 for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
                     if path.is_dir() {
-                        roots.push(path.clone());
-                        push_existing_dir(&mut roots, path.join("hip"));
-                        push_existing_dir(&mut roots, path.join("bin"));
+                        versioned_roots.push(path);
                     }
                 }
             }
+            versioned_roots.sort_by(|left, right| {
+                sdk_version_key(right)
+                    .cmp(&sdk_version_key(left))
+                    .then_with(|| right.cmp(left))
+            });
+            for path in versioned_roots {
+                roots.push(path.clone());
+                push_existing_dir(&mut roots, path.join("hip"));
+                push_existing_dir(&mut roots, path.join("bin"));
+            }
+            push_existing_dir(&mut roots, rocm_base.clone());
         }
     }
     #[cfg(not(windows))]
@@ -580,6 +589,19 @@ fn hip_standard_root_dirs() -> Vec<PathBuf> {
         roots.push(PathBuf::from("/opt/rocm/hip"));
     }
     roots
+}
+
+fn sdk_version_key(path: &Path) -> Vec<u32> {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.trim_start_matches('v'))
+        .map(|version| {
+            version
+                .split('.')
+                .map(|component| component.parse::<u32>().unwrap_or(0))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
 }
 
 fn push_existing_dir(paths: &mut Vec<PathBuf>, path: PathBuf) {
