@@ -31,6 +31,8 @@ pub struct LaunchArgs {
 /// Adapter CLI command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdapterCommand {
+    /// Report runtime/device features understood by this adapter.
+    Features,
     /// Build-check an OpenCL source file without launching a search.
     CompileCheck {
         /// Generated OpenCL source path.
@@ -49,6 +51,9 @@ impl AdapterCommand {
     ///
     /// Returns an error for malformed commands.
     pub fn parse(args: &[String]) -> Result<Self, String> {
+        if args.first().is_some_and(|arg| arg == "--features") {
+            return Ok(Self::Features);
+        }
         if args.first().is_some_and(|arg| arg == "--compile-check") {
             let Some(source) = args.get(1) else {
                 return Err("missing compile-check source".to_owned());
@@ -109,6 +114,13 @@ impl LaunchArgs {
 
 /// Launches one parsed OpenCL request.
 pub trait Launcher {
+    /// Reports runtime/device features available to generated kernels.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no OpenCL runtime/device can be selected.
+    fn features(&self) -> Result<Vec<String>, String>;
+
     /// Build-checks generated OpenCL source.
     ///
     /// # Errors
@@ -129,6 +141,11 @@ pub trait Launcher {
 pub struct OpenClLauncher;
 
 impl Launcher for OpenClLauncher {
+    fn features(&self) -> Result<Vec<String>, String> {
+        let _device = Device::new(select_device()?);
+        Ok(vec!["int64".to_owned()])
+    }
+
     fn compile_check(&self, source: &str, output: Option<&str>) -> Result<(), String> {
         let source = fs::read_to_string(source).map_err(|error| error.to_string())?;
         let (_context, _queue, _program) = build_opencl_program(&source)?;
@@ -150,6 +167,10 @@ impl Launcher for OpenClLauncher {
 /// Returns parse or launcher errors.
 pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, String> {
     match AdapterCommand::parse(args)? {
+        AdapterCommand::Features => {
+            let features = launcher.features()?;
+            Ok(format_features(&features))
+        }
         AdapterCommand::CompileCheck { source, output } => {
             launcher.compile_check(&source, output.as_deref())?;
             Ok(String::new())
@@ -159,6 +180,13 @@ pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, Strin
             Ok(format_matches(&matches))
         }
     }
+}
+
+fn format_features(features: &[String]) -> String {
+    features
+        .iter()
+        .map(|feature| format!("feature={feature}\n"))
+        .collect()
 }
 
 fn format_matches(matches: &[u64]) -> String {
