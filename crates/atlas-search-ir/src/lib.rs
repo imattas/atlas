@@ -89,7 +89,7 @@ impl SearchProgram {
     ///
     /// Returns an error when the program is outside the auditable subset.
     pub fn new(width: u32, ops: Vec<SearchOp>) -> Result<Self, SearchIrError> {
-        if width == 0 || width > 32 {
+        if width == 0 || width > 64 {
             return Err(SearchIrError::UnsupportedWidth);
         }
         if ops.is_empty() {
