@@ -1,6 +1,8 @@
 //! WGPU adapter CLI tests.
 
-use atlas_gpu_wgpu_adapter::{run_cli, AdapterCommand, LaunchArgs, LaunchOutput, Launcher};
+use atlas_gpu_wgpu_adapter::{
+    run_cli, validate_wgsl_launch_shape, AdapterCommand, LaunchArgs, LaunchOutput, Launcher,
+};
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::SearchProgram;
 use std::cell::RefCell;
@@ -195,6 +197,16 @@ fn compile_check_rejects_invalid_wgsl() {
 
     let _ = fs::remove_dir_all(root);
     assert!(error.contains("invalid WGSL"), "{error}");
+}
+
+#[test]
+fn launch_shape_validation_rejects_local_size_that_does_not_match_wgsl() {
+    let source_text = GpuSearcher::compile_wgsl(&SearchProgram::try_from_fixture("xor").unwrap());
+
+    validate_wgsl_launch_shape(&source_text, 256).unwrap();
+    let error = validate_wgsl_launch_shape(&source_text, 128).unwrap_err();
+
+    assert!(error.contains("WGPU local-size mismatch"), "{error}");
 }
 
 #[test]

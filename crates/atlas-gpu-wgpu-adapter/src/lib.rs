@@ -188,10 +188,27 @@ fn validate_wgsl(source: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Validates that generated WGSL encodes the launch shape requested by the host.
+///
+/// # Errors
+///
+/// Returns an error when the WGSL is invalid, has no workgroup size annotation,
+/// or the encoded local size differs from the launch protocol local size.
+pub fn validate_wgsl_launch_shape(source: &str, local_size: usize) -> Result<(), String> {
+    validate_wgsl(source)?;
+    let encoded_local_size = extract_wgsl_workgroup_size_x(source)?;
+    if encoded_local_size != local_size {
+        return Err(format!(
+            "WGPU local-size mismatch: WGSL encodes {encoded_local_size}, launch requested {local_size}"
+        ));
+    }
+    Ok(())
+}
+
 async fn launch_wgpu(args: &LaunchArgs) -> Result<LaunchOutput, String> {
     let source = fs::read_to_string(&args.artifact)
         .map_err(|error| format!("cannot read WGSL artifact {}: {error}", args.artifact))?;
-    validate_wgsl(&source)?;
+    validate_wgsl_launch_shape(&source, args.local_size)?;
 
     let (device, queue) = create_wgpu_device().await?;
 
@@ -420,6 +437,27 @@ fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, String> {
             .try_into()
             .map_err(|_| "invalid u32 readback chunk".to_owned())?,
     ))
+}
+
+fn extract_wgsl_workgroup_size_x(source: &str) -> Result<usize, String> {
+    let Some(annotation_start) = source.find("@workgroup_size") else {
+        return Err("WGPU WGSL artifact is missing @workgroup_size".to_owned());
+    };
+    let after_annotation = &source[annotation_start + "@workgroup_size".len()..];
+    let open_paren = after_annotation
+        .find('(')
+        .ok_or_else(|| "WGPU WGSL @workgroup_size is missing '('".to_owned())?;
+    let after_paren = after_annotation[open_paren + 1..].trim_start();
+    let digits = after_paren
+        .chars()
+        .take_while(|character| character.is_ascii_digit())
+        .collect::<String>();
+    if digits.is_empty() {
+        return Err("WGPU WGSL @workgroup_size has no x dimension".to_owned());
+    }
+    digits
+        .parse()
+        .map_err(|_| "WGPU WGSL @workgroup_size x dimension is invalid".to_owned())
 }
 
 fn format_features(features: &[String]) -> String {
