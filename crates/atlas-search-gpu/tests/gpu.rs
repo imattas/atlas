@@ -609,6 +609,23 @@ fn detects_cuda_from_uppercase_windows_tool_suffixes() {
 }
 
 #[test]
+fn detects_cuda_from_windows_command_wrapper_tools() {
+    let root = std::env::temp_dir().join(format!("atlas-gpu-wrapper-tool-{}", std::process::id()));
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("nvcc.cmd"), []).unwrap();
+
+    let detected = GpuSdkDetector::detect_from_path_dirs([root.clone()]);
+
+    let _ = fs::remove_dir_all(root);
+    assert!(
+        detected
+            .iter()
+            .any(|sdk| matches!(sdk, GpuSdk::Cuda { .. })),
+        "expected CUDA detection from nvcc.cmd, got {detected:?}"
+    );
+}
+
+#[test]
 fn detects_hip_from_standard_program_files_rocm_layout() {
     let _env_guard = env_lock();
     let root = std::env::temp_dir().join(format!("atlas-gpu-amd-files-{}", std::process::id()));

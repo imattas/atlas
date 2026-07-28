@@ -1063,6 +1063,8 @@ fn normalize_tool_name(name: &str) -> String {
     let name = name.to_ascii_lowercase();
     name.strip_suffix(".exe")
         .or_else(|| name.strip_suffix(".dll"))
+        .or_else(|| name.strip_suffix(".cmd"))
+        .or_else(|| name.strip_suffix(".bat"))
         .unwrap_or(&name)
         .to_owned()
 }
