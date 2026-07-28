@@ -60,6 +60,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "atlas-gpu-hip-adapter"
+version = "0.1.0"
+dependencies = [
+ "atlas-search-gpu",
+ "atlas-search-ir",
+]
+
+[[package]]
 name = "atlas-gpu-opencl-adapter"
 version = "0.1.0"
 dependencies = [
