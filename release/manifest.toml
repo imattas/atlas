@@ -1,0 +1,99 @@
+manifest_version = "1"
+source_revision = "atlas-full-build"
+schema_version = "protocol-v1"
+toolchain = "rust-1.97 python-3"
+signature = "development-attestation-sha256-release-evidence-v1"
+
+[[required_suites]]
+name = "core"
+status = "passed"
+evidence = "scripts/verify.ps1 -Profile core"
+
+[[required_suites]]
+name = "analysis"
+status = "passed"
+evidence = "scripts/verify.ps1 -Profile analysis"
+
+[[required_suites]]
+name = "distributed"
+status = "passed"
+evidence = "scripts/verify.ps1 -Profile distributed"
+
+[[required_suites]]
+name = "advanced"
+status = "passed"
+evidence = "scripts/verify.ps1 -Profile advanced"
+
+[[capabilities]]
+name = "typed-ucir"
+status = "supported"
+evidence = "crates/atlas-ucir"
+
+[[capabilities]]
+name = "program-analysis"
+status = "supported"
+evidence = "crates/atlas-program-analysis"
+
+[[capabilities]]
+name = "distributed-acceleration"
+status = "supported"
+evidence = "crates/atlas-worker"
+
+[[capabilities]]
+name = "advanced-automation"
+status = "supported"
+evidence = "tests/e2e/track4/manifest.toml"
+
+[[artifacts]]
+name = "protocol-schema"
+path = "crates/atlas-protocol/src/lib.rs"
+digest = "tracked-by-git"
+
+[[artifacts]]
+name = "track2-analysis"
+path = "tests/e2e/track2/manifest.toml"
+digest = "tracked-by-git"
+
+[[artifacts]]
+name = "track3-distributed"
+path = "tests/e2e/track3/manifest.toml"
+digest = "tracked-by-git"
+
+[[artifacts]]
+name = "track4-advanced"
+path = "tests/e2e/track4/manifest.toml"
+digest = "tracked-by-git"
+
+[[artifacts]]
+name = "x86-32-evidence"
+path = "tests/fixtures/architectures/x86_32.toml"
+digest = "tracked-by-git"
+
+[[artifacts]]
+name = "arm64-evidence"
+path = "tests/fixtures/architectures/arm64.toml"
+digest = "tracked-by-git"
+
+[[artifacts]]
+name = "wasm-evidence"
+path = "tests/fixtures/architectures/wasm.toml"
+digest = "tracked-by-git"
+
+[[artifacts]]
+name = "notebook-replay"
+path = "tests/fixtures/events/track1_stream.toml"
+digest = "tracked-by-git"
+
+[[benchmarks]]
+name = "track2-strategy-baseline"
+path = "benchmarks/track2/manifest.toml"
+hardware = "sample-corpus-cpu"
+sample_metadata = "bounded authorized fixtures"
+digest = "tracked-by-git"
+
+[[benchmarks]]
+name = "track3-placement-calibration"
+path = "benchmarks/track3/calibration.toml"
+hardware = "cpu-simd-gpu-threshold-model"
+sample_metadata = "deterministic synthetic search shapes"
+digest = "tracked-by-git"

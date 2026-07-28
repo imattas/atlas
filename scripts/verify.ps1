@@ -66,6 +66,27 @@ if ($Profile -in @("advanced", "full")) {
     }
 }
 
+if ($Profile -eq "full") {
+    foreach ($RequiredPath in @(
+        "release/manifest.schema.json",
+        "release/manifest.toml",
+        "release/write-manifest.sh",
+        "release/write_manifest.py",
+        "docs/installation.md",
+        "docs/security.md",
+        "docs/plugins.md",
+        "docs/architecture.md",
+        "tests/release/test_manifest.py"
+    )) {
+        if (!(Test-Path $RequiredPath)) {
+            Write-Error "missing full release artifact: $RequiredPath"
+            exit 1
+        }
+    }
+    Invoke-Step "release manifest validation" { python release/write_manifest.py --validate release/manifest.toml }
+    Invoke-Step "release manifest tests" { python -m unittest discover tests/release }
+}
+
 if (Test-Path "python/tests") {
     $pytestAvailable = $false
     try {

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AtlasCTF Release Manifest",
+  "type": "object",
+  "required": [
+    "manifest_version",
+    "source_revision",
+    "signature",
+    "required_suites",
+    "capabilities",
+    "artifacts",
+    "benchmarks"
+  ],
+  "properties": {
+    "manifest_version": { "const": "1" },
+    "source_revision": { "type": "string", "minLength": 1 },
+    "signature": { "type": "string", "minLength": 16 },
+    "required_suites": { "type": "array", "minItems": 4 },
+    "capabilities": { "type": "array", "minItems": 4 },
+    "artifacts": { "type": "array", "minItems": 8 },
+    "benchmarks": { "type": "array", "minItems": 2 }
+  }
+}

@@ -58,6 +58,27 @@ if [[ "$profile" == "advanced" || "$profile" == "full" ]]; then
   done
 fi
 
+if [[ "$profile" == "full" ]]; then
+  for required_path in \
+    release/manifest.schema.json \
+    release/manifest.toml \
+    release/write-manifest.sh \
+    release/write_manifest.py \
+    docs/installation.md \
+    docs/security.md \
+    docs/plugins.md \
+    docs/architecture.md \
+    tests/release/test_manifest.py
+  do
+    if [[ ! -e "$required_path" ]]; then
+      echo "missing full release artifact: $required_path" >&2
+      exit 1
+    fi
+  done
+  python release/write_manifest.py --validate release/manifest.toml
+  python -m unittest discover tests/release
+fi
+
 if [[ -d python/tests ]]; then
   if python -m pytest --version >/dev/null 2>&1; then
     python -m pytest python/tests
