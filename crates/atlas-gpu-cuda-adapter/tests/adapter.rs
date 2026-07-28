@@ -5,7 +5,6 @@ use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::SearchProgram;
 use std::cell::RefCell;
 use std::fs;
-use std::process::Command;
 
 #[derive(Debug, Clone, Copy)]
 struct FixtureLauncher;
@@ -170,31 +169,37 @@ fn compile_check_rejects_ptx_without_atlas_kernel_entry() {
 }
 
 #[test]
-#[ignore = "requires nvcc, CUDA driver runtime, and an NVIDIA CUDA device"]
+fn compile_check_routes_cuda_source_to_runtime_compiler_not_ptx_parser() {
+    let output_dir = std::env::temp_dir().join(format!("atlas-cuda-source-{}", std::process::id()));
+    fs::create_dir_all(&output_dir).unwrap();
+    let source_path = output_dir.join("atlas_search.cu");
+    fs::write(&source_path, "this is not valid cuda").unwrap();
+
+    let error = CudaPtxLauncher
+        .compile_check(&source_path.to_string_lossy())
+        .unwrap_err();
+
+    assert!(
+        error.contains("NVRTC")
+            || error.contains("nvrtc")
+            || error.contains("CUDA source compile failed"),
+        "{error}"
+    );
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+#[ignore = "requires NVRTC, CUDA driver runtime, and an NVIDIA CUDA device"]
 fn generated_cuda_kernel_runs_on_device_and_preserves_full_candidates() {
     let program = SearchProgram::try_from_fixture("xor").unwrap();
     let source = GpuSearcher::compile_cuda(&program);
     let output_dir = std::env::temp_dir().join(format!("atlas-cuda-e2e-{}", std::process::id()));
     fs::create_dir_all(&output_dir).unwrap();
     let source_path = output_dir.join("atlas_search.cu");
-    let ptx_path = output_dir.join("atlas_search.ptx");
     fs::write(&source_path, source).unwrap();
 
-    let compile = Command::new("nvcc")
-        .arg("-ptx")
-        .arg("-O2")
-        .arg(&source_path)
-        .arg("-o")
-        .arg(&ptx_path)
-        .output()
-        .unwrap_or_else(|error| panic!("nvcc is required for this ignored CUDA e2e test: {error}"));
-    assert!(
-        compile.status.success(),
-        "nvcc failed: {}",
-        String::from_utf8_lossy(&compile.stderr)
-    );
     let args = LaunchArgs {
-        artifact: ptx_path.to_string_lossy().into_owned(),
+        artifact: source_path.to_string_lossy().into_owned(),
         start: 0x50,
         end: 0x160,
         max_matches: 8,
@@ -202,7 +207,9 @@ fn generated_cuda_kernel_runs_on_device_and_preserves_full_candidates() {
         local_size: 64,
     };
 
-    let matches = CudaPtxLauncher.launch(&args).unwrap();
+    let matches = CudaPtxLauncher.launch(&args).unwrap_or_else(|error| {
+        panic!("CUDA NVRTC/driver/device e2e prerequisites failed: {error}")
+    });
 
     assert_eq!(matches, vec![0x55, 0x155]);
     let _ = fs::remove_dir_all(output_dir);

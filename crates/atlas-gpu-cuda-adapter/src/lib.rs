@@ -2,6 +2,7 @@
 
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
 use std::fs;
+use std::path::Path;
 use std::ptr;
 
 type CuDevice = c_int;
@@ -10,8 +11,11 @@ type CuModule = *mut c_void;
 type CuFunction = *mut c_void;
 type CuDevicePtr = u64;
 type CuResult = c_int;
+type NvrtcProgram = *mut c_void;
+type NvrtcResult = c_int;
 
 const CUDA_SUCCESS: CuResult = 0;
+const NVRTC_SUCCESS: NvrtcResult = 0;
 
 /// Parsed CUDA launch protocol arguments.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,8 +123,8 @@ pub trait Launcher {
 pub struct CudaPtxLauncher;
 
 impl Launcher for CudaPtxLauncher {
-    fn compile_check(&self, ptx: &str) -> Result<(), String> {
-        let ptx = read_ptx(ptx)?;
+    fn compile_check(&self, artifact: &str) -> Result<(), String> {
+        let ptx = read_cuda_artifact_as_ptx(artifact)?;
         ensure_atlas_entry(&ptx)?;
         if let Ok(driver) = CudaDriver::load() {
             let _context = driver.create_context()?;
@@ -132,7 +136,7 @@ impl Launcher for CudaPtxLauncher {
     }
 
     fn launch(&self, args: &LaunchArgs) -> Result<Vec<u64>, String> {
-        let ptx = read_ptx(&args.artifact)?;
+        let ptx = read_cuda_artifact_as_ptx(&args.artifact)?;
         ensure_atlas_entry(&ptx)?;
         let driver = CudaDriver::load()?;
         let _context = driver.create_context()?;
@@ -170,6 +174,18 @@ fn format_matches(matches: &[u64]) -> String {
 
 fn read_ptx(path: &str) -> Result<String, String> {
     fs::read_to_string(path).map_err(|error| error.to_string())
+}
+
+fn read_cuda_artifact_as_ptx(path: &str) -> Result<String, String> {
+    if Path::new(path)
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("ptx"))
+    {
+        return read_ptx(path);
+    }
+    let source = fs::read_to_string(path)
+        .map_err(|error| format!("cannot read CUDA source {path}: {error}"))?;
+    NvrtcCompiler::load()?.compile_source_to_ptx(&source)
 }
 
 fn ensure_atlas_entry(ptx: &str) -> Result<(), String> {
@@ -252,6 +268,169 @@ fn launch_cuda(
     matches.truncate(retained);
     matches.sort_unstable();
     Ok(matches)
+}
+
+#[derive(Debug)]
+struct NvrtcCompiler {
+    _library: DynamicLibrary,
+    api: NvrtcApi,
+}
+
+impl NvrtcCompiler {
+    fn load() -> Result<Self, String> {
+        let library = DynamicLibrary::open_nvrtc()?;
+        let api = unsafe { NvrtcApi::load(&library)? };
+        Ok(Self {
+            _library: library,
+            api,
+        })
+    }
+
+    fn compile_source_to_ptx(&self, source: &str) -> Result<String, String> {
+        let source =
+            CString::new(source).map_err(|_| "CUDA source contains interior NUL".to_owned())?;
+        let name = CString::new("atlas_search.cu").expect("static CUDA source name has no NUL");
+        let mut program = ptr::null_mut();
+        self.check(
+            unsafe {
+                (self.api.nvrtc_create_program)(
+                    &mut program,
+                    source.as_ptr(),
+                    name.as_ptr(),
+                    0,
+                    ptr::null(),
+                    ptr::null(),
+                )
+            },
+            "nvrtcCreateProgram",
+        )?;
+        let program = NvrtcProgramGuard {
+            compiler: self,
+            raw: program,
+        };
+        let option_strings = [
+            CString::new("--std=c++11").expect("static NVRTC option has no NUL"),
+            CString::new("--gpu-architecture=compute_52").expect("static NVRTC option has no NUL"),
+        ];
+        let options = option_strings
+            .iter()
+            .map(|option| option.as_ptr())
+            .collect::<Vec<_>>();
+        let compile_result = unsafe {
+            (self.api.nvrtc_compile_program)(
+                program.raw,
+                c_int::try_from(options.len()).expect("NVRTC option count fits c_int"),
+                options.as_ptr(),
+            )
+        };
+        if compile_result != NVRTC_SUCCESS {
+            return Err(format!(
+                "CUDA source compile failed: {}{}",
+                self.error_name(compile_result),
+                self.program_log(program.raw)
+                    .map(|log| format!(": {log}"))
+                    .unwrap_or_default()
+            ));
+        }
+        let mut ptx_size = 0_usize;
+        self.check(
+            unsafe { (self.api.nvrtc_get_ptx_size)(program.raw, &mut ptx_size) },
+            "nvrtcGetPTXSize",
+        )?;
+        let mut ptx = vec![0_u8; ptx_size];
+        self.check(
+            unsafe { (self.api.nvrtc_get_ptx)(program.raw, ptx.as_mut_ptr().cast::<c_char>()) },
+            "nvrtcGetPTX",
+        )?;
+        String::from_utf8(ptx)
+            .map(|ptx| ptx.trim_end_matches('\0').to_owned())
+            .map_err(|error| format!("NVRTC produced non-UTF8 PTX: {error}"))
+    }
+
+    fn program_log(&self, program: NvrtcProgram) -> Option<String> {
+        let mut log_size = 0_usize;
+        if unsafe { (self.api.nvrtc_get_program_log_size)(program, &mut log_size) } != NVRTC_SUCCESS
+            || log_size == 0
+        {
+            return None;
+        }
+        let mut log = vec![0_u8; log_size];
+        if unsafe { (self.api.nvrtc_get_program_log)(program, log.as_mut_ptr().cast::<c_char>()) }
+            != NVRTC_SUCCESS
+        {
+            return None;
+        }
+        String::from_utf8(log)
+            .ok()
+            .map(|log| log.trim_end_matches('\0').trim().to_owned())
+            .filter(|log| !log.is_empty())
+    }
+
+    fn error_name(&self, result: NvrtcResult) -> String {
+        let ptr = unsafe { (self.api.nvrtc_get_error_string)(result) };
+        if ptr.is_null() {
+            format!("NVRTC error {result}")
+        } else {
+            unsafe { CStr::from_ptr(ptr) }
+                .to_string_lossy()
+                .into_owned()
+        }
+    }
+
+    fn check(&self, result: NvrtcResult, operation: &str) -> Result<(), String> {
+        if result == NVRTC_SUCCESS {
+            Ok(())
+        } else {
+            Err(format!("{operation} failed: {}", self.error_name(result)))
+        }
+    }
+}
+
+#[derive(Debug)]
+struct NvrtcProgramGuard<'a> {
+    compiler: &'a NvrtcCompiler,
+    raw: NvrtcProgram,
+}
+
+impl Drop for NvrtcProgramGuard<'_> {
+    fn drop(&mut self) {
+        let _ = unsafe { (self.compiler.api.nvrtc_destroy_program)(&mut self.raw) };
+    }
+}
+
+#[derive(Debug)]
+struct NvrtcApi {
+    nvrtc_create_program: unsafe extern "C" fn(
+        *mut NvrtcProgram,
+        *const c_char,
+        *const c_char,
+        c_int,
+        *const *const c_char,
+        *const *const c_char,
+    ) -> NvrtcResult,
+    nvrtc_compile_program:
+        unsafe extern "C" fn(NvrtcProgram, c_int, *const *const c_char) -> NvrtcResult,
+    nvrtc_get_ptx_size: unsafe extern "C" fn(NvrtcProgram, *mut usize) -> NvrtcResult,
+    nvrtc_get_ptx: unsafe extern "C" fn(NvrtcProgram, *mut c_char) -> NvrtcResult,
+    nvrtc_get_program_log_size: unsafe extern "C" fn(NvrtcProgram, *mut usize) -> NvrtcResult,
+    nvrtc_get_program_log: unsafe extern "C" fn(NvrtcProgram, *mut c_char) -> NvrtcResult,
+    nvrtc_destroy_program: unsafe extern "C" fn(*mut NvrtcProgram) -> NvrtcResult,
+    nvrtc_get_error_string: unsafe extern "C" fn(NvrtcResult) -> *const c_char,
+}
+
+impl NvrtcApi {
+    unsafe fn load(library: &DynamicLibrary) -> Result<Self, String> {
+        Ok(Self {
+            nvrtc_create_program: library.symbol("nvrtcCreateProgram")?,
+            nvrtc_compile_program: library.symbol("nvrtcCompileProgram")?,
+            nvrtc_get_ptx_size: library.symbol("nvrtcGetPTXSize")?,
+            nvrtc_get_ptx: library.symbol("nvrtcGetPTX")?,
+            nvrtc_get_program_log_size: library.symbol("nvrtcGetProgramLogSize")?,
+            nvrtc_get_program_log: library.symbol("nvrtcGetProgramLog")?,
+            nvrtc_destroy_program: library.symbol("nvrtcDestroyProgram")?,
+            nvrtc_get_error_string: library.symbol("nvrtcGetErrorString")?,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -489,6 +668,44 @@ impl DynamicLibrary {
         }
     }
 
+    fn open_nvrtc() -> Result<Self, String> {
+        #[cfg(windows)]
+        {
+            if let Some(library) = find_windows_nvrtc_library() {
+                return Self::open(&library);
+            }
+            [
+                "nvrtc64_130_0.dll",
+                "nvrtc64_120_0.dll",
+                "nvrtc64_122_0.dll",
+                "nvrtc64_121_0.dll",
+                "nvrtc64_112_0.dll",
+                "nvrtc64_111_0.dll",
+                "nvrtc64_110_0.dll",
+            ]
+            .into_iter()
+            .find_map(|name| Self::open(name).ok())
+            .ok_or_else(|| "failed to load NVRTC runtime compiler library".to_owned())
+        }
+        #[cfg(target_os = "linux")]
+        {
+            Self::open("libnvrtc.so.12")
+                .or_else(|_| Self::open("libnvrtc.so.11"))
+                .or_else(|_| Self::open("libnvrtc.so"))
+                .map_err(|_| "failed to load NVRTC runtime compiler library".to_owned())
+        }
+        #[cfg(target_os = "macos")]
+        {
+            Self::open("/usr/local/cuda/lib/libnvrtc.dylib")
+                .or_else(|_| Self::open("libnvrtc.dylib"))
+                .map_err(|_| "failed to load NVRTC runtime compiler library".to_owned())
+        }
+        #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+        {
+            Err("NVRTC loading is unsupported on this platform".to_owned())
+        }
+    }
+
     fn open(name: &str) -> Result<Self, String> {
         let name =
             CString::new(name).map_err(|_| "library name contains interior NUL".to_owned())?;
@@ -516,6 +733,25 @@ impl DynamicLibrary {
             Ok(std::mem::transmute_copy::<*mut c_void, T>(&symbol))
         }
     }
+}
+
+#[cfg(windows)]
+fn find_windows_nvrtc_library() -> Option<String> {
+    std::env::var_os("PATH")
+        .into_iter()
+        .flat_map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
+        .filter_map(|dir| fs::read_dir(dir).ok())
+        .flat_map(|entries| entries.filter_map(Result::ok))
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| {
+                    let name = name.to_ascii_lowercase();
+                    name.starts_with("nvrtc64_") && name.ends_with(".dll")
+                })
+        })
+        .map(|path| path.to_string_lossy().into_owned())
 }
 
 impl Drop for DynamicLibrary {

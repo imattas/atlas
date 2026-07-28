@@ -197,8 +197,8 @@ impl DriverCommandPlan {
                     "gpu/cuda/atlas_search.cu",
                     "atlas_search.cu",
                     "atlas_search.ptx",
-                    "nvcc",
-                    "-ptx -O2",
+                    "atlas-gpu-cuda-run",
+                    "--compile-check",
                     GpuSearcher::compile_cuda(program),
                 ),
                 GpuSdk::Hip { .. } => (
@@ -213,7 +213,10 @@ impl DriverCommandPlan {
         let source_file = join_path(output_dir, source_name);
         let artifact_file = join_path(output_dir, artifact_name);
         let compile_command = compile_command_for(compiler, options, &source_file, &artifact_file);
-        let launch_input = if matches!(sdk, GpuSdk::OpenCl { .. } | GpuSdk::Vulkan { .. }) {
+        let launch_input = if matches!(
+            sdk,
+            GpuSdk::OpenCl { .. } | GpuSdk::Vulkan { .. } | GpuSdk::Cuda { .. }
+        ) {
             source_file.clone()
         } else {
             artifact_file.clone()
