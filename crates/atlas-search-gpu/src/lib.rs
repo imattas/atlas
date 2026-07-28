@@ -460,7 +460,7 @@ impl AcceleratorRuntime {
                 },
             };
         }
-        let matches = GpuSearcher::cpu_validate_matches(program, reported_device_matches);
+        let matches = validate_device_matches(program, domain, reported_device_matches);
         AcceleratorReport {
             mode: RuntimeMode::DeviceValidated,
             telemetry: RuntimeTelemetry {
@@ -622,7 +622,7 @@ impl AcceleratorRuntime {
                 },
             };
         }
-        let matches = GpuSearcher::cpu_validate_matches(program, &output.reported_matches);
+        let matches = validate_device_matches(program, domain, &output.reported_matches);
         AcceleratorReport {
             mode: RuntimeMode::DeviceValidated,
             telemetry: RuntimeTelemetry {
@@ -668,6 +668,19 @@ fn compile_command_for(
     command.push("-o".to_owned());
     command.push(artifact_file.to_owned());
     command
+}
+
+fn validate_device_matches(
+    program: &SearchProgram,
+    domain: SearchDomain,
+    reported: &[u64],
+) -> Vec<u64> {
+    reported
+        .iter()
+        .copied()
+        .filter(|candidate| *candidate >= domain.start && *candidate < domain.end)
+        .filter(|candidate| program.accepts(*candidate))
+        .collect()
 }
 
 fn join_path(output_dir: &str, artifact_name: &str) -> String {

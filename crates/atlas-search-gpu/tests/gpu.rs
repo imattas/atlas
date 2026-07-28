@@ -608,6 +608,23 @@ fn runtime_validates_reported_device_matches_before_returning_them() {
 }
 
 #[test]
+fn runtime_rejects_device_matches_outside_launch_domain() {
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "test OpenCL".to_owned(),
+    };
+
+    let report =
+        AcceleratorRuntime::execute(&program, SearchDomain::new(4, 64), &[sdk], &token, &[3]);
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    assert!(report.matches.is_empty());
+    assert!(report.telemetry.cpu_validated);
+    assert_eq!(report.telemetry.rejected_device_matches, 1);
+}
+
+#[test]
 fn public_execute_honors_cancellation_before_promoting_reported_device_matches() {
     let program = SearchProgram::try_from_fixture("add").unwrap();
     let token = CancellationToken::new();
