@@ -2,7 +2,7 @@
 
 use atlas_strategies::{
     recognize_rsa_small_private_exponent, record_lattice_basis_variants, solve_gf2,
-    solve_modular_linear,
+    solve_gf2_affine, solve_modular_linear,
 };
 
 #[test]
@@ -13,6 +13,23 @@ fn gf2_solver_matches_exhaustive_small_system() {
     let solution = solve_gf2(&matrix, &rhs).unwrap();
 
     assert_eq!(solution.assignments, vec![false, true]);
+}
+
+#[test]
+fn gf2_affine_solver_handles_underdetermined_ctf_xor_systems() {
+    // x0 ^ x1 ^ x2 = 1
+    // x1 ^ x2      = 0
+    //
+    // Reduced form fixes x0 = 1 and leaves x2 free, so one solution is
+    // [1, 0, 0] and the free basis toggles x1 and x2 together.
+    let matrix = vec![vec![true, true, true], vec![false, true, true]];
+    let rhs = vec![true, false];
+
+    let solution = solve_gf2_affine(&matrix, &rhs).unwrap();
+
+    assert_eq!(solution.particular, vec![true, false, false]);
+    assert_eq!(solution.free_columns, vec![2]);
+    assert_eq!(solution.basis, vec![vec![false, true, true]]);
 }
 
 #[test]
