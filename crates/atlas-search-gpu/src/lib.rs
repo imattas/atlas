@@ -504,6 +504,10 @@ pub struct RuntimePolicy {
 pub struct RuntimeTelemetry {
     /// Launch configuration.
     pub launch: LaunchConfig,
+    /// Actual GPU SDK family executed or attempted by the runtime.
+    ///
+    /// `None` means no GPU driver was launched or attempted.
+    pub selected_gpu_sdk: Option<String>,
     /// Selected SDK plan rationale.
     pub rationale: String,
     /// Whether every returned match was CPU validated.
@@ -586,6 +590,7 @@ impl AcceleratorRuntime {
                 matches: NativeSearcher::search(program, domain, cancellation),
                 telemetry: RuntimeTelemetry {
                     launch,
+                    selected_gpu_sdk: None,
                     rationale: plan.rationale,
                     cpu_validated: true,
                     rejected_device_matches: 0,
@@ -601,6 +606,7 @@ impl AcceleratorRuntime {
                 matches: NativeSearcher::search(program, domain, cancellation),
                 telemetry: RuntimeTelemetry {
                     launch,
+                    selected_gpu_sdk: plan.selected.as_ref().map(|sdk| sdk.name().to_owned()),
                     rationale: format!(
                         "{}; no valid device matches after CPU validation",
                         plan.rationale
@@ -625,6 +631,7 @@ impl AcceleratorRuntime {
                     matches: cpu_matches,
                     telemetry: RuntimeTelemetry {
                         launch,
+                        selected_gpu_sdk: plan.selected.as_ref().map(|sdk| sdk.name().to_owned()),
                         rationale: format!(
                             "{}; incomplete device matches after CPU completeness audit",
                             plan.rationale
@@ -639,6 +646,7 @@ impl AcceleratorRuntime {
             mode: RuntimeMode::DeviceValidated,
             telemetry: RuntimeTelemetry {
                 launch,
+                selected_gpu_sdk: plan.selected.as_ref().map(|sdk| sdk.name().to_owned()),
                 rationale: plan.rationale,
                 cpu_validated: true,
                 rejected_device_matches: validation.rejected,
@@ -737,6 +745,7 @@ impl AcceleratorRuntime {
                 matches: NativeSearcher::search(program, domain, cancellation),
                 telemetry: RuntimeTelemetry {
                     launch,
+                    selected_gpu_sdk: None,
                     rationale: rationale.to_owned(),
                     cpu_validated: true,
                     rejected_device_matches: 0,
@@ -752,6 +761,7 @@ impl AcceleratorRuntime {
                 matches: NativeSearcher::search(program, domain, cancellation),
                 telemetry: RuntimeTelemetry {
                     launch,
+                    selected_gpu_sdk: None,
                     rationale: "no compatible GPU SDK detected for search program".to_owned(),
                     cpu_validated: true,
                     rejected_device_matches: 0,
@@ -782,6 +792,7 @@ impl AcceleratorRuntime {
                     matches: NativeSearcher::search(program, domain, cancellation),
                     telemetry: RuntimeTelemetry {
                         launch,
+                        selected_gpu_sdk: None,
                         rationale: format!(
                             "{:?} placement selected: {}; {}",
                             placement.target,
@@ -887,12 +898,7 @@ impl AcceleratorRuntime {
                 return AcceleratorReport {
                     mode: RuntimeMode::CpuFallback,
                     matches: NativeSearcher::search(program, domain, cancellation),
-                    telemetry: RuntimeTelemetry {
-                        launch,
-                        rationale: base_rationale,
-                        cpu_validated: true,
-                        rejected_device_matches: 0,
-                    },
+                    telemetry: sdk_runtime_telemetry(launch, sdk, base_rationale, 0),
                 };
             }
             reported_matches.extend(output.reported_matches);
@@ -906,12 +912,7 @@ impl AcceleratorRuntime {
             return AcceleratorReport {
                 mode: RuntimeMode::CpuFallback,
                 matches: NativeSearcher::search(program, domain, cancellation),
-                telemetry: RuntimeTelemetry {
-                    launch,
-                    rationale: base_rationale,
-                    cpu_validated: true,
-                    rejected_device_matches: 0,
-                },
+                telemetry: sdk_runtime_telemetry(launch, sdk, base_rationale, 0),
             };
         }
         let validation =
@@ -921,12 +922,12 @@ impl AcceleratorRuntime {
             return AcceleratorReport {
                 mode: RuntimeMode::CpuFallback,
                 matches: NativeSearcher::search(program, domain, cancellation),
-                telemetry: RuntimeTelemetry {
+                telemetry: sdk_runtime_telemetry(
                     launch,
-                    rationale: format!("{base_rationale}; no valid device matches"),
-                    cpu_validated: true,
-                    rejected_device_matches: validation.rejected,
-                },
+                    sdk,
+                    format!("{base_rationale}; no valid device matches"),
+                    validation.rejected,
+                ),
             };
         }
         if cancellation.is_cancelled() {
@@ -942,23 +943,18 @@ impl AcceleratorRuntime {
                 return AcceleratorReport {
                     mode: RuntimeMode::CpuFallback,
                     matches: cpu_matches,
-                    telemetry: RuntimeTelemetry {
+                    telemetry: sdk_runtime_telemetry(
                         launch,
-                        rationale: format!("{base_rationale}; incomplete device matches"),
-                        cpu_validated: true,
-                        rejected_device_matches: validation.rejected,
-                    },
+                        sdk,
+                        format!("{base_rationale}; incomplete device matches"),
+                        validation.rejected,
+                    ),
                 };
             }
         }
         AcceleratorReport {
             mode: RuntimeMode::DeviceValidated,
-            telemetry: RuntimeTelemetry {
-                launch,
-                rationale: base_rationale,
-                cpu_validated: true,
-                rejected_device_matches: validation.rejected,
-            },
+            telemetry: sdk_runtime_telemetry(launch, sdk, base_rationale, validation.rejected),
             matches,
         }
     }
@@ -973,11 +969,27 @@ impl AcceleratorRuntime {
             matches: NativeSearcher::search(program, domain, cancellation),
             telemetry: RuntimeTelemetry {
                 launch: Self::plan_launch(domain, 256, 1024),
+                selected_gpu_sdk: None,
                 rationale: "cancelled before GPU driver launch".to_owned(),
                 cpu_validated: true,
                 rejected_device_matches: 0,
             },
         }
+    }
+}
+
+fn sdk_runtime_telemetry(
+    launch: LaunchConfig,
+    sdk: &GpuSdk,
+    rationale: String,
+    rejected_device_matches: usize,
+) -> RuntimeTelemetry {
+    RuntimeTelemetry {
+        launch,
+        selected_gpu_sdk: Some(sdk.name().to_owned()),
+        rationale,
+        cpu_validated: true,
+        rejected_device_matches,
     }
 }
 

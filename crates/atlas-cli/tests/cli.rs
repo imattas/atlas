@@ -411,6 +411,7 @@ fn benchmark_reports_native_and_forced_gpu_runtime() {
     assert!(output.contains("\"native\""));
     assert!(output.contains("\"accelerator\""));
     assert!(output.contains("\"requested_gpu_sdk\":\"opencl\""));
+    assert!(output.contains("\"actual_gpu_sdk\":\"OpenCL\""));
     assert!(output.contains("\"speedup_ratio\""));
     assert!(output.contains("\"mode\":\"DeviceValidated\""));
     assert!(output.contains("\"matches\":[85]"));

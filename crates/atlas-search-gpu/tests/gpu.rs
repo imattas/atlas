@@ -2345,6 +2345,7 @@ fn runtime_selects_detected_sdk_and_executes_driver_runner() {
 
     assert_eq!(report.mode, RuntimeMode::DeviceValidated);
     assert_eq!(report.matches, vec![3]);
+    assert_eq!(report.telemetry.selected_gpu_sdk.as_deref(), Some("OpenCL"));
     assert!(report.telemetry.rationale.contains("OpenCL"));
     assert!(report.telemetry.rationale.contains("driver exit 0"));
 }
@@ -2414,6 +2415,7 @@ fn runtime_telemetry_includes_driver_stderr_on_gpu_launch_failure() {
     );
 
     assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert_eq!(report.telemetry.selected_gpu_sdk.as_deref(), Some("CUDA"));
     assert!(report.telemetry.rationale.contains("CUDA"));
     assert!(report.telemetry.rationale.contains("driver exit 1"));
     assert!(report.telemetry.rationale.contains("nvcuda.dll"));
