@@ -23,6 +23,8 @@ Runtime behavior:
   frontends (`opencl-clang`, `glslc`, `nvcc`, or `hipcc`);
 - production driver execution is isolated behind a runner boundary so host
   adapters can compile/launch kernels without changing search semantics;
+- process-backed execution writes generated per-program kernel source into the
+  build output directory before invoking the selected SDK compiler;
 - launch configuration records global size, local size, output cap, and transfer
   bytes;
 - generated kernels are cache-keyed by program, compiler, device, and options;

@@ -4,6 +4,8 @@ use atlas_scheduler::CancellationToken;
 use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram};
 use atlas_search_native::NativeSearcher;
 use std::collections::BTreeSet;
+use std::fs;
+use std::path::Path;
 use std::process::Command;
 
 /// Kernel cache key.
@@ -130,8 +132,12 @@ impl GpuSdkPlan {
 pub struct DriverCommandPlan {
     /// SDK selected for this command plan.
     pub sdk: GpuSdk,
-    /// Kernel source artifact path.
+    /// Checked-in kernel template artifact path.
+    pub template_file: String,
+    /// Generated kernel source path used by the compiler command.
     pub source_file: String,
+    /// Generated kernel source text.
+    pub kernel_source: String,
     /// Compiled kernel artifact path.
     pub artifact_file: String,
     /// Command used to compile the kernel artifact.
@@ -169,34 +175,44 @@ impl DriverCommandPlan {
         launch: LaunchConfig,
         output_dir: &str,
     ) -> Self {
-        let (source_file, artifact_name, compiler, options) = match sdk {
-            GpuSdk::OpenCl { .. } => (
-                "gpu/opencl/atlas_search.cl",
-                "atlas_search.opencl.bin",
-                "opencl-clang",
-                "-cl-std=CL3.0 -O2",
-            ),
-            GpuSdk::Vulkan { .. } => (
-                "gpu/vulkan/atlas_search.comp",
-                "atlas_search.spv",
-                "glslc",
-                "-O",
-            ),
-            GpuSdk::Cuda { .. } => (
-                "gpu/cuda/atlas_search.cu",
-                "atlas_search.ptx",
-                "nvcc",
-                "-ptx -O2",
-            ),
-            GpuSdk::Hip { .. } => (
-                "gpu/hip/atlas_search.hip",
-                "atlas_search.hsaco",
-                "hipcc",
-                "-O2",
-            ),
-        };
+        let (template_file, source_name, artifact_name, compiler, options, kernel_source) =
+            match sdk {
+                GpuSdk::OpenCl { .. } => (
+                    "gpu/opencl/atlas_search.cl",
+                    "atlas_search.cl",
+                    "atlas_search.opencl.bin",
+                    "opencl-clang",
+                    "-cl-std=CL3.0 -O2",
+                    GpuSearcher::compile_opencl(program),
+                ),
+                GpuSdk::Vulkan { .. } => (
+                    "gpu/vulkan/atlas_search.comp",
+                    "atlas_search.comp",
+                    "atlas_search.spv",
+                    "glslc",
+                    "-O",
+                    GpuSearcher::compile_vulkan_glsl(program),
+                ),
+                GpuSdk::Cuda { .. } => (
+                    "gpu/cuda/atlas_search.cu",
+                    "atlas_search.cu",
+                    "atlas_search.ptx",
+                    "nvcc",
+                    "-ptx -O2",
+                    GpuSearcher::compile_cuda(program),
+                ),
+                GpuSdk::Hip { .. } => (
+                    "gpu/hip/atlas_search.hip",
+                    "atlas_search.hip",
+                    "atlas_search.hsaco",
+                    "hipcc",
+                    "-O2",
+                    GpuSearcher::compile_cuda(program),
+                ),
+            };
+        let source_file = join_path(output_dir, source_name);
         let artifact_file = join_path(output_dir, artifact_name);
-        let compile_command = compile_command_for(compiler, options, source_file, &artifact_file);
+        let compile_command = compile_command_for(compiler, options, &source_file, &artifact_file);
         let launch_command = vec![
             format!("atlas-gpu-{}-run", sdk.name().to_ascii_lowercase()),
             artifact_file.clone(),
@@ -213,7 +229,9 @@ impl DriverCommandPlan {
         ];
         Self {
             sdk: sdk.clone(),
-            source_file: source_file.to_owned(),
+            template_file: template_file.to_owned(),
+            source_file,
+            kernel_source,
             artifact_file,
             compile_command,
             launch_command,
@@ -255,17 +273,48 @@ pub trait DriverRunner {
     fn run(&self, plan: &DriverCommandPlan) -> DriverRunOutput;
 }
 
+/// Process command runner abstraction.
+pub trait CommandRunner {
+    /// Runs one command and returns process-style output.
+    fn run_command(&self, command: &[String]) -> DriverRunOutput;
+}
+
 /// Process-backed driver runner.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ProcessDriverRunner;
 
 impl DriverRunner for ProcessDriverRunner {
     fn run(&self, plan: &DriverCommandPlan) -> DriverRunOutput {
-        let compile = run_command(&plan.compile_command);
+        Self::run_with_command_runner(plan, self)
+    }
+}
+
+impl CommandRunner for ProcessDriverRunner {
+    fn run_command(&self, command: &[String]) -> DriverRunOutput {
+        run_command(command)
+    }
+}
+
+impl ProcessDriverRunner {
+    /// Writes generated source, runs compile command, then runs launch command.
+    #[must_use]
+    pub fn run_with_command_runner(
+        plan: &DriverCommandPlan,
+        runner: &dyn CommandRunner,
+    ) -> DriverRunOutput {
+        if let Err(error) = write_generated_source(plan) {
+            return DriverRunOutput {
+                exit_code: 127,
+                reported_matches: Vec::new(),
+                stdout: String::new(),
+                stderr: error,
+            };
+        }
+        let compile = runner.run_command(&plan.compile_command);
         if compile.exit_code != 0 {
             return compile;
         }
-        let mut launch = run_command(&plan.launch_command);
+        let mut launch = runner.run_command(&plan.launch_command);
         launch.stdout = [compile.stdout, launch.stdout].join("");
         launch.stderr = [compile.stderr, launch.stderr].join("");
         launch
@@ -439,6 +488,14 @@ fn compile_command_for(
 fn join_path(output_dir: &str, artifact_name: &str) -> String {
     let output_dir = output_dir.trim_end_matches(['/', '\\']);
     format!("{output_dir}/{artifact_name}")
+}
+
+fn write_generated_source(plan: &DriverCommandPlan) -> Result<(), String> {
+    let source_path = Path::new(&plan.source_file);
+    if let Some(parent) = source_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    fs::write(source_path, &plan.kernel_source).map_err(|error| error.to_string())
 }
 
 fn run_command(command: &[String]) -> DriverRunOutput {

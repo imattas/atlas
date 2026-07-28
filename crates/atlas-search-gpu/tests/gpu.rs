@@ -2,11 +2,13 @@
 
 use atlas_scheduler::CancellationToken;
 use atlas_search_gpu::{
-    AcceleratorRuntime, DriverCommandPlan, DriverRunOutput, DriverRunner, GpuSdk, GpuSdkDetector,
-    GpuSdkPlan, GpuSearcher, KernelCacheKey, RuntimeMode,
+    AcceleratorRuntime, CommandRunner, DriverCommandPlan, DriverRunOutput, DriverRunner, GpuSdk,
+    GpuSdkDetector, GpuSdkPlan, GpuSearcher, KernelCacheKey, ProcessDriverRunner, RuntimeMode,
 };
 use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram};
 use atlas_search_native::NativeSearcher;
+use std::cell::RefCell;
+use std::fs;
 use std::path::Path;
 
 #[derive(Debug)]
@@ -17,6 +19,31 @@ struct FixtureDriverRunner {
 impl DriverRunner for FixtureDriverRunner {
     fn run(&self, _plan: &DriverCommandPlan) -> DriverRunOutput {
         self.output.clone()
+    }
+}
+
+#[derive(Debug)]
+struct RecordingCommandRunner {
+    commands: RefCell<Vec<Vec<String>>>,
+}
+
+impl RecordingCommandRunner {
+    fn new() -> Self {
+        Self {
+            commands: RefCell::new(Vec::new()),
+        }
+    }
+}
+
+impl CommandRunner for RecordingCommandRunner {
+    fn run_command(&self, command: &[String]) -> DriverRunOutput {
+        self.commands.borrow_mut().push(command.to_vec());
+        DriverRunOutput {
+            exit_code: 0,
+            reported_matches: Vec::new(),
+            stdout: String::new(),
+            stderr: String::new(),
+        }
     }
 }
 
@@ -246,11 +273,12 @@ fn driver_command_plan_selects_sdk_specific_sources_and_compilers() {
         "target/atlas-gpu",
     );
 
-    assert_eq!(opencl.source_file, "gpu/opencl/atlas_search.cl");
+    assert_eq!(opencl.template_file, "gpu/opencl/atlas_search.cl");
+    assert_eq!(opencl.source_file, "target/atlas-gpu/atlas_search.cl");
     assert_eq!(opencl.compile_command[0], "opencl-clang");
-    assert_eq!(vulkan.source_file, "gpu/vulkan/atlas_search.comp");
+    assert_eq!(vulkan.template_file, "gpu/vulkan/atlas_search.comp");
     assert_eq!(vulkan.compile_command[0], "glslc");
-    assert_eq!(cuda.source_file, "gpu/cuda/atlas_search.cu");
+    assert_eq!(cuda.template_file, "gpu/cuda/atlas_search.cu");
     assert_eq!(cuda.compile_command[0], "nvcc");
     assert_ne!(opencl.cache_key, vulkan.cache_key);
 }
@@ -276,14 +304,52 @@ fn driver_command_plans_reference_checked_in_kernel_artifacts() {
 
         let workspace_path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
-            .join(&plan.source_file);
+            .join(&plan.template_file);
 
         assert!(
             workspace_path.exists(),
             "missing planned kernel source {}",
-            plan.source_file
+            plan.template_file
         );
     }
+}
+
+#[test]
+fn opencl_driver_plan_carries_generated_semantic_kernel_source() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "Khronos OpenCL SDK".to_owned(),
+    };
+
+    let plan = DriverCommandPlan::for_sdk(&sdk, &program, "target/atlas-gpu");
+
+    assert_eq!(plan.source_file, "target/atlas-gpu/atlas_search.cl");
+    assert!(plan.kernel_source.contains("candidate = start + gid"));
+    assert!(plan
+        .kernel_source
+        .contains("((candidate ^ 170UL) & mask) == 255UL"));
+    assert_eq!(plan.compile_command[0], "opencl-clang");
+    assert_eq!(plan.compile_command[3], "target/atlas-gpu/atlas_search.cl");
+}
+
+#[test]
+fn process_driver_runner_writes_generated_source_before_compile() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "Khronos OpenCL SDK".to_owned(),
+    };
+    let output_dir = std::env::temp_dir().join(format!("atlas-gpu-test-{}", std::process::id()));
+    let output_dir_text = output_dir.to_string_lossy().into_owned();
+    let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
+    let runner = RecordingCommandRunner::new();
+
+    let output = ProcessDriverRunner::run_with_command_runner(&plan, &runner);
+
+    let written_source = fs::read_to_string(&plan.source_file).unwrap();
+    assert_eq!(output.exit_code, 0);
+    assert!(written_source.contains("candidate = start + gid"));
+    assert_eq!(runner.commands.borrow().len(), 2);
+    let _ = fs::remove_dir_all(output_dir);
 }
 
 #[test]
