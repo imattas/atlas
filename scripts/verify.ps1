@@ -69,6 +69,23 @@ function Get-GpuFeatureProbeOk {
     return $false
 }
 
+function Assert-GpuFeatureProbeHasLaunchAbi {
+    param($Doctor)
+    if ($null -eq $Doctor -or $null -eq $Doctor.gpu_feature_probes) {
+        throw "GPU doctor did not report feature probes"
+    }
+    foreach ($Probe in $Doctor.gpu_feature_probes) {
+        if (![bool]$Probe.ok) {
+            continue
+        }
+        foreach ($RequiredFeature in @("launchAbiU32", "launchAbiU64")) {
+            if ($Probe.features -notcontains $RequiredFeature) {
+                throw "GPU feature probe $($Probe.name) missing $RequiredFeature"
+            }
+        }
+    }
+}
+
 function Invoke-ForcedGpuBenchmark {
     param(
         [string]$Name,
@@ -181,6 +198,7 @@ if ($Profile -eq "hardware") {
         }
         Write-Host $Output
         $script:HardwareDoctor = $Output | ConvertFrom-Json
+        Assert-GpuFeatureProbeHasLaunchAbi $script:HardwareDoctor
         $global:LASTEXITCODE = 0
     }
     Invoke-ForcedGpuBenchmark "Forced-GPU benchmark" $null $null

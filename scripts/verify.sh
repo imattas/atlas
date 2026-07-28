@@ -65,6 +65,23 @@ raise SystemExit(1)
 PY
 }
 
+assert_gpu_feature_probes_have_launch_abi() {
+  local doctor_json="$1"
+  DOCTOR_JSON="$doctor_json" python - <<'PY'
+import json
+import os
+
+document = json.loads(os.environ["DOCTOR_JSON"])
+for probe in document.get("gpu_feature_probes", []):
+    if not probe.get("ok"):
+        continue
+    features = set(probe.get("features", []))
+    for required in ["launchAbiU32", "launchAbiU64"]:
+        if required not in features:
+            raise SystemExit(f"GPU feature probe {probe.get('name')} missing {required}")
+PY
+}
+
 run_forced_gpu_benchmark() {
   local name="$1"
   local sdk="$2"
@@ -195,6 +212,7 @@ if [[ "$profile" == "hardware" ]]; then
     hardware_doctor_json='{"gpu_feature_probes":[]}'
   else
     printf "%s\n" "$hardware_doctor_json"
+    assert_gpu_feature_probes_have_launch_abi "$hardware_doctor_json"
   fi
   run_forced_gpu_benchmark "Forced-GPU benchmark" "" ""
   if gpu_feature_probe_ok "$hardware_doctor_json" OpenCL; then

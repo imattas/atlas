@@ -232,10 +232,12 @@ pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, Strin
 }
 
 fn format_features(features: &[String]) -> String {
-    features
+    let mut text = features
         .iter()
         .map(|feature| format!("feature={feature}\n"))
-        .collect()
+        .collect::<String>();
+    text.push_str("feature=launchAbiU32\nfeature=launchAbiU64\n");
+    text
 }
 
 fn format_launch_output(output: &LaunchOutput) -> String {

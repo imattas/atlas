@@ -129,7 +129,10 @@ fn parses_features_command() {
 fn cli_features_emits_launcher_capabilities() {
     let output = run_cli(&["--features".to_owned()], &FixtureLauncher).unwrap();
 
-    assert_eq!(output, "feature=shaderInt64\n");
+    assert_eq!(
+        output,
+        "feature=shaderInt64\nfeature=launchAbiU32\nfeature=launchAbiU64\n"
+    );
 }
 
 #[test]

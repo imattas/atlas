@@ -179,6 +179,26 @@ class VerifyScriptTests(unittest.TestCase):
                 for token in required_tokens:
                     self.assertIn(token, text)
 
+    def test_hardware_profile_requires_adapter_launch_abi_features(self):
+        expectations = {
+            "verify.ps1": [
+                "Assert-GpuFeatureProbeHasLaunchAbi",
+                "launchAbiU32",
+                "launchAbiU64",
+            ],
+            "verify.sh": [
+                "assert_gpu_feature_probes_have_launch_abi",
+                "launchAbiU32",
+                "launchAbiU64",
+            ],
+        }
+
+        for script_name, required_tokens in expectations.items():
+            with self.subTest(script=script_name):
+                text = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+                for token in required_tokens:
+                    self.assertIn(token, text)
+
     def test_hardware_profile_attempts_every_backend_before_reporting_failure(self):
         expectations = {
             "verify.ps1": ["Invoke-HardwareStep", "$HardwareFailures", "$HardwareFailures.Count"],
