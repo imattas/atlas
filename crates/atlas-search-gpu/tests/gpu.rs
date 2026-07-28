@@ -3,8 +3,8 @@
 use atlas_scheduler::CancellationToken;
 use atlas_search_gpu::{
     AcceleratorRuntime, CommandRunner, DriverCommandPlan, DriverRunOutput, DriverRunner, GpuSdk,
-    GpuSdkDetector, GpuSdkPlan, GpuSearcher, KernelCacheKey, ProcessDriverRunner, RuntimeMode,
-    RuntimePolicy,
+    GpuSdkDetector, GpuSdkPlan, GpuSearcher, KernelCacheKey, LaunchConfig, ProcessDriverRunner,
+    RuntimeMode, RuntimePolicy,
 };
 use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram};
 use atlas_search_native::NativeSearcher;
@@ -391,6 +391,30 @@ fn cuda_32_bit_codegen_does_not_require_64_bit_device_integer_ops() {
     assert!(cuda.contains("unsigned int* out_words"));
     assert!(cuda.contains("out_words[word_index] = raw_low"));
     assert!(cuda.contains("out_words[word_index + 1U] = raw_high"));
+}
+
+#[test]
+fn cuda_launch_plan_passes_explicit_u32_abi_for_32_bit_programs() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let plan = DriverCommandPlan::for_launch(
+        &GpuSdk::Cuda {
+            sdk: "CUDA runtime".to_owned(),
+        },
+        &program,
+        SearchDomain::new(0x50, 0x60),
+        LaunchConfig {
+            global_size: 256,
+            local_size: 256,
+            max_matches: 16,
+            output_buffer_bytes: 128,
+        },
+        "target/atlas-gpu",
+    );
+
+    assert!(plan
+        .launch_command
+        .windows(2)
+        .any(|window| window == ["--abi", "u32"]));
 }
 
 #[test]

@@ -3,8 +3,8 @@
 use atlas_gpu_cuda_adapter::{
     cuda_driver_library_candidates_from_roots, cuda_sdk_root_candidates_from_bases,
     nvcc_command_candidates_from_roots, nvcc_ptx_output_path_for_source,
-    nvrtc_library_candidates_from_roots, run_cli, AdapterCommand, CudaPtxLauncher, LaunchArgs,
-    LaunchOutput, Launcher,
+    nvrtc_library_candidates_from_roots, run_cli, AdapterCommand, CudaPtxLauncher, LaunchAbi,
+    LaunchArgs, LaunchOutput, Launcher,
 };
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::SearchProgram;
@@ -261,6 +261,49 @@ fn rejects_local_size_that_exceeds_cuda_block_limit() {
     .unwrap_err();
 
     assert!(error.contains("local-size exceeds CUDA block limit"));
+}
+
+#[test]
+fn parses_explicit_u32_launch_abi() {
+    let args = LaunchArgs::parse(&[
+        "target/atlas-gpu/atlas_search.ptx".to_owned(),
+        "--start".to_owned(),
+        "10".to_owned(),
+        "--end".to_owned(),
+        "20".to_owned(),
+        "--max-matches".to_owned(),
+        "3".to_owned(),
+        "--global-size".to_owned(),
+        "256".to_owned(),
+        "--local-size".to_owned(),
+        "64".to_owned(),
+        "--abi".to_owned(),
+        "u32".to_owned(),
+    ])
+    .unwrap();
+
+    assert_eq!(args.launch_abi, Some(LaunchAbi::U32));
+}
+
+#[test]
+fn rejects_missing_explicit_launch_abi_value() {
+    let error = LaunchArgs::parse(&[
+        "target/atlas-gpu/atlas_search.ptx".to_owned(),
+        "--start".to_owned(),
+        "10".to_owned(),
+        "--end".to_owned(),
+        "20".to_owned(),
+        "--max-matches".to_owned(),
+        "3".to_owned(),
+        "--global-size".to_owned(),
+        "256".to_owned(),
+        "--local-size".to_owned(),
+        "64".to_owned(),
+        "--abi".to_owned(),
+    ])
+    .unwrap_err();
+
+    assert!(error.contains("missing --abi value"));
 }
 
 #[test]
@@ -542,6 +585,7 @@ fn generated_cuda_kernel_runs_on_device_and_preserves_full_candidates() {
         max_matches: 8,
         global_size: 512,
         local_size: 64,
+        launch_abi: Some(LaunchAbi::U32),
     };
 
     let output = CudaPtxLauncher.launch(&args).unwrap_or_else(|error| {

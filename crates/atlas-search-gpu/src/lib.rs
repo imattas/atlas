@@ -351,7 +351,7 @@ impl DriverCommandPlan {
             | GpuSdk::Cuda { .. }
             | GpuSdk::Hip { .. } => artifact_file.clone(),
         };
-        let launch_command = vec![
+        let mut launch_command = vec![
             format!("atlas-gpu-{}-run", sdk.name().to_ascii_lowercase()),
             launch_input,
             "--start".to_owned(),
@@ -365,6 +365,10 @@ impl DriverCommandPlan {
             "--local-size".to_owned(),
             launch.local_size.to_string(),
         ];
+        if matches!(sdk, GpuSdk::Cuda { .. }) {
+            launch_command.push("--abi".to_owned());
+            launch_command.push(if program.width <= 32 { "u32" } else { "u64" }.to_owned());
+        }
         Self {
             sdk: sdk.clone(),
             template_file: template_file.to_owned(),

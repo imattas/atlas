@@ -36,6 +36,17 @@ pub struct LaunchArgs {
     pub global_size: usize,
     /// CUDA block size.
     pub local_size: usize,
+    /// Optional explicit host/kernel launch ABI.
+    pub launch_abi: Option<LaunchAbi>,
+}
+
+/// Host/kernel launch ABI used by generated CUDA kernels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LaunchAbi {
+    /// Split 64-bit launch bounds and match output into 32-bit words.
+    U32,
+    /// Use native 64-bit CUDA kernel parameters and match output.
+    U64,
 }
 
 /// Device launch output.
@@ -132,6 +143,9 @@ impl LaunchArgs {
         if u64::try_from(global_size).unwrap_or(u64::MAX) < end.saturating_sub(start) {
             return Err("global-size must cover launch domain".to_owned());
         }
+        let launch_abi = optional_flag_value(args, "--abi")?
+            .map(parse_launch_abi)
+            .transpose()?;
         Ok(Self {
             artifact: artifact.clone(),
             start,
@@ -139,6 +153,7 @@ impl LaunchArgs {
             max_matches,
             global_size,
             local_size,
+            launch_abi,
         })
     }
 }
@@ -198,7 +213,11 @@ impl Launcher for CudaPtxLauncher {
     fn launch(&self, args: &LaunchArgs) -> Result<LaunchOutput, String> {
         let ptx = read_cuda_artifact_as_ptx(&args.artifact)?;
         ensure_atlas_entry(&ptx)?;
-        let uses_u32_abi = uses_u32_launch_abi(&ptx);
+        let uses_u32_abi = match args.launch_abi {
+            Some(LaunchAbi::U32) => true,
+            Some(LaunchAbi::U64) => false,
+            None => uses_u32_launch_abi(&ptx),
+        };
         let driver = CudaDriver::load()?;
         let _context = driver.create_context()?;
         let ptx = CString::new(ptx).map_err(|_| "PTX contains interior NUL".to_owned())?;
@@ -331,6 +350,24 @@ fn optional_output_path(args: &[String]) -> Result<Option<String>, String> {
         .cloned()
         .map(Some)
         .ok_or_else(|| "missing output path after -o".to_owned())
+}
+
+fn optional_flag_value<'a>(args: &'a [String], flag: &str) -> Result<Option<&'a str>, String> {
+    let Some(index) = args.iter().position(|arg| arg == flag) else {
+        return Ok(None);
+    };
+    args.get(index + 1)
+        .map(String::as_str)
+        .map(Some)
+        .ok_or_else(|| format!("missing {flag} value"))
+}
+
+fn parse_launch_abi(value: &str) -> Result<LaunchAbi, String> {
+    match value {
+        "u32" => Ok(LaunchAbi::U32),
+        "u64" => Ok(LaunchAbi::U64),
+        _ => Err(format!("unsupported --abi '{value}'; expected u32 or u64")),
+    }
 }
 
 fn launch_cuda(
