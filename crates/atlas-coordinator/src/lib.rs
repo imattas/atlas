@@ -115,6 +115,10 @@ impl ArtifactEnvelope {
 pub enum CoordinatorError {
     /// Worker certificate is not trusted.
     UntrustedCertificate,
+    /// Transport did not present a client certificate.
+    MissingClientCertificate,
+    /// The transport endpoint identity does not match the configured server.
+    ServerIdentityMismatch,
     /// Job signature or result signature is invalid.
     Tampered,
     /// Lease expired.
@@ -164,6 +168,51 @@ pub struct CoordinatorSnapshot {
     pub artifacts: BTreeMap<String, ArtifactEnvelope>,
 }
 
+/// Peer identity observed after a mutually-authenticated transport handshake.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MutuallyAuthenticatedPeer {
+    /// Client certificate fingerprint, if a client certificate was presented.
+    pub client_certificate_fingerprint: Option<String>,
+    /// Server name used by the client.
+    pub server_name: String,
+    /// Server certificate fingerprint observed by the client.
+    pub server_certificate_fingerprint: String,
+}
+
+/// Coordinator mutual-authentication policy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MutualTlsTransportPolicy {
+    trusted_client_certificates: BTreeSet<String>,
+    expected_server_name: String,
+    expected_server_certificate_fingerprint: String,
+}
+
+impl MutualTlsTransportPolicy {
+    /// Authorizes a peer identity captured from a transport handshake.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the client certificate is missing or untrusted, or
+    /// when the server identity does not match the configured coordinator.
+    pub fn authorize(&self, peer: &MutuallyAuthenticatedPeer) -> Result<(), CoordinatorError> {
+        if peer.server_name != self.expected_server_name
+            || peer.server_certificate_fingerprint != self.expected_server_certificate_fingerprint
+        {
+            return Err(CoordinatorError::ServerIdentityMismatch);
+        }
+        let Some(client_certificate) = &peer.client_certificate_fingerprint else {
+            return Err(CoordinatorError::MissingClientCertificate);
+        };
+        if !self
+            .trusted_client_certificates
+            .contains(client_certificate)
+        {
+            return Err(CoordinatorError::UntrustedCertificate);
+        }
+        Ok(())
+    }
+}
+
 impl Coordinator {
     /// Creates a coordinator with trusted certificate fingerprints.
     #[must_use]
@@ -204,6 +253,20 @@ impl Coordinator {
             active_leases: self.active_leases.clone(),
             last_heartbeats: self.last_heartbeats.clone(),
             artifacts: self.artifacts.clone(),
+        }
+    }
+
+    /// Creates a mutual-authentication policy for coordinator RPC transport.
+    #[must_use]
+    pub fn mutual_tls_policy(
+        &self,
+        expected_server_name: impl Into<String>,
+        expected_server_certificate_fingerprint: impl Into<String>,
+    ) -> MutualTlsTransportPolicy {
+        MutualTlsTransportPolicy {
+            trusted_client_certificates: self.trusted_certificates.clone(),
+            expected_server_name: expected_server_name.into(),
+            expected_server_certificate_fingerprint: expected_server_certificate_fingerprint.into(),
         }
     }
 

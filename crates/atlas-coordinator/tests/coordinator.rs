@@ -1,8 +1,8 @@
 //! Coordinator/worker integration tests.
 
 use atlas_coordinator::{
-    caps, ArtifactEnvelope, Coordinator, CoordinatorError, JobEnvelope, SqliteLeaseStore,
-    WorkerResult,
+    caps, ArtifactEnvelope, Coordinator, CoordinatorError, JobEnvelope, MutuallyAuthenticatedPeer,
+    SqliteLeaseStore, WorkerResult,
 };
 use atlas_worker::{SandboxControl, SandboxPolicy, WorkerRegistration};
 use std::path::PathBuf;
@@ -29,6 +29,47 @@ fn valid_registration_and_untrusted_certificate_are_handled() {
     assert_eq!(
         coordinator.register(registration("worker-2", "bad", &["cpu"])),
         Err(CoordinatorError::UntrustedCertificate)
+    );
+}
+
+#[test]
+fn mutual_tls_transport_requires_trusted_client_and_expected_server_identity() {
+    let policy = Coordinator::new(["trusted-worker".to_owned()])
+        .mutual_tls_policy("coordinator.internal", "coordinator-cert");
+    let trusted = MutuallyAuthenticatedPeer {
+        client_certificate_fingerprint: Some("trusted-worker".to_owned()),
+        server_name: "coordinator.internal".to_owned(),
+        server_certificate_fingerprint: "coordinator-cert".to_owned(),
+    };
+
+    assert!(policy.authorize(&trusted).is_ok());
+    assert_eq!(
+        policy.authorize(&MutuallyAuthenticatedPeer {
+            client_certificate_fingerprint: None,
+            ..trusted.clone()
+        }),
+        Err(CoordinatorError::MissingClientCertificate)
+    );
+    assert_eq!(
+        policy.authorize(&MutuallyAuthenticatedPeer {
+            client_certificate_fingerprint: Some("untrusted-worker".to_owned()),
+            ..trusted.clone()
+        }),
+        Err(CoordinatorError::UntrustedCertificate)
+    );
+    assert_eq!(
+        policy.authorize(&MutuallyAuthenticatedPeer {
+            server_name: "wrong.internal".to_owned(),
+            ..trusted.clone()
+        }),
+        Err(CoordinatorError::ServerIdentityMismatch)
+    );
+    assert_eq!(
+        policy.authorize(&MutuallyAuthenticatedPeer {
+            server_certificate_fingerprint: "wrong-cert".to_owned(),
+            ..trusted
+        }),
+        Err(CoordinatorError::ServerIdentityMismatch)
     );
 }
 
