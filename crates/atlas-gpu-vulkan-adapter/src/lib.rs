@@ -149,7 +149,7 @@ pub struct VulkanSpirvLauncher;
 
 impl Launcher for VulkanSpirvLauncher {
     fn features(&self) -> Result<Vec<String>, String> {
-        let runtime = VulkanRuntime::new()?;
+        let runtime = VulkanRuntime::new(vk::PhysicalDeviceFeatures::default())?;
         Ok(runtime.features())
     }
 
@@ -158,7 +158,7 @@ impl Launcher for VulkanSpirvLauncher {
         if let Some(output) = output {
             write_spirv_words(output, &code)?;
         }
-        if let Ok(runtime) = VulkanRuntime::new() {
+        if let Ok(runtime) = VulkanRuntime::new(required_device_features_for_spirv(&code)) {
             let _shader = runtime.create_shader_module(&code)?;
         }
         Ok(())
@@ -171,7 +171,7 @@ impl Launcher for VulkanSpirvLauncher {
             ));
         }
         let code = read_shader_words(&args.artifact)?;
-        let runtime = VulkanRuntime::new()?;
+        let runtime = VulkanRuntime::new(required_device_features_for_spirv(&code))?;
         runtime.launch(&code, args)
     }
 }
@@ -457,7 +457,7 @@ struct VulkanRuntime {
 }
 
 impl VulkanRuntime {
-    fn new() -> Result<Self, String> {
+    fn new(features: vk::PhysicalDeviceFeatures) -> Result<Self, String> {
         let entry = load_vulkan_entry()?;
         let app_name = CString::new("atlas-gpu-vulkan-run").map_err(|error| error.to_string())?;
         let app_info = vk::ApplicationInfo::default()
@@ -477,7 +477,6 @@ impl VulkanRuntime {
         let queue_info = [vk::DeviceQueueCreateInfo::default()
             .queue_family_index(queue_family_index)
             .queue_priorities(&priorities)];
-        let features = required_device_features();
         let device_info = vk::DeviceCreateInfo::default()
             .queue_create_infos(&queue_info)
             .enabled_features(&features);
@@ -834,11 +833,39 @@ impl Drop for VulkanRuntime {
     }
 }
 
-fn required_device_features() -> vk::PhysicalDeviceFeatures {
+fn required_device_features_for_spirv(words: &[u32]) -> vk::PhysicalDeviceFeatures {
     vk::PhysicalDeviceFeatures {
-        shader_int64: vk::TRUE,
+        shader_int64: if spirv_declares_int64_capability(words) {
+            vk::TRUE
+        } else {
+            vk::FALSE
+        },
         ..Default::default()
     }
+}
+
+fn spirv_declares_int64_capability(words: &[u32]) -> bool {
+    const OP_CAPABILITY: u32 = 17;
+    const CAPABILITY_INT64: u32 = 11;
+    let mut index = 5;
+    while index < words.len() {
+        let instruction = words[index];
+        let word_count = usize::try_from(instruction >> 16).unwrap_or(0);
+        let opcode = instruction & 0xffff;
+        if word_count == 0 {
+            return false;
+        }
+        if opcode == OP_CAPABILITY
+            && word_count >= 2
+            && words
+                .get(index + 1)
+                .is_some_and(|capability| *capability == CAPABILITY_INT64)
+        {
+            return true;
+        }
+        index = index.saturating_add(word_count);
+    }
+    false
 }
 
 fn select_compute_queue(instance: &ash::Instance) -> Result<(vk::PhysicalDevice, u32), String> {
@@ -1007,9 +1034,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn vulkan_device_features_enable_shader_int64_for_generated_kernels() {
-        let features = required_device_features();
+    fn vulkan_device_features_enable_shader_int64_only_when_spirv_declares_int64() {
+        let without_int64 = [
+            SPIRV_MAGIC,
+            0x0001_0000,
+            0,
+            1,
+            0,
+            (2 << 16) | 17,
+            1,
+        ];
+        let with_int64 = [
+            SPIRV_MAGIC,
+            0x0001_0000,
+            0,
+            1,
+            0,
+            (2 << 16) | 17,
+            11,
+        ];
 
-        assert_eq!(features.shader_int64, vk::TRUE);
+        assert_eq!(
+            required_device_features_for_spirv(&without_int64).shader_int64,
+            vk::FALSE
+        );
+        assert_eq!(
+            required_device_features_for_spirv(&with_int64).shader_int64,
+            vk::TRUE
+        );
     }
 }
