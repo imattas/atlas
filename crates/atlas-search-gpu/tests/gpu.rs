@@ -752,6 +752,28 @@ fn process_driver_runner_resolves_adjacent_adapter_command_when_not_on_path() {
 }
 
 #[test]
+fn process_driver_runner_resolves_hipcc_from_hip_sdk_root_when_not_on_path() {
+    let sdk_root = std::env::temp_dir().join(format!("atlas-hip-sdk-root-{}", std::process::id()));
+    let empty_path = std::env::temp_dir().join(format!("atlas-empty-path-{}", std::process::id()));
+    fs::create_dir_all(&empty_path).unwrap();
+    let hipcc_path = write_sdk_tool(&sdk_root, "hipcc", "hipcc-ok", 9);
+    let original_hip_path = std::env::var_os("HIP_PATH");
+    let original_path = std::env::var_os("PATH");
+    std::env::set_var("HIP_PATH", &sdk_root);
+    std::env::set_var("PATH", &empty_path);
+
+    let output = ProcessDriverRunner.run_command(&["hipcc".to_owned()]);
+
+    restore_env("HIP_PATH", original_hip_path);
+    restore_env("PATH", original_path);
+    let _ = fs::remove_file(hipcc_path);
+    let _ = fs::remove_dir_all(sdk_root);
+    let _ = fs::remove_dir_all(empty_path);
+    assert_eq!(output.exit_code, 9);
+    assert!(output.stdout.contains("hipcc-ok"));
+}
+
+#[test]
 fn driver_launch_plan_carries_domain_and_output_capacity() {
     let program = SearchProgram::try_from_fixture("xor").unwrap();
     let launch = AcceleratorRuntime::plan_launch(SearchDomain::new(10, 99), 128, 17);
@@ -807,6 +829,43 @@ fn write_adjacent_test_adapter(name: &str) -> PathBuf {
         permissions.set_mode(0o755);
         fs::set_permissions(&path, permissions).unwrap();
         path
+    }
+}
+
+fn write_sdk_tool(sdk_root: &Path, name: &str, stdout: &str, exit_code: i32) -> PathBuf {
+    let bin_dir = sdk_root.join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+    #[cfg(windows)]
+    {
+        let path = bin_dir.join(format!("{name}.cmd"));
+        fs::write(
+            &path,
+            format!("@echo off\r\necho {stdout}\r\nexit /b {exit_code}\r\n"),
+        )
+        .unwrap();
+        path
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let path = bin_dir.join(name);
+        fs::write(
+            &path,
+            format!("#!/bin/sh\necho {stdout}\nexit {exit_code}\n"),
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&path, permissions).unwrap();
+        path
+    }
+}
+
+fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
+    if let Some(value) = original {
+        std::env::set_var(name, value);
+    } else {
+        std::env::remove_var(name);
     }
 }
 

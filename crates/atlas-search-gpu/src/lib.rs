@@ -719,19 +719,18 @@ fn run_command(command: &[String]) -> DriverRunOutput {
             stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
         },
-        Err(error) => {
-            run_resolved_adapter_command(program, args).unwrap_or_else(|| DriverRunOutput {
-                exit_code: 127,
-                reported_matches: Vec::new(),
-                stdout: String::new(),
-                stderr: error.to_string(),
-            })
-        }
+        Err(error) => run_resolved_command(program, args).unwrap_or_else(|| DriverRunOutput {
+            exit_code: 127,
+            reported_matches: Vec::new(),
+            stdout: String::new(),
+            stderr: error.to_string(),
+        }),
     }
 }
 
-fn run_resolved_adapter_command(program: &str, args: &[String]) -> Option<DriverRunOutput> {
-    let program_path = resolve_adjacent_adapter_program(program)?;
+fn run_resolved_command(program: &str, args: &[String]) -> Option<DriverRunOutput> {
+    let program_path =
+        resolve_adjacent_adapter_program(program).or_else(|| resolve_sdk_tool_program(program))?;
     let output = Command::new(program_path).args(args).output().ok()?;
     Some(DriverRunOutput {
         exit_code: output.status.code().unwrap_or(1),
@@ -759,6 +758,44 @@ fn resolve_adjacent_adapter_program(program: &str) -> Option<PathBuf> {
 }
 
 fn adapter_program_candidates(dir: &Path, plain_name: &str) -> Vec<PathBuf> {
+    let mut candidates = vec![dir.join(plain_name)];
+    #[cfg(windows)]
+    {
+        candidates.push(dir.join(format!("{plain_name}.exe")));
+        candidates.push(dir.join(format!("{plain_name}.cmd")));
+        candidates.push(dir.join(format!("{plain_name}.bat")));
+    }
+    candidates
+}
+
+fn resolve_sdk_tool_program(program: &str) -> Option<PathBuf> {
+    let plain_name = Path::new(program).file_name()?.to_str()?;
+    if plain_name != program || !is_known_sdk_tool(plain_name) {
+        return None;
+    }
+    sdk_root_dirs()
+        .into_iter()
+        .flat_map(|root| {
+            [root.clone(), root.join("bin")]
+                .into_iter()
+                .flat_map(move |dir| sdk_tool_candidates(&dir, plain_name))
+        })
+        .find(|candidate| candidate.is_file())
+}
+
+fn is_known_sdk_tool(name: &str) -> bool {
+    matches!(name.to_ascii_lowercase().as_str(), "hipcc")
+}
+
+fn sdk_root_dirs() -> Vec<PathBuf> {
+    ["HIP_PATH", "ROCM_PATH"]
+        .into_iter()
+        .filter_map(std::env::var_os)
+        .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
+        .collect()
+}
+
+fn sdk_tool_candidates(dir: &Path, plain_name: &str) -> Vec<PathBuf> {
     let mut candidates = vec![dir.join(plain_name)];
     #[cfg(windows)]
     {
