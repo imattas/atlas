@@ -297,6 +297,7 @@ fn compile_check_rejects_ptx_without_atlas_kernel_entry() {
 
 #[test]
 fn compile_check_routes_cuda_source_to_runtime_compiler_not_ptx_parser() {
+    let _env_guard = env_lock();
     let output_dir = std::env::temp_dir().join(format!("atlas-cuda-source-{}", std::process::id()));
     fs::create_dir_all(&output_dir).unwrap();
     let source_path = output_dir.join("atlas_search.cu");
