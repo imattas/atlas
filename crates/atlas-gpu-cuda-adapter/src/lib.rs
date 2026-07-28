@@ -580,7 +580,8 @@ struct CudaDriver {
 
 impl CudaDriver {
     fn load() -> Result<Self, String> {
-        let library = DynamicLibrary::open_cuda()?;
+        let library = DynamicLibrary::open_cuda()
+            .map_err(|error| cuda_driver_load_error(error, cuda_root_dirs()))?;
         let api = unsafe { CudaApi::load(&library)? };
         let driver = Self {
             _library: library,
@@ -694,6 +695,17 @@ impl CudaDriver {
             Err(format!("{operation} failed with CUDA error {result}"))
         }
     }
+}
+
+fn cuda_driver_load_error(
+    error: impl AsRef<str>,
+    roots: impl IntoIterator<Item = PathBuf>,
+) -> String {
+    format!(
+        "{}; searched CUDA driver candidates: {}",
+        error.as_ref(),
+        format_cuda_driver_search_candidates_from_roots(roots)
+    )
 }
 
 #[derive(Debug)]
@@ -878,6 +890,12 @@ fn find_cuda_root_driver_library() -> Option<String> {
         .into_iter()
         .find(|path| path.is_file())
         .map(|path| path.to_string_lossy().into_owned())
+}
+
+fn format_cuda_driver_search_candidates_from_roots(
+    roots: impl IntoIterator<Item = PathBuf>,
+) -> String {
+    format_path_candidates(cuda_driver_library_candidates_from_roots(roots))
 }
 
 fn cuda_driver_library_dirs(root: &Path) -> Vec<PathBuf> {
@@ -1257,5 +1275,20 @@ mod tests {
 
         assert_eq!(found, Some(library.to_string_lossy().into_owned()));
         let _ = std::fs::remove_dir_all(cuda_root);
+    }
+
+    #[test]
+    fn cuda_driver_load_errors_report_searched_driver_candidates() {
+        let cuda_root = PathBuf::from("C:/atlas-test/cuda");
+
+        let error = cuda_driver_load_error(
+            "failed to load CUDA driver library nvcuda.dll",
+            [cuda_root.clone()],
+        );
+
+        assert!(error.contains("failed to load CUDA driver library"));
+        assert!(error.contains("searched CUDA driver candidates"));
+        assert!(error.contains("atlas-test"));
+        assert!(error.contains("nvcuda"));
     }
 }
