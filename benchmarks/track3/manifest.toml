@@ -1,0 +1,21 @@
+name = "atlas-track3-distributed-acceleration"
+schema_major = 1
+
+[[case]]
+id = "bounded-scalar-simd-gpu-equivalence"
+expected = "identical-matches"
+targets = ["scalar", "simd", "gpu-fallback"]
+
+[[case]]
+id = "two-worker-equivalence"
+expected = "deduplicated-results"
+workers = 2
+
+[[sample]]
+id = "break-even-generic-ci"
+hardware = "generic-ci"
+samples = 3
+scalar_ms = [1, 1, 1]
+simd_ms = [1, 1, 1]
+gpu_compile_ms = [0, 0, 0]
+distributed_overhead_ms = [1, 1, 1]

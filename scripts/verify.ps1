@@ -35,6 +35,22 @@ if ($Profile -in @("analysis", "distributed", "advanced", "full")) {
     }
 }
 
+if ($Profile -in @("distributed", "advanced", "full")) {
+    foreach ($RequiredPath in @(
+        "tests/e2e/track3/manifest.toml",
+        "benchmarks/track3/manifest.toml",
+        "benchmarks/track3/calibration.toml",
+        "docs/guides/workers.md",
+        "deploy/worker/README.md",
+        "gpu/cuda/atlas_search.cu"
+    )) {
+        if (!(Test-Path $RequiredPath)) {
+            Write-Error "missing distributed release artifact: $RequiredPath"
+            exit 1
+        }
+    }
+}
+
 if (Test-Path "python/tests") {
     $pytestAvailable = $false
     try {

@@ -1,0 +1,17 @@
+name = "atlas-track3-e2e"
+schema_major = 1
+
+[[scenario]]
+id = "local-placement"
+requires = ["atlas-placement", "atlas-search-native", "atlas-search-simd", "atlas-search-gpu"]
+expected = "validated-equivalent-matches"
+
+[[scenario]]
+id = "worker-registration-and-result"
+requires = ["atlas-worker", "atlas-coordinator"]
+expected = "signed-deduplicated-result"
+
+[[scenario]]
+id = "worker-isolation-policy"
+requires = ["deploy/worker"]
+expected = "network-env-docker-denied"

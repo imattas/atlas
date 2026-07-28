@@ -27,6 +27,22 @@ if [[ "$profile" == "analysis" || "$profile" == "distributed" || "$profile" == "
   done
 fi
 
+if [[ "$profile" == "distributed" || "$profile" == "advanced" || "$profile" == "full" ]]; then
+  for required_path in \
+    tests/e2e/track3/manifest.toml \
+    benchmarks/track3/manifest.toml \
+    benchmarks/track3/calibration.toml \
+    docs/guides/workers.md \
+    deploy/worker/README.md \
+    gpu/cuda/atlas_search.cu
+  do
+    if [[ ! -e "$required_path" ]]; then
+      echo "missing distributed release artifact: $required_path" >&2
+      exit 1
+    fi
+  done
+fi
+
 if [[ -d python/tests ]]; then
   if python -m pytest --version >/dev/null 2>&1; then
     python -m pytest python/tests
