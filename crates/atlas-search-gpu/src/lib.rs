@@ -702,12 +702,15 @@ fn validate_device_matches(
     domain: SearchDomain,
     reported: &[u64],
 ) -> Vec<u64> {
-    reported
+    let mut matches = reported
         .iter()
         .copied()
         .filter(|candidate| *candidate >= domain.start && *candidate < domain.end)
         .filter(|candidate| program.accepts(*candidate))
-        .collect()
+        .collect::<Vec<_>>();
+    matches.sort_unstable();
+    matches.dedup();
+    matches
 }
 
 fn join_path(output_dir: &str, artifact_name: &str) -> String {
