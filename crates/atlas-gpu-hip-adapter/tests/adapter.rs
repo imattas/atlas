@@ -2,7 +2,8 @@
 
 use atlas_gpu_hip_adapter::{
     hip_runtime_library_candidates_from_host_roots, hip_runtime_library_candidates_from_roots,
-    run_cli, AdapterCommand, HipLaunchAbi, HipModuleLauncher, LaunchArgs, LaunchOutput, Launcher,
+    run_cli, AdapterCommand, FeatureReport, HipLaunchAbi, HipModuleLauncher, LaunchArgs,
+    LaunchOutput, Launcher,
 };
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::{SearchOp, SearchProgram};
@@ -26,8 +27,11 @@ fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
 struct FixtureLauncher;
 
 impl Launcher for FixtureLauncher {
-    fn features(&self) -> Result<Vec<String>, String> {
-        Ok(vec!["int64".to_owned()])
+    fn features(&self) -> Result<FeatureReport, String> {
+        Ok(FeatureReport {
+            hardware: "AMD Radeon RX 7900 XTX via HIP".to_owned(),
+            features: vec!["int64".to_owned()],
+        })
     }
 
     fn compile_check(&self, _artifact: &str, _output: Option<&str>) -> Result<(), String> {
@@ -62,8 +66,11 @@ impl RecordingLauncher {
 }
 
 impl Launcher for RecordingLauncher {
-    fn features(&self) -> Result<Vec<String>, String> {
-        Ok(Vec::new())
+    fn features(&self) -> Result<FeatureReport, String> {
+        Ok(FeatureReport {
+            hardware: "Fixture HIP device".to_owned(),
+            features: Vec::new(),
+        })
     }
 
     fn compile_check(&self, artifact: &str, output: Option<&str>) -> Result<(), String> {
@@ -155,7 +162,7 @@ fn cli_features_emits_launcher_capabilities() {
 
     assert_eq!(
         output,
-        "hardware=HIP runtime device\nfeature=int64\nfeature=launchAbiU32\nfeature=launchAbiU64\n"
+        "hardware=AMD Radeon RX 7900 XTX via HIP\nfeature=int64\nfeature=launchAbiU32\nfeature=launchAbiU64\n"
     );
 }
 

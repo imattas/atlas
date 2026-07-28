@@ -1,6 +1,6 @@
 //! HIP launch adapter.
 
-use std::ffi::{c_char, c_int, c_uint, c_void, CString};
+use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -160,7 +160,7 @@ pub trait Launcher {
     /// # Errors
     ///
     /// Returns an error when HIP runtime loading or device selection fails.
-    fn features(&self) -> Result<Vec<String>, String>;
+    fn features(&self) -> Result<FeatureReport, String>;
 
     /// Checks generated HIP code object can provide the expected
     /// `atlas_search` kernel.
@@ -179,16 +179,28 @@ pub trait Launcher {
     fn launch(&self, args: &LaunchArgs) -> Result<LaunchOutput, String>;
 }
 
+/// Runtime/device feature report emitted by `--features`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FeatureReport {
+    /// Concrete hardware/runtime identity selected by the adapter.
+    pub hardware: String,
+    /// Kernel capabilities available for generated HIP code.
+    pub features: Vec<String>,
+}
+
 /// HIP runtime backed code-object launcher.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct HipModuleLauncher;
 
 impl Launcher for HipModuleLauncher {
-    fn features(&self) -> Result<Vec<String>, String> {
+    fn features(&self) -> Result<FeatureReport, String> {
         let runtime = HipRuntime::load()?;
         runtime.init()?;
         runtime.set_device(0)?;
-        Ok(features_from_int64_probe(probe_hip_int64(&runtime)))
+        Ok(FeatureReport {
+            hardware: runtime.device_identity(0),
+            features: features_from_int64_probe(probe_hip_int64(&runtime)),
+        })
     }
 
     fn compile_check(&self, input: &str, output: Option<&str>) -> Result<(), String> {
@@ -234,8 +246,8 @@ impl Launcher for HipModuleLauncher {
 pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, String> {
     match AdapterCommand::parse(args)? {
         AdapterCommand::Features => {
-            let features = launcher.features()?;
-            Ok(format_features(&features))
+            let report = launcher.features()?;
+            Ok(format_features(&report))
         }
         AdapterCommand::CompileCheck { input, output } => {
             launcher.compile_check(&input, output.as_deref())?;
@@ -248,10 +260,11 @@ pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, Strin
     }
 }
 
-fn format_features(features: &[String]) -> String {
-    let mut text = "hardware=HIP runtime device\n".to_owned();
+fn format_features(report: &FeatureReport) -> String {
+    let mut text = format!("hardware={}\n", report.hardware);
     text.push_str(
-        &features
+        &report
+            .features
             .iter()
             .map(|feature| format!("feature={feature}\n"))
             .collect::<String>(),
@@ -627,6 +640,30 @@ impl HipRuntime {
         self.check(unsafe { (self.api.hip_set_device)(device) }, "hipSetDevice")
     }
 
+    fn device_identity(&self, device: c_int) -> String {
+        let mut name = [0 as c_char; 256];
+        let result = unsafe {
+            (self.api.hip_device_get_name)(
+                name.as_mut_ptr(),
+                c_int::try_from(name.len()).expect("HIP device name buffer length fits c_int"),
+                device,
+            )
+        };
+        if result != HIP_SUCCESS {
+            return "HIP runtime device via HIP".to_owned();
+        }
+        let name = unsafe { CStr::from_ptr(name.as_ptr()) }
+            .to_string_lossy()
+            .trim()
+            .to_owned();
+        let name = if name.is_empty() {
+            "HIP runtime device"
+        } else {
+            name.as_str()
+        };
+        format!("{name} via HIP")
+    }
+
     fn load_module(&self, artifact: &str) -> Result<LoadedModule<'_>, String> {
         let artifact = CString::new(artifact)
             .map_err(|_| "HIP artifact path contains interior NUL".to_owned())?;
@@ -726,6 +763,7 @@ impl HipRuntime {
 struct HipApi {
     hip_init: unsafe extern "C" fn(c_uint) -> HipResult,
     hip_set_device: unsafe extern "C" fn(c_int) -> HipResult,
+    hip_device_get_name: unsafe extern "C" fn(*mut c_char, c_int, c_int) -> HipResult,
     hip_module_load: unsafe extern "C" fn(*mut HipModuleHandle, *const c_char) -> HipResult,
     hip_module_get_function:
         unsafe extern "C" fn(*mut HipFunction, HipModuleHandle, *const c_char) -> HipResult,
@@ -755,6 +793,7 @@ impl HipApi {
         Ok(Self {
             hip_init: library.symbol("hipInit")?,
             hip_set_device: library.symbol("hipSetDevice")?,
+            hip_device_get_name: library.symbol("hipDeviceGetName")?,
             hip_module_load: library.symbol("hipModuleLoad")?,
             hip_module_get_function: library.symbol("hipModuleGetFunction")?,
             hip_module_unload: library.symbol("hipModuleUnload")?,
