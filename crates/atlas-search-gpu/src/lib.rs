@@ -1771,7 +1771,7 @@ fn artifact_file_is_reusable_for_plan(plan: &DriverCommandPlan) -> bool {
             artifact_has_spirv_magic(path) && artifact_bytes_contain(path, ATLAS_SEARCH_ENTRY_BYTES)
         }
         GpuSdk::Cuda { .. } => {
-            artifact_text_contains(path, ".entry atlas_search")
+            artifact_text_has_ptx_entry(path, "atlas_search")
                 && artifact_matches_binary_launch_abi(path, plan)
         }
         GpuSdk::Hip { .. } => {
@@ -1793,6 +1793,26 @@ fn artifact_has_elf_magic(path: &Path) -> bool {
 
 fn artifact_text_contains(path: &Path, needle: &str) -> bool {
     fs::read_to_string(path).is_ok_and(|text| text.contains(needle))
+}
+
+fn artifact_text_has_ptx_entry(path: &Path, entry: &str) -> bool {
+    fs::read_to_string(path).is_ok_and(|text| ptx_text_has_entry(&text, entry))
+}
+
+fn ptx_text_has_entry(text: &str, entry: &str) -> bool {
+    text.split(".entry")
+        .skip(1)
+        .any(|rest| ptx_entry_name(rest) == Some(entry))
+}
+
+fn ptx_entry_name(text_after_entry: &str) -> Option<&str> {
+    let trimmed = text_after_entry.trim_start();
+    let end = trimmed
+        .find(|character: char| {
+            !(character.is_ascii_alphanumeric() || character == '_' || character == '$')
+        })
+        .unwrap_or(trimmed.len());
+    (end > 0).then_some(&trimmed[..end])
 }
 
 fn artifact_bytes_contain(path: &Path, needle: &[u8]) -> bool {
