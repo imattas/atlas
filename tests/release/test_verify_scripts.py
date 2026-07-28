@@ -6,6 +6,17 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class VerifyScriptTests(unittest.TestCase):
+    def test_unix_shell_verify_scripts_use_lf_line_endings(self):
+        for script in [ROOT / "scripts" / "verify.sh"]:
+            with self.subTest(script=script.name):
+                self.assertNotIn(b"\r\n", script.read_bytes())
+
+    def test_git_attributes_preserve_unix_shell_line_endings(self):
+        attributes_path = ROOT / ".gitattributes"
+        self.assertTrue(attributes_path.exists(), ".gitattributes is required")
+        attributes = attributes_path.read_text(encoding="utf-8")
+        self.assertIn("*.sh text eol=lf", attributes)
+
     def test_distributed_profiles_require_all_gpu_adapters_on_windows_and_unix(self):
         required_gpu_adapter_paths = [
             "crates/atlas-gpu-opencl-adapter/src/lib.rs",
@@ -118,6 +129,28 @@ class VerifyScriptTests(unittest.TestCase):
                 "actual_gpu_sdk",
                 "DeviceValidated",
                 "expected actual_gpu_sdk",
+            ],
+        }
+
+        for script_name, required_tokens in expectations.items():
+            with self.subTest(script=script_name):
+                text = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+                for token in required_tokens:
+                    self.assertIn(token, text)
+
+    def test_hardware_profile_skips_unavailable_real_device_backends_from_doctor_probe(self):
+        expectations = {
+            "verify.ps1": [
+                "Get-GpuFeatureProbeOk",
+                "Skip-HardwareStep",
+                "gpu_feature_probes",
+                "CUDA real-device search",
+            ],
+            "verify.sh": [
+                "gpu_feature_probe_ok",
+                "skip_hardware_step",
+                "gpu_feature_probes",
+                "CUDA real-device search",
             ],
         }
 

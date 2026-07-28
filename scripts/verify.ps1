@@ -50,6 +50,25 @@ function Invoke-HardwareStep {
     }
 }
 
+function Skip-HardwareStep {
+    param([string]$Name, [string]$Reason)
+    Write-Host "==> $Name"
+    Write-Host "skipped: $Reason"
+}
+
+function Get-GpuFeatureProbeOk {
+    param($Doctor, [string]$Name)
+    if ($null -eq $Doctor -or $null -eq $Doctor.gpu_feature_probes) {
+        return $false
+    }
+    foreach ($Probe in $Doctor.gpu_feature_probes) {
+        if ($Probe.name -eq $Name) {
+            return [bool]$Probe.ok
+        }
+    }
+    return $false
+}
+
 function Invoke-ForcedGpuBenchmark {
     param(
         [string]$Name,
@@ -142,28 +161,60 @@ if ($Profile -eq "full") {
 }
 
 if ($Profile -eq "hardware") {
-    Invoke-HardwareStep "GPU doctor diagnostics" { cargo run -q -p atlas-cli -- doctor }
+    $HardwareDoctor = $null
+    Invoke-HardwareStep "GPU doctor diagnostics" {
+        $Output = cargo run -q -p atlas-cli -- doctor
+        $Status = $LASTEXITCODE
+        if ($Status -ne 0) {
+            $global:LASTEXITCODE = $Status
+            return
+        }
+        Write-Host $Output
+        $script:HardwareDoctor = $Output | ConvertFrom-Json
+        $global:LASTEXITCODE = 0
+    }
     Invoke-HardwareStep "Forced-GPU benchmark" {
         cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu
     }
-    Invoke-ForcedGpuBenchmark "Forced-GPU OpenCL benchmark" "opencl" "OpenCL"
-    Invoke-ForcedGpuBenchmark "Forced-GPU Vulkan benchmark" "vulkan" "Vulkan"
-    Invoke-ForcedGpuBenchmark "Forced-GPU CUDA benchmark" "cuda" "CUDA"
-    Invoke-ForcedGpuBenchmark "Forced-GPU HIP benchmark" "hip" "HIP"
-    Invoke-HardwareStep "OpenCL real-device search" {
-        cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+    if (Get-GpuFeatureProbeOk $HardwareDoctor "OpenCL") {
+        Invoke-ForcedGpuBenchmark "Forced-GPU OpenCL benchmark" "opencl" "OpenCL"
+        Invoke-HardwareStep "OpenCL real-device search" {
+            cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+        }
+    } else {
+        Skip-HardwareStep "Forced-GPU OpenCL benchmark" "OpenCL runtime feature probe unavailable"
+        Skip-HardwareStep "OpenCL real-device search" "OpenCL runtime feature probe unavailable"
     }
-    Invoke-HardwareStep "CUDA real-device search" {
-        cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+    if (Get-GpuFeatureProbeOk $HardwareDoctor "Vulkan") {
+        Invoke-ForcedGpuBenchmark "Forced-GPU Vulkan benchmark" "vulkan" "Vulkan"
+        Invoke-HardwareStep "Vulkan real-device search" {
+            cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+        }
+        Invoke-HardwareStep "Vulkan shaderInt64 real-device search" {
+            cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_64_bit_kernel_runs_on_device -- --ignored --nocapture
+        }
+    } else {
+        Skip-HardwareStep "Forced-GPU Vulkan benchmark" "Vulkan runtime feature probe unavailable"
+        Skip-HardwareStep "Vulkan real-device search" "Vulkan runtime feature probe unavailable"
+        Skip-HardwareStep "Vulkan shaderInt64 real-device search" "Vulkan runtime feature probe unavailable"
     }
-    Invoke-HardwareStep "HIP real-device search" {
-        cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+    if (Get-GpuFeatureProbeOk $HardwareDoctor "CUDA") {
+        Invoke-ForcedGpuBenchmark "Forced-GPU CUDA benchmark" "cuda" "CUDA"
+        Invoke-HardwareStep "CUDA real-device search" {
+            cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+        }
+    } else {
+        Skip-HardwareStep "Forced-GPU CUDA benchmark" "CUDA runtime feature probe unavailable"
+        Skip-HardwareStep "CUDA real-device search" "CUDA runtime feature probe unavailable"
     }
-    Invoke-HardwareStep "Vulkan real-device search" {
-        cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
-    }
-    Invoke-HardwareStep "Vulkan shaderInt64 real-device search" {
-        cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_64_bit_kernel_runs_on_device -- --ignored --nocapture
+    if (Get-GpuFeatureProbeOk $HardwareDoctor "HIP") {
+        Invoke-ForcedGpuBenchmark "Forced-GPU HIP benchmark" "hip" "HIP"
+        Invoke-HardwareStep "HIP real-device search" {
+            cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+        }
+    } else {
+        Skip-HardwareStep "Forced-GPU HIP benchmark" "HIP runtime feature probe unavailable"
+        Skip-HardwareStep "HIP real-device search" "HIP runtime feature probe unavailable"
     }
     if ($HardwareFailures.Count -ne 0) {
         Write-Error "Hardware verification failed after attempting every backend: $($HardwareFailures -join '; ')"
