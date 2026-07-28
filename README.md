@@ -12,6 +12,18 @@ AtlasCTF is a from-scratch CTF math, symbolic-solving, and hardware-accelerated 
 
 ## Quick start
 
+Install the CLI from GitHub:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/imattas/atlas/main/install.sh | sh
+```
+
+Install optional GPU adapter binaries too:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/imattas/atlas/main/install.sh | ATLAS_INSTALL_GPU=1 sh
+```
+
 ```powershell
 cargo test --workspace --all-targets
 cargo run -p atlas-cli -- solve --fixture xor --start 0 --end 256

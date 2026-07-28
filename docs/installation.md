@@ -11,6 +11,25 @@ installation requires:
    use CUDA/HIP for vendor-specific deployments. The checked tests validate GPU
    code generation and SDK planning without requiring hardware.
 
+Install the CLI directly from GitHub:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/imattas/atlas/main/install.sh | sh
+```
+
+Install GPU adapter binaries as well:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/imattas/atlas/main/install.sh | ATLAS_INSTALL_GPU=1 sh
+```
+
+Version/ref overrides are supported:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/imattas/atlas/main/install.sh | ATLAS_TAG=v0.1.0 sh
+curl -fsSL https://raw.githubusercontent.com/imattas/atlas/main/install.sh | ATLAS_REV=<commit-sha> sh
+```
+
 Recommended validation:
 
 ```powershell
