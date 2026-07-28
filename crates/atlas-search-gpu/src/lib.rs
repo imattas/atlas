@@ -55,6 +55,11 @@ pub enum GpuSdk {
         /// SDK or runtime identifier.
         sdk: String,
     },
+    /// Cross-platform `wgpu`/WebGPU compute runtime.
+    Wgpu {
+        /// SDK or runtime identifier.
+        sdk: String,
+    },
     /// NVIDIA `CUDA` Toolkit/runtime.
     Cuda {
         /// SDK or runtime identifier.
@@ -73,7 +78,8 @@ impl GpuSdk {
             match self {
                 Self::OpenCl { .. } => 0,
                 Self::Vulkan { .. } => 1,
-                Self::Cuda { .. } | Self::Hip { .. } => 2,
+                Self::Wgpu { .. } => 2,
+                Self::Cuda { .. } | Self::Hip { .. } => 3,
             }
         } else {
             match self {
@@ -81,6 +87,7 @@ impl GpuSdk {
                 Self::Hip { .. } => 1,
                 Self::OpenCl { .. } => 2,
                 Self::Vulkan { .. } => 3,
+                Self::Wgpu { .. } => 4,
             }
         }
     }
@@ -89,6 +96,7 @@ impl GpuSdk {
         match self {
             Self::OpenCl { .. } => "OpenCL",
             Self::Vulkan { .. } => "Vulkan",
+            Self::Wgpu { .. } => "WGPU",
             Self::Cuda { .. } => "CUDA",
             Self::Hip { .. } => "HIP",
         }
@@ -98,6 +106,7 @@ impl GpuSdk {
         match self {
             Self::OpenCl { sdk }
             | Self::Vulkan { sdk }
+            | Self::Wgpu { sdk }
             | Self::Cuda { sdk }
             | Self::Hip { sdk } => sdk,
         }
@@ -108,10 +117,12 @@ fn sdk_supports_program(sdk: &GpuSdk, program: &SearchProgram) -> bool {
     match sdk {
         GpuSdk::OpenCl { sdk } if program.width > 32 => sdk_has_feature(sdk, "int64"),
         GpuSdk::Vulkan { sdk } if program.width > 32 => sdk_has_feature(sdk, "shaderint64"),
+        GpuSdk::Wgpu { .. } if program.width > 32 => false,
         GpuSdk::Cuda { sdk } if program.width > 32 => sdk_has_feature(sdk, "int64"),
         GpuSdk::Hip { sdk } if program.width > 32 => sdk_has_feature(sdk, "int64"),
         GpuSdk::OpenCl { .. }
         | GpuSdk::Vulkan { .. }
+        | GpuSdk::Wgpu { .. }
         | GpuSdk::Cuda { .. }
         | GpuSdk::Hip { .. } => true,
     }
@@ -365,6 +376,14 @@ impl DriverCommandPlan {
                     "--compile-check",
                     GpuSearcher::compile_vulkan_glsl_for_local_size(program, launch.local_size),
                 ),
+                GpuSdk::Wgpu { .. } => (
+                    "gpu/wgpu/atlas_search.wgsl",
+                    "atlas_search.wgsl",
+                    "atlas_search.wgsl",
+                    "atlas-gpu-wgpu-run",
+                    "--compile-check",
+                    GpuSearcher::compile_wgsl_for_local_size(program, launch.local_size),
+                ),
                 GpuSdk::Cuda { .. } => (
                     "gpu/cuda/atlas_search.cu",
                     "atlas_search.cu",
@@ -398,6 +417,7 @@ impl DriverCommandPlan {
         let launch_input = match sdk {
             GpuSdk::OpenCl { .. }
             | GpuSdk::Vulkan { .. }
+            | GpuSdk::Wgpu { .. }
             | GpuSdk::Cuda { .. }
             | GpuSdk::Hip { .. } => artifact_file.clone(),
         };
@@ -419,6 +439,7 @@ impl DriverCommandPlan {
             sdk,
             GpuSdk::OpenCl { .. }
                 | GpuSdk::Vulkan { .. }
+                | GpuSdk::Wgpu { .. }
                 | GpuSdk::Cuda { .. }
                 | GpuSdk::Hip { .. }
         ) {
@@ -1864,6 +1885,7 @@ fn artifact_file_is_reusable_for_plan(plan: &DriverCommandPlan) -> bool {
             artifact_has_spirv_magic(path)
                 && artifact_bytes_contain_symbol(path, ATLAS_SEARCH_ENTRY_BYTES)
         }
+        GpuSdk::Wgpu { .. } => artifact_text_has_wgsl_entry(path, "atlas_search"),
         GpuSdk::Cuda { .. } => {
             artifact_text_has_ptx_entry(path, "atlas_search")
                 && artifact_matches_binary_launch_abi(path, plan)
@@ -1874,6 +1896,11 @@ fn artifact_file_is_reusable_for_plan(plan: &DriverCommandPlan) -> bool {
                 && artifact_matches_binary_launch_abi(path, plan)
         }
     }
+}
+
+fn artifact_text_has_wgsl_entry(path: &Path, entry: &str) -> bool {
+    fs::read_to_string(path)
+        .is_ok_and(|text| text.contains(&format!("fn {entry}")) && text.contains("@compute"))
 }
 
 fn artifact_has_spirv_magic(path: &Path) -> bool {
@@ -2260,6 +2287,16 @@ impl GpuSdkDetector {
             });
         }
         if normalized.iter().any(|tool| {
+            tool == "wgpu-info"
+                || tool == "naga"
+                || tool.contains("webgpu")
+                || tool.contains("wgpu")
+        }) {
+            detected.push(GpuSdk::Wgpu {
+                sdk: "wgpu cross-platform runtime".to_owned(),
+            });
+        }
+        if normalized.iter().any(|tool| {
             tool == "nvcc"
                 || tool == "nvidia-smi"
                 || tool.starts_with("nvrtc64_")
@@ -2300,6 +2337,7 @@ fn is_atlas_gpu_adapter_tool(tool: &str) -> bool {
         tool,
         "atlas-gpu-opencl-run"
             | "atlas-gpu-vulkan-run"
+            | "atlas-gpu-wgpu-run"
             | "atlas-gpu-cuda-run"
             | "atlas-gpu-hip-run"
     )
@@ -2331,6 +2369,9 @@ fn adapter_backed_sdk_candidates() -> Vec<GpuSdk> {
         GpuSdk::Vulkan {
             sdk: "Vulkan adapter runtime".to_owned(),
         },
+        GpuSdk::Wgpu {
+            sdk: "wgpu adapter runtime".to_owned(),
+        },
         GpuSdk::Cuda {
             sdk: "CUDA adapter runtime".to_owned(),
         },
@@ -2354,6 +2395,7 @@ fn adapter_feature_probe(sdk: &GpuSdk) -> (&'static str, &'static str) {
     match sdk {
         GpuSdk::OpenCl { .. } => ("atlas-gpu-opencl-run", "int64"),
         GpuSdk::Vulkan { .. } => ("atlas-gpu-vulkan-run", "shaderInt64"),
+        GpuSdk::Wgpu { .. } => ("atlas-gpu-wgpu-run", "launchAbiU32"),
         GpuSdk::Cuda { .. } => ("atlas-gpu-cuda-run", "int64"),
         GpuSdk::Hip { .. } => ("atlas-gpu-hip-run", "int64"),
     }
@@ -2363,6 +2405,7 @@ fn append_sdk_feature(sdk: &mut GpuSdk, feature: &str) {
     let identity = match sdk {
         GpuSdk::OpenCl { sdk }
         | GpuSdk::Vulkan { sdk }
+        | GpuSdk::Wgpu { sdk }
         | GpuSdk::Cuda { sdk }
         | GpuSdk::Hip { sdk } => sdk,
     };
@@ -2890,6 +2933,83 @@ void main() {{
         )
     }
 
+    /// Generates WGSL compute shader source for the cross-platform `wgpu` backend.
+    #[must_use]
+    pub fn compile_wgsl(program: &SearchProgram) -> String {
+        Self::compile_wgsl_for_local_size(program, DEFAULT_GPU_LOCAL_SIZE)
+    }
+
+    /// Generates WGSL compute shader source for one launch shape.
+    #[must_use]
+    pub fn compile_wgsl_for_local_size(program: &SearchProgram, local_size: u64) -> String {
+        let local_size = local_size.max(1);
+        let mask = width_mask(program.width);
+        let predicates = if program.width <= 32 {
+            program
+                .ops
+                .iter()
+                .map(|op| wgsl_predicate_32(op, program.width))
+                .collect::<Vec<_>>()
+                .join(" &&\n      ")
+        } else {
+            false_predicate_wgsl()
+        };
+        format!(
+            r"struct SearchParams {{
+  start_lo: u32,
+  start_hi: u32,
+  end_lo: u32,
+  end_hi: u32,
+  max_matches: u32,
+}};
+
+struct Matches {{
+  out_len: atomic<u32>,
+  _pad: u32,
+  out_words: array<u32>,
+}};
+
+@group(0) @binding(0) var<storage, read_write> matches: Matches;
+@group(0) @binding(1) var<uniform> params: SearchParams;
+
+fn rotate_left_width(value_input: u32, amount_input: u32, width: u32) -> u32 {{
+  let mask_value = select((1u << width) - 1u, 4294967295u, width == 32u);
+  let value = value_input & mask_value;
+  let amount = amount_input % width;
+  if (amount == 0u) {{
+    return value;
+  }}
+  return ((value << amount) | (value >> (width - amount))) & mask_value;
+}}
+
+@compute @workgroup_size({local_size})
+fn atlas_search(@builtin(global_invocation_id) global_id: vec3<u32>) {{
+  /* width={} ops={} */
+  let gid = global_id.x;
+  let raw_low = params.start_lo + gid;
+  let raw_high = params.start_hi + select(0u, 1u, raw_low < params.start_lo);
+  let mask = {mask}u;
+  if (raw_high > params.end_hi || (raw_high == params.end_hi && raw_low >= params.end_lo)) {{
+    return;
+  }}
+  let raw_candidate = raw_low;
+  let candidate = raw_candidate & mask;
+  if ({predicates}) {{
+    let slot = atomicAdd(&matches.out_len, 1u);
+    if (slot < params.max_matches) {{
+      let word_index = slot * 2u;
+      matches.out_words[word_index] = raw_low;
+      matches.out_words[word_index + 1u] = raw_high;
+    }}
+  }}
+}}
+",
+            program.width,
+            program.ops.len(),
+            local_size = local_size
+        )
+    }
+
     /// Hardware-independent GPU search fallback.
     ///
     /// GPU execution never bypasses CPU validation; in environments without a
@@ -3055,6 +3175,88 @@ fn opencl_predicate_32(op: &SearchOp, width: u32) -> String {
 
 fn false_predicate_32() -> String {
     "0U == 1U".to_owned()
+}
+
+fn false_predicate_wgsl() -> String {
+    "0u == 1u".to_owned()
+}
+
+fn wgsl_predicate_32(op: &SearchOp, width: u32) -> String {
+    let width_mask = width_mask(width);
+    match *op {
+        SearchOp::AddEq { addend, target } => {
+            if target > width_mask {
+                return false_predicate_wgsl();
+            }
+            format!(
+                "((candidate + {}u) & mask) == {}u",
+                low_u32(addend),
+                exact_u32(target)
+            )
+        }
+        SearchOp::XorEq { mask, target } => {
+            if target > width_mask {
+                return false_predicate_wgsl();
+            }
+            format!(
+                "((candidate ^ {}u) & mask) == {}u",
+                low_u32(mask),
+                exact_u32(target)
+            )
+        }
+        SearchOp::ChecksumEq { modulus, target } => {
+            if modulus == 0 || target > u64::from(u32::MAX) {
+                return false_predicate_wgsl();
+            }
+            if modulus > u64::from(u32::MAX) {
+                return format!("candidate == {}u", exact_u32(target));
+            }
+            if target >= modulus {
+                return false_predicate_wgsl();
+            }
+            format!(
+                "(candidate % {}u) == {}u",
+                exact_u32(modulus),
+                exact_u32(target)
+            )
+        }
+        SearchOp::MulAddEq {
+            multiplier,
+            addend,
+            target,
+        } => {
+            if target > width_mask {
+                return false_predicate_wgsl();
+            }
+            format!(
+                "((candidate * {}u + {}u) & mask) == {}u",
+                low_u32(multiplier),
+                low_u32(addend),
+                exact_u32(target)
+            )
+        }
+        SearchOp::RotateXorEq {
+            rotate_left,
+            mask,
+            target,
+        } => {
+            if target > width_mask {
+                return false_predicate_wgsl();
+            }
+            format!(
+                "((rotate_left_width(candidate, {rotate_left}u, {width}u) ^ {}u) & mask) == {}u",
+                low_u32(mask),
+                exact_u32(target)
+            )
+        }
+        SearchOp::ByteEq { byte_index, value } => {
+            let shift = byte_index.saturating_mul(8);
+            if shift >= width {
+                return false_predicate_wgsl();
+            }
+            format!("((candidate >> {shift}u) & 255u) == {}u", u64::from(value))
+        }
+    }
 }
 
 fn cuda_predicate_32(op: &SearchOp, width: u32) -> String {

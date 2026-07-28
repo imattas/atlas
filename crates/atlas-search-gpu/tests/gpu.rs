@@ -185,6 +185,7 @@ impl CommandRunner for AdapterFeaturesCommandRunner {
         self.commands.borrow_mut().push(command.to_vec());
         let stdout = match command.first().map(String::as_str) {
             Some("atlas-gpu-vulkan-run") => "feature=shaderInt64\n",
+            Some("atlas-gpu-wgpu-run") => "feature=launchAbiU32\n",
             Some("atlas-gpu-opencl-run" | "atlas-gpu-cuda-run" | "atlas-gpu-hip-run") => {
                 "feature=int64\n"
             }
@@ -361,6 +362,7 @@ impl DriverRunner for AlwaysFailingSdkRunner {
         let sdk = match &plan.sdk {
             GpuSdk::OpenCl { .. } => "OpenCL",
             GpuSdk::Vulkan { .. } => "Vulkan",
+            GpuSdk::Wgpu { .. } => "WGPU",
             GpuSdk::Cuda { .. } => "CUDA",
             GpuSdk::Hip { .. } => "HIP",
         };
@@ -392,6 +394,7 @@ impl DriverRunner for SuccessfulSdkRecordingRunner {
         let sdk = match &plan.sdk {
             GpuSdk::OpenCl { .. } => "OpenCL",
             GpuSdk::Vulkan { .. } => "Vulkan",
+            GpuSdk::Wgpu { .. } => "WGPU",
             GpuSdk::Cuda { .. } => "CUDA",
             GpuSdk::Hip { .. } => "HIP",
         };
@@ -1234,10 +1237,21 @@ fn detects_gpu_sdks_from_tool_names_without_touching_host_environment() {
 }
 
 #[test]
+fn detects_wgpu_sdk_from_cross_platform_webgpu_tools() {
+    let detected = GpuSdkDetector::detect_from_tools(&["wgpu-info".to_owned(), "naga".to_owned()]);
+
+    assert!(detected.iter().any(|sdk| matches!(
+        sdk,
+        GpuSdk::Wgpu { sdk } if sdk.contains("wgpu")
+    )));
+}
+
+#[test]
 fn sdk_tool_detection_ignores_atlas_adapter_binary_names() {
     let detected = GpuSdkDetector::detect_from_tools(&[
         "atlas-gpu-opencl-run".to_owned(),
         "atlas-gpu-vulkan-run".to_owned(),
+        "atlas-gpu-wgpu-run".to_owned(),
         "atlas-gpu-cuda-run".to_owned(),
         "atlas-gpu-hip-run".to_owned(),
     ]);
@@ -1318,6 +1332,7 @@ fn adapter_feature_detection_queries_all_detected_backend_adapters() {
             vec!["atlas-gpu-vulkan-run".to_owned(), "--features".to_owned()],
             vec!["atlas-gpu-cuda-run".to_owned(), "--features".to_owned()],
             vec!["atlas-gpu-hip-run".to_owned(), "--features".to_owned()],
+            vec!["atlas-gpu-wgpu-run".to_owned(), "--features".to_owned()],
         ]
     );
     assert!(detected.iter().any(|sdk| matches!(
@@ -1327,6 +1342,10 @@ fn adapter_feature_detection_queries_all_detected_backend_adapters() {
     assert!(detected.iter().any(|sdk| matches!(
         sdk,
         GpuSdk::Vulkan { sdk } if sdk.contains("shaderInt64")
+    )));
+    assert!(detected.iter().any(|sdk| matches!(
+        sdk,
+        GpuSdk::Wgpu { sdk } if sdk.contains("launchAbiU32")
     )));
     assert!(detected.iter().any(|sdk| matches!(
         sdk,
@@ -1348,6 +1367,7 @@ fn adapter_feature_detection_discovers_runtimes_without_path_tools() {
         vec![
             vec!["atlas-gpu-opencl-run".to_owned(), "--features".to_owned()],
             vec!["atlas-gpu-vulkan-run".to_owned(), "--features".to_owned()],
+            vec!["atlas-gpu-wgpu-run".to_owned(), "--features".to_owned()],
             vec!["atlas-gpu-cuda-run".to_owned(), "--features".to_owned()],
             vec!["atlas-gpu-hip-run".to_owned(), "--features".to_owned()],
         ]
@@ -1359,6 +1379,10 @@ fn adapter_feature_detection_discovers_runtimes_without_path_tools() {
     assert!(detected.iter().any(|sdk| matches!(
         sdk,
         GpuSdk::Vulkan { sdk } if sdk.contains("shaderInt64")
+    )));
+    assert!(detected.iter().any(|sdk| matches!(
+        sdk,
+        GpuSdk::Wgpu { sdk } if sdk.contains("launchAbiU32")
     )));
     assert!(detected.iter().any(|sdk| matches!(
         sdk,
@@ -1921,6 +1945,13 @@ fn driver_command_plan_selects_sdk_specific_sources_and_compilers() {
         &program,
         "target/atlas-gpu",
     );
+    let wgpu = DriverCommandPlan::for_sdk(
+        &GpuSdk::Wgpu {
+            sdk: "wgpu cross-platform runtime".to_owned(),
+        },
+        &program,
+        "target/atlas-gpu",
+    );
     let cuda = DriverCommandPlan::for_sdk(
         &GpuSdk::Cuda {
             sdk: "NVIDIA CUDA Toolkit".to_owned(),
@@ -1943,6 +1974,12 @@ fn driver_command_plan_selects_sdk_specific_sources_and_compilers() {
         .compile_command
         .iter()
         .any(|arg| arg == "--compile-check"));
+    assert_eq!(wgpu.template_file, "gpu/wgpu/atlas_search.wgsl");
+    assert_eq!(wgpu.compile_command[0], "atlas-gpu-wgpu-run");
+    assert!(wgpu
+        .compile_command
+        .iter()
+        .any(|arg| arg == "--compile-check"));
     assert_eq!(cuda.template_file, "gpu/cuda/atlas_search.cu");
     assert_eq!(cuda.compile_command[0], "atlas-gpu-cuda-run");
     assert!(cuda
@@ -1950,6 +1987,7 @@ fn driver_command_plan_selects_sdk_specific_sources_and_compilers() {
         .iter()
         .any(|arg| arg == "--compile-check"));
     assert_ne!(opencl.cache_key, vulkan.cache_key);
+    assert_ne!(vulkan.cache_key, wgpu.cache_key);
 }
 
 #[test]
@@ -1977,6 +2015,35 @@ fn vulkan_driver_plan_uses_adapter_compiler_without_external_glslc() {
     assert!(plan.compile_command[2].ends_with("/atlas_search.comp"));
     assert_eq!(plan.launch_command[1], plan.artifact_file);
     assert!(plan.artifact_file.ends_with("/atlas_search.spv"));
+}
+
+#[test]
+fn wgpu_driver_plan_uses_wgsl_adapter_source() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let launch = AcceleratorRuntime::plan_launch(SearchDomain::new(0x50, 0x160), 256, 8);
+    let sdk = GpuSdk::Wgpu {
+        sdk: "wgpu cross-platform runtime".to_owned(),
+    };
+
+    let plan = DriverCommandPlan::for_launch(
+        &sdk,
+        &program,
+        SearchDomain::new(0x50, 0x160),
+        launch,
+        "target/atlas-gpu",
+    );
+
+    assert_eq!(plan.template_file, "gpu/wgpu/atlas_search.wgsl");
+    assert_eq!(plan.compile_command[0], "atlas-gpu-wgpu-run");
+    assert!(plan
+        .compile_command
+        .iter()
+        .any(|arg| arg == "--compile-check"));
+    assert!(plan.kernel_source.contains("@compute"));
+    assert!(plan.kernel_source.contains("fn atlas_search"));
+    assert!(plan.kernel_source.contains("candidate ^ 170u"));
+    assert_eq!(plan.launch_command[1], plan.artifact_file);
+    assert!(plan.artifact_file.ends_with("/atlas_search.wgsl"));
 }
 
 #[test]
@@ -2039,6 +2106,9 @@ fn driver_command_plans_reference_checked_in_kernel_artifacts() {
         },
         GpuSdk::Vulkan {
             sdk: "LunarG Vulkan SDK".to_owned(),
+        },
+        GpuSdk::Wgpu {
+            sdk: "wgpu cross-platform runtime".to_owned(),
         },
         GpuSdk::Cuda {
             sdk: "NVIDIA CUDA Toolkit".to_owned(),

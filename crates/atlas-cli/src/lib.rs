@@ -323,6 +323,7 @@ fn missing_requested_gpu_sdk_report(
 enum GpuSdkChoice {
     OpenCl,
     Vulkan,
+    Wgpu,
     Cuda,
     Hip,
 }
@@ -331,10 +332,11 @@ fn parse_gpu_sdk_choice(value: &str) -> Result<GpuSdkChoice, String> {
     match value.to_ascii_lowercase().as_str() {
         "opencl" => Ok(GpuSdkChoice::OpenCl),
         "vulkan" => Ok(GpuSdkChoice::Vulkan),
+        "wgpu" | "webgpu" => Ok(GpuSdkChoice::Wgpu),
         "cuda" => Ok(GpuSdkChoice::Cuda),
         "hip" => Ok(GpuSdkChoice::Hip),
         _ => Err(format!(
-            "unsupported --gpu-sdk '{value}'; expected opencl, vulkan, cuda, or hip"
+            "unsupported --gpu-sdk '{value}'; expected opencl, vulkan, wgpu, cuda, or hip"
         )),
     }
 }
@@ -354,6 +356,7 @@ fn gpu_sdk_matches_choice(sdk: &GpuSdk, choice: GpuSdkChoice) -> bool {
         (sdk, choice),
         (GpuSdk::OpenCl { .. }, GpuSdkChoice::OpenCl)
             | (GpuSdk::Vulkan { .. }, GpuSdkChoice::Vulkan)
+            | (GpuSdk::Wgpu { .. }, GpuSdkChoice::Wgpu)
             | (GpuSdk::Cuda { .. }, GpuSdkChoice::Cuda)
             | (GpuSdk::Hip { .. }, GpuSdkChoice::Hip)
     )
@@ -363,6 +366,7 @@ fn gpu_sdk_choice_name(choice: GpuSdkChoice) -> &'static str {
     match choice {
         GpuSdkChoice::OpenCl => "opencl",
         GpuSdkChoice::Vulkan => "vulkan",
+        GpuSdkChoice::Wgpu => "wgpu",
         GpuSdkChoice::Cuda => "cuda",
         GpuSdkChoice::Hip => "hip",
     }
@@ -372,6 +376,7 @@ fn gpu_sdk_choice_display_name(choice: GpuSdkChoice) -> &'static str {
     match choice {
         GpuSdkChoice::OpenCl => "OpenCL",
         GpuSdkChoice::Vulkan => "Vulkan",
+        GpuSdkChoice::Wgpu => "WGPU",
         GpuSdkChoice::Cuda => "CUDA",
         GpuSdkChoice::Hip => "HIP",
     }
@@ -388,6 +393,7 @@ fn gpu_sdk_name(sdk: &GpuSdk) -> &'static str {
     match sdk {
         GpuSdk::OpenCl { .. } => "OpenCL",
         GpuSdk::Vulkan { .. } => "Vulkan",
+        GpuSdk::Wgpu { .. } => "WGPU",
         GpuSdk::Cuda { .. } => "CUDA",
         GpuSdk::Hip { .. } => "HIP",
     }
@@ -398,7 +404,7 @@ struct GpuAdapterCommand {
     command: &'static str,
 }
 
-fn gpu_adapter_commands() -> [GpuAdapterCommand; 4] {
+fn gpu_adapter_commands() -> [GpuAdapterCommand; 5] {
     [
         GpuAdapterCommand {
             name: "OpenCL",
@@ -407,6 +413,10 @@ fn gpu_adapter_commands() -> [GpuAdapterCommand; 4] {
         GpuAdapterCommand {
             name: "Vulkan",
             command: "atlas-gpu-vulkan-run",
+        },
+        GpuAdapterCommand {
+            name: "WGPU",
+            command: "atlas-gpu-wgpu-run",
         },
         GpuAdapterCommand {
             name: "CUDA",
