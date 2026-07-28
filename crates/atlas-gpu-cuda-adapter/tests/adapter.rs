@@ -10,6 +10,23 @@ use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::SearchProgram;
 use std::cell::RefCell;
 use std::fs;
+use std::sync::{Mutex, OnceLock};
+
+fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    ENV_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
+    if let Some(value) = original {
+        std::env::set_var(name, value);
+    } else {
+        std::env::remove_var(name);
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct FixtureLauncher;
@@ -327,6 +344,59 @@ fn compile_check_writes_ptx_artifact_when_output_is_requested() {
 }
 
 #[test]
+fn compile_check_writes_ptx_with_clang_when_nvrtc_and_nvcc_are_absent() {
+    let _env_guard = env_lock();
+    let root = std::env::temp_dir().join(format!("atlas-cuda-fake-clang-{}", std::process::id()));
+    let bin_dir = root.join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+    write_fake_clang_cuda_compiler(&bin_dir);
+    let source_path = root.join("atlas_search.cu");
+    let output_path = root.join("atlas_search.ptx");
+    fs::write(
+        &source_path,
+        "extern \"C\" __global__ void atlas_search() {}\n",
+    )
+    .unwrap();
+    let original_path = std::env::var_os("PATH");
+    let original_cuda_path = std::env::var_os("CUDA_PATH");
+    let original_cuda_home = std::env::var_os("CUDA_HOME");
+    let original_cuda_root = std::env::var_os("CUDA_ROOT");
+    #[cfg(windows)]
+    let original_program_files = std::env::var_os("ProgramFiles");
+    #[cfg(windows)]
+    let original_program_files_x86 = std::env::var_os("ProgramFiles(x86)");
+    std::env::set_var("PATH", &bin_dir);
+    std::env::set_var("CUDA_PATH", &root);
+    std::env::set_var("CUDA_HOME", &root);
+    std::env::set_var("CUDA_ROOT", &root);
+    #[cfg(windows)]
+    {
+        std::env::set_var("ProgramFiles", &root);
+        std::env::remove_var("ProgramFiles(x86)");
+    }
+
+    CudaPtxLauncher
+        .compile_check(
+            &source_path.to_string_lossy(),
+            Some(&output_path.to_string_lossy()),
+        )
+        .unwrap();
+
+    let ptx = fs::read_to_string(&output_path).unwrap();
+    assert!(ptx.contains(".entry atlas_search"));
+    restore_env("PATH", original_path);
+    restore_env("CUDA_PATH", original_cuda_path);
+    restore_env("CUDA_HOME", original_cuda_home);
+    restore_env("CUDA_ROOT", original_cuda_root);
+    #[cfg(windows)]
+    {
+        restore_env("ProgramFiles", original_program_files);
+        restore_env("ProgramFiles(x86)", original_program_files_x86);
+    }
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn nvrtc_library_candidates_include_cuda_sdk_root_library_directories() {
     let cuda_root =
         std::env::temp_dir().join(format!("atlas-cuda-sdk-root-{}", std::process::id()));
@@ -473,4 +543,32 @@ fn generated_cuda_kernel_runs_on_device_and_preserves_full_candidates() {
 
     assert_eq!(matches, vec![0x55, 0x155]);
     let _ = fs::remove_dir_all(output_dir);
+}
+
+fn write_fake_clang_cuda_compiler(bin_dir: &std::path::Path) {
+    #[cfg(windows)]
+    {
+        for name in ["clang.cmd", "clang++.cmd"] {
+            fs::write(
+                bin_dir.join(name),
+                "@echo off\r\nif not \"%~1\"==\"--cuda-device-only\" exit /b 3\r\nif not \"%~3\"==\"-nocudainc\" exit /b 4\r\nif not \"%~4\"==\"-nocudalib\" exit /b 5\r\n:loop\r\nif \"%~1\"==\"\" exit /b 6\r\nif \"%~1\"==\"-o\" goto output\r\nshift\r\ngoto loop\r\n:output\r\nshift\r\necho .version 8.0>\"%~1\"\r\necho .target sm_52>>\"%~1\"\r\necho .visible .entry atlas_search() { ret; }>>\"%~1\"\r\nexit /b 0\r\n",
+            )
+            .unwrap();
+        }
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for name in ["clang", "clang++"] {
+            let path = bin_dir.join(name);
+            fs::write(
+                &path,
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" | grep -- '--cuda-device-only' >/dev/null || exit 3\nprintf '%s\\n' \"$@\" | grep -- '-nocudainc' >/dev/null || exit 4\nprintf '%s\\n' \"$@\" | grep -- '-nocudalib' >/dev/null || exit 5\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = \"-o\" ]; then shift; printf '.version 8.0\\n.target sm_52\\n.visible .entry atlas_search() { ret; }\\n' > \"$1\"; exit 0; fi\n  shift\ndone\nexit 6\n",
+            )
+            .unwrap();
+            let mut permissions = fs::metadata(&path).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&path, permissions).unwrap();
+        }
+    }
 }

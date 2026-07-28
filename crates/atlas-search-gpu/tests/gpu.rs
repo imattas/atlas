@@ -232,7 +232,7 @@ fn cuda_codegen_emits_restricted_ir_predicates_and_preserves_full_candidate() {
     assert!(cuda.contains("((candidate * 65537ULL + 4919ULL) & mask) == 12648430ULL"));
     assert!(cuda.contains("rotate_left_width(candidate, 7U, 64U)"));
     assert!(cuda.contains("((candidate >> 8U) & 255ULL) == 84ULL"));
-    assert!(cuda.contains("atomicAdd(out_len, 1U)"));
+    assert!(cuda.contains("atlas_atomic_add_u32(out_len, 1U)"));
     assert!(cuda.contains("out[slot] = raw_candidate"));
 }
 
@@ -250,6 +250,20 @@ fn cuda_32_bit_codegen_does_not_require_64_bit_device_integer_ops() {
     assert!(cuda.contains("unsigned int* out_words"));
     assert!(cuda.contains("out_words[word_index] = raw_low"));
     assert!(cuda.contains("out_words[word_index + 1U] = raw_high"));
+}
+
+#[test]
+fn cuda_codegen_is_self_contained_for_headerless_clang_device_compilation() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+
+    let cuda = GpuSearcher::compile_cuda(&program);
+
+    assert!(cuda.contains("#define __device__ __attribute__((device))"));
+    assert!(cuda.contains("#define __global__ __attribute__((global))"));
+    assert!(cuda.contains("__nvvm_read_ptx_sreg_tid_x"));
+    assert!(cuda.contains("__atomic_fetch_add"));
+    assert!(cuda.contains("atlas_global_id_x()"));
+    assert!(cuda.contains("atlas_atomic_add_u32(out_len, 1U)"));
 }
 
 #[test]

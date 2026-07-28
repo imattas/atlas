@@ -1442,6 +1442,26 @@ fn normalize_tool_name(name: &str) -> String {
 /// GPU searcher boundary.
 pub struct GpuSearcher;
 
+const CUDA_SELF_CONTAINED_DEVICE_HEADER: &str = r"#if defined(__clang__)
+#define __device__ __attribute__((device))
+#define __global__ __attribute__((global))
+#define __constant__ __attribute__((constant))
+#endif
+__device__ unsigned int atlas_global_id_x() {
+#if defined(__clang__)
+  return __nvvm_read_ptx_sreg_ctaid_x() * __nvvm_read_ptx_sreg_ntid_x() + __nvvm_read_ptx_sreg_tid_x();
+#else
+  return blockIdx.x * blockDim.x + threadIdx.x;
+#endif
+}
+__device__ unsigned int atlas_atomic_add_u32(unsigned int* ptr, unsigned int value) {
+#if defined(__clang__)
+  return __atomic_fetch_add(ptr, value, __ATOMIC_RELAXED);
+#else
+  return atomicAdd(ptr, value);
+#endif
+}";
+
 const HIP_SELF_CONTAINED_DEVICE_HEADER: &str = r"#define __device__ __attribute__((device))
 #define __global__ __attribute__((global))
 static __device__ unsigned int atlas_global_id_x() {
@@ -1464,7 +1484,8 @@ impl GpuSearcher {
                 .collect::<Vec<_>>()
                 .join(" &&\n      ");
             return format!(
-                r#"extern "C" __device__ __constant__ unsigned int atlas_search_u32_abi = 1U;
+                r#"{cuda_header}
+extern "C" __device__ __constant__ unsigned int atlas_search_u32_abi = 1U;
 
 __device__ unsigned int rotate_left_width(unsigned int value, unsigned int amount, unsigned int width) {{
   unsigned int mask = width == 32U ? 4294967295U : ((1U << width) - 1U);
@@ -1475,7 +1496,7 @@ __device__ unsigned int rotate_left_width(unsigned int value, unsigned int amoun
 
 extern "C" __global__ void atlas_search(unsigned int start_lo, unsigned int start_hi, unsigned int end_lo, unsigned int end_hi, unsigned int* out_words, unsigned int* out_len, unsigned int max_matches) {{
   /* width={} ops={} */
-  unsigned int gid = blockIdx.x * blockDim.x + threadIdx.x;
+  unsigned int gid = atlas_global_id_x();
   unsigned int raw_low = start_lo + gid;
   unsigned int raw_high = start_hi + (raw_low < start_lo ? 1U : 0U);
   unsigned int mask = {mask}U;
@@ -1485,7 +1506,7 @@ extern "C" __global__ void atlas_search(unsigned int start_lo, unsigned int star
   unsigned int raw_candidate = raw_low;
   unsigned int candidate = raw_candidate & mask;
   if ({predicates}) {{
-    unsigned int slot = atomicAdd(out_len, 1U);
+    unsigned int slot = atlas_atomic_add_u32(out_len, 1U);
     if (slot < max_matches) {{
       unsigned int word_index = slot * 2U;
       out_words[word_index] = raw_low;
@@ -1494,7 +1515,8 @@ extern "C" __global__ void atlas_search(unsigned int start_lo, unsigned int star
   }}
 }}"#,
                 program.width,
-                program.ops.len()
+                program.ops.len(),
+                cuda_header = CUDA_SELF_CONTAINED_DEVICE_HEADER
             );
         }
         let predicates = program
@@ -1504,7 +1526,8 @@ extern "C" __global__ void atlas_search(unsigned int start_lo, unsigned int star
             .collect::<Vec<_>>()
             .join(" &&\n      ");
         format!(
-            r#"__device__ unsigned long long rotate_left_width(unsigned long long value, unsigned int amount, unsigned int width) {{
+            r#"{cuda_header}
+__device__ unsigned long long rotate_left_width(unsigned long long value, unsigned int amount, unsigned int width) {{
   unsigned long long mask = width == 64U ? 18446744073709551615ULL : ((1ULL << width) - 1ULL);
   value = value & mask;
   amount = amount % width;
@@ -1513,7 +1536,7 @@ extern "C" __global__ void atlas_search(unsigned int start_lo, unsigned int star
 
 extern "C" __global__ void atlas_search(unsigned long long start, unsigned long long end, unsigned long long* out, unsigned int* out_len, unsigned int max_matches) {{
   /* width={} ops={} */
-  unsigned long long gid = (unsigned long long)(blockIdx.x * blockDim.x + threadIdx.x);
+  unsigned long long gid = (unsigned long long)(atlas_global_id_x());
   unsigned long long raw_candidate = start + gid;
   unsigned long long mask = {mask}ULL;
   if (raw_candidate >= end) {{
@@ -1521,14 +1544,15 @@ extern "C" __global__ void atlas_search(unsigned long long start, unsigned long 
   }}
   unsigned long long candidate = raw_candidate & mask;
   if ({predicates}) {{
-    unsigned int slot = atomicAdd(out_len, 1U);
+    unsigned int slot = atlas_atomic_add_u32(out_len, 1U);
     if (slot < max_matches) {{
       out[slot] = raw_candidate;
     }}
   }}
 }}"#,
             program.width,
-            program.ops.len()
+            program.ops.len(),
+            cuda_header = CUDA_SELF_CONTAINED_DEVICE_HEADER
         )
     }
 

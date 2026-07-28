@@ -255,10 +255,14 @@ fn read_cuda_artifact_as_ptx(path: &str) -> Result<String, String> {
         Ok(ptx) => Ok(ptx),
         Err(nvrtc_error) => NvccCompiler::load()
             .and_then(|compiler| compiler.compile_source_file_to_ptx(path))
-            .map_err(|nvcc_error| {
-                format!(
-                    "failed to compile CUDA source with NVRTC or nvcc; NVRTC: {nvrtc_error}; nvcc: {nvcc_error}"
-                )
+            .or_else(|nvcc_error| {
+                ClangCudaCompiler::load()
+                    .and_then(|compiler| compiler.compile_source_file_to_ptx(path))
+                    .map_err(|clang_error| {
+                        format!(
+                            "failed to compile CUDA source with NVRTC, nvcc, or clang; NVRTC: {nvrtc_error}; nvcc: {nvcc_error}; clang: {clang_error}"
+                        )
+                    })
             }),
     }
 }
@@ -623,6 +627,58 @@ impl NvccCompiler {
     }
 }
 
+#[derive(Debug, Clone)]
+struct ClangCudaCompiler {
+    command: PathBuf,
+}
+
+impl ClangCudaCompiler {
+    fn load() -> Result<Self, String> {
+        find_clang_cuda_command()
+            .map(|command| Self { command })
+            .ok_or_else(|| "failed to find clang CUDA compiler command".to_owned())
+    }
+
+    fn compile_source_file_to_ptx(&self, source_path: &str) -> Result<String, String> {
+        let output_path = clang_cuda_ptx_output_path_for_source(source_path);
+        let output = Command::new(&self.command)
+            .arg("--cuda-device-only")
+            .arg("--cuda-gpu-arch=sm_52")
+            .arg("-nocudainc")
+            .arg("-nocudalib")
+            .arg("-x")
+            .arg("cuda")
+            .arg(source_path)
+            .arg("-S")
+            .arg("-o")
+            .arg(&output_path)
+            .output()
+            .map_err(|error| format!("failed to execute {}: {error}", self.command.display()))?;
+
+        if !output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let _ = fs::remove_file(&output_path);
+            return Err(format!(
+                "{} exited with status {}; stdout: {}; stderr: {}",
+                self.command.display(),
+                output.status,
+                stdout.trim(),
+                stderr.trim()
+            ));
+        }
+
+        let ptx = fs::read_to_string(&output_path).map_err(|error| {
+            format!(
+                "cannot read clang CUDA PTX {}: {error}",
+                output_path.display()
+            )
+        })?;
+        let _ = fs::remove_file(output_path);
+        Ok(ptx)
+    }
+}
+
 /// Returns a deterministic temporary PTX output path for one CUDA source path.
 #[must_use]
 pub fn nvcc_ptx_output_path_for_source(source_path: &str) -> PathBuf {
@@ -630,6 +686,16 @@ pub fn nvcc_ptx_output_path_for_source(source_path: &str) -> PathBuf {
     source_path.hash(&mut hasher);
     std::env::temp_dir().join(format!(
         "atlas-cuda-nvcc-{}-{:016x}.ptx",
+        std::process::id(),
+        hasher.finish()
+    ))
+}
+
+fn clang_cuda_ptx_output_path_for_source(source_path: &str) -> PathBuf {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    source_path.hash(&mut hasher);
+    std::env::temp_dir().join(format!(
+        "atlas-cuda-clang-{}-{:016x}.ptx",
         std::process::id(),
         hasher.finish()
     ))
@@ -1101,6 +1167,10 @@ fn find_nvcc_command() -> Option<PathBuf> {
         .or_else(|| find_command_on_path(nvcc_command_names()))
 }
 
+fn find_clang_cuda_command() -> Option<PathBuf> {
+    find_command_on_path(clang_cuda_command_names())
+}
+
 fn nvcc_command_names() -> Vec<&'static str> {
     #[cfg(windows)]
     {
@@ -1109,6 +1179,24 @@ fn nvcc_command_names() -> Vec<&'static str> {
     #[cfg(not(windows))]
     {
         vec!["nvcc"]
+    }
+}
+
+fn clang_cuda_command_names() -> Vec<&'static str> {
+    #[cfg(windows)]
+    {
+        vec![
+            "clang++.exe",
+            "clang++.bat",
+            "clang++.cmd",
+            "clang.exe",
+            "clang.bat",
+            "clang.cmd",
+        ]
+    }
+    #[cfg(not(windows))]
+    {
+        vec!["clang++", "clang"]
     }
 }
 
