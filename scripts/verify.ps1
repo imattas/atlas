@@ -102,6 +102,7 @@ if ($Profile -eq "full") {
 }
 
 if ($Profile -eq "hardware") {
+    Invoke-Step "GPU doctor diagnostics" { cargo run -q -p atlas-cli -- doctor }
     Invoke-Step "OpenCL real-device search" {
         cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
     }

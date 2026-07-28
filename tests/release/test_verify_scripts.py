@@ -51,6 +51,23 @@ class VerifyScriptTests(unittest.TestCase):
                     self.assertIn(test_name, text)
                 self.assertIn("--ignored", text)
 
+    def test_hardware_profile_emits_doctor_diagnostics_before_device_tests(self):
+        scripts = [
+            ROOT / "scripts" / "verify.ps1",
+            ROOT / "scripts" / "verify.sh",
+        ]
+
+        for script in scripts:
+            with self.subTest(script=script.name):
+                text = script.read_text(encoding="utf-8")
+                doctor_index = text.find("cargo run -q -p atlas-cli -- doctor")
+                first_hardware_test_index = text.find(
+                    "generated_opencl_kernel_runs_on_device_and_preserves_full_candidates"
+                )
+                self.assertNotEqual(-1, doctor_index)
+                self.assertNotEqual(-1, first_hardware_test_index)
+                self.assertLess(doctor_index, first_hardware_test_index)
+
 
 if __name__ == "__main__":
     unittest.main()

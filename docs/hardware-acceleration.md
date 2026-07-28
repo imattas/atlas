@@ -86,6 +86,8 @@ Real-device validation commands:
 - All configured GPU backends on a hardware runner:
   - Windows: `./scripts/verify.ps1 -Profile hardware`
   - Unix: `./scripts/verify.sh --profile hardware`
+  The hardware profile prints `atlas doctor` adapter diagnostics before running
+  real-device tests.
 - OpenCL:
   `cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture`
 - CUDA:

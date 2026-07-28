@@ -102,6 +102,7 @@ if [[ "$profile" == "full" ]]; then
 fi
 
 if [[ "$profile" == "hardware" ]]; then
+  cargo run -q -p atlas-cli -- doctor
   cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
   cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
   cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
