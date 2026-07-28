@@ -688,6 +688,73 @@ fn detects_opencl_from_standard_sdk_layout() {
 }
 
 #[test]
+fn empty_standard_install_bases_do_not_report_gpu_sdks() {
+    let _env_guard = env_lock();
+    let root = std::env::temp_dir().join(format!("atlas-gpu-empty-bases-{}", std::process::id()));
+    let program_files = root.join("ProgramFiles");
+    let system_drive = root.join("SystemDrive");
+    fs::create_dir_all(&program_files).unwrap();
+    fs::create_dir_all(&system_drive).unwrap();
+    let original_path = std::env::var_os("PATH");
+    let original_program_files = std::env::var_os("ProgramFiles");
+    let original_program_files_x86 = std::env::var_os("ProgramFiles(x86)");
+    let original_system_drive = std::env::var_os("SystemDrive");
+    let original_cuda_path = std::env::var_os("CUDA_PATH");
+    let original_cuda_home = std::env::var_os("CUDA_HOME");
+    let original_cuda_root = std::env::var_os("CUDA_ROOT");
+    let original_hip_path = std::env::var_os("HIP_PATH");
+    let original_rocm_path = std::env::var_os("ROCM_PATH");
+    let original_rocm_home = std::env::var_os("ROCM_HOME");
+    let original_vulkan_sdk = std::env::var_os("VULKAN_SDK");
+    let original_vk_sdk_path = std::env::var_os("VK_SDK_PATH");
+    let original_opencl_sdk = std::env::var_os("OPENCL_SDK");
+    let original_ocl_root = std::env::var_os("OCL_ROOT");
+    let original_intel = std::env::var_os("INTELOCLSDKROOT");
+    let original_amd = std::env::var_os("AMDAPPSDKROOT");
+    std::env::set_var("PATH", "");
+    std::env::set_var("ProgramFiles", &program_files);
+    std::env::remove_var("ProgramFiles(x86)");
+    std::env::set_var("SystemDrive", &system_drive);
+    for key in [
+        "CUDA_PATH",
+        "CUDA_HOME",
+        "CUDA_ROOT",
+        "HIP_PATH",
+        "ROCM_PATH",
+        "ROCM_HOME",
+        "VULKAN_SDK",
+        "VK_SDK_PATH",
+        "OPENCL_SDK",
+        "OCL_ROOT",
+        "INTELOCLSDKROOT",
+        "AMDAPPSDKROOT",
+    ] {
+        std::env::remove_var(key);
+    }
+
+    let detected = GpuSdkDetector::detect_from_host_path();
+
+    restore_env("PATH", original_path);
+    restore_env("ProgramFiles", original_program_files);
+    restore_env("ProgramFiles(x86)", original_program_files_x86);
+    restore_env("SystemDrive", original_system_drive);
+    restore_env("CUDA_PATH", original_cuda_path);
+    restore_env("CUDA_HOME", original_cuda_home);
+    restore_env("CUDA_ROOT", original_cuda_root);
+    restore_env("HIP_PATH", original_hip_path);
+    restore_env("ROCM_PATH", original_rocm_path);
+    restore_env("ROCM_HOME", original_rocm_home);
+    restore_env("VULKAN_SDK", original_vulkan_sdk);
+    restore_env("VK_SDK_PATH", original_vk_sdk_path);
+    restore_env("OPENCL_SDK", original_opencl_sdk);
+    restore_env("OCL_ROOT", original_ocl_root);
+    restore_env("INTELOCLSDKROOT", original_intel);
+    restore_env("AMDAPPSDKROOT", original_amd);
+    let _ = fs::remove_dir_all(root);
+    assert_eq!(detected, Vec::<GpuSdk>::new());
+}
+
+#[test]
 fn launch_config_bounds_workgroups_and_output_transfer_capacity() {
     let config = AcceleratorRuntime::plan_launch(SearchDomain::new(0, 1_000_000), 256, 1024);
 

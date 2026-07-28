@@ -994,7 +994,7 @@ fn standard_sdk_root_dirs() -> Vec<PathBuf> {
             .map(PathBuf::from)
         {
             let cuda_base = base.join("NVIDIA GPU Computing Toolkit").join("CUDA");
-            roots.push(cuda_base.clone());
+            push_existing_dir(&mut roots, cuda_base.clone());
             if let Ok(entries) = fs::read_dir(&cuda_base) {
                 roots.extend(
                     entries
@@ -1009,21 +1009,21 @@ fn standard_sdk_root_dirs() -> Vec<PathBuf> {
                 );
             }
             let rocm_base = base.join("AMD").join("ROCm");
-            roots.push(rocm_base.clone());
+            push_existing_dir(&mut roots, rocm_base.clone());
             if let Ok(entries) = fs::read_dir(&rocm_base) {
                 for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
                     if path.is_dir() {
                         roots.push(path.clone());
-                        roots.push(path.join("hip"));
-                        roots.push(path.join("bin"));
+                        push_existing_dir(&mut roots, path.join("hip"));
+                        push_existing_dir(&mut roots, path.join("bin"));
                     }
                 }
             }
-            roots.push(base.join("Khronos").join("OpenCL-SDK"));
+            push_existing_dir(&mut roots, base.join("Khronos").join("OpenCL-SDK"));
         }
         if let Some(drive) = std::env::var_os("SystemDrive").map(PathBuf::from) {
             let vulkan_base = drive.join("VulkanSDK");
-            roots.push(vulkan_base.clone());
+            push_existing_dir(&mut roots, vulkan_base.clone());
             if let Ok(entries) = fs::read_dir(&vulkan_base) {
                 roots.extend(
                     entries
@@ -1045,6 +1045,12 @@ fn standard_sdk_root_dirs() -> Vec<PathBuf> {
         }
     }
     deduped
+}
+
+fn push_existing_dir(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if path.is_dir() {
+        paths.push(path);
+    }
 }
 
 fn normalize_tool_name(name: &str) -> String {
