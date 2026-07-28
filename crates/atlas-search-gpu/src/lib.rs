@@ -2492,6 +2492,9 @@ fn adapter_features_include(stdout: &str, feature: &str) -> bool {
 }
 
 fn standard_sdk_root_dirs() -> Vec<PathBuf> {
+    if std::env::var_os("ATLAS_GPU_SKIP_STANDARD_SDK_ROOTS").is_some() {
+        return Vec::new();
+    }
     let mut roots = Vec::new();
     #[cfg(windows)]
     {

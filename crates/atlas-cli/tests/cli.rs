@@ -79,6 +79,17 @@ fn write_failing_feature_adapter(dir: &Path, command: &str, stderr: &str) -> std
     Ok(())
 }
 
+#[cfg(unix)]
+fn make_executable(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let mut permissions = fs::metadata(path).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions).unwrap();
+}
+
+#[cfg(not(unix))]
+fn make_executable(_path: &Path) {}
+
 #[test]
 fn cli_supports_required_commands() {
     for command in ["solve", "inspect", "benchmark", "worker", "doctor"] {
@@ -235,12 +246,13 @@ fn solve_force_gpu_honors_explicit_gpu_sdk_selection() {
     let tool_dir =
         std::env::temp_dir().join(format!("atlas-cli-selected-gpu-sdk-{}", std::process::id()));
     fs::create_dir_all(&tool_dir).unwrap();
+    let opencl_adapter = tool_dir.join(if cfg!(windows) {
+        "atlas-gpu-opencl-run.bat"
+    } else {
+        "atlas-gpu-opencl-run"
+    });
     fs::write(
-        tool_dir.join(if cfg!(windows) {
-            "atlas-gpu-opencl-run.bat"
-        } else {
-            "atlas-gpu-opencl-run"
-        }),
+        &opencl_adapter,
         if cfg!(windows) {
             "@echo off\r\nexit /b 42\r\n"
         } else {
@@ -248,19 +260,22 @@ fn solve_force_gpu_honors_explicit_gpu_sdk_selection() {
         },
     )
     .unwrap();
+    make_executable(&opencl_adapter);
+    let vulkan_adapter = tool_dir.join(if cfg!(windows) {
+        "atlas-gpu-vulkan-run.bat"
+    } else {
+        "atlas-gpu-vulkan-run"
+    });
     fs::write(
-        tool_dir.join(if cfg!(windows) {
-            "atlas-gpu-vulkan-run.bat"
-        } else {
-            "atlas-gpu-vulkan-run"
-        }),
+        &vulkan_adapter,
         if cfg!(windows) {
-            "@echo off\r\necho match=85\r\nexit /b 0\r\n"
+            "@echo off\r\nif \"%1\"==\"--features\" (\r\n  echo hardware=Fixture Vulkan Accelerator\r\n  echo feature=shaderInt64\r\n  exit /b 0\r\n)\r\necho match=85\r\nexit /b 0\r\n"
         } else {
-            "#!/bin/sh\necho match=85\nexit 0\n"
+            "#!/bin/sh\nif [ \"$1\" = \"--features\" ]; then\n  echo hardware=Fixture Vulkan Accelerator\n  echo feature=shaderInt64\n  exit 0\nfi\necho match=85\nexit 0\n"
         },
     )
     .unwrap();
+    make_executable(&vulkan_adapter);
     fs::write(tool_dir.join("clinfo.exe"), "").unwrap();
     fs::write(tool_dir.join("vulkaninfo.exe"), "").unwrap();
     let original_path = std::env::var_os("PATH").unwrap_or_default();
@@ -322,6 +337,7 @@ fn solve_reports_requested_gpu_sdk_when_that_backend_is_not_detected() {
     let original_cuda_path = std::env::var_os("CUDA_PATH");
     let original_cuda_home = std::env::var_os("CUDA_HOME");
     let original_cuda_root = std::env::var_os("CUDA_ROOT");
+    let original_skip_standard_roots = std::env::var_os("ATLAS_GPU_SKIP_STANDARD_SDK_ROOTS");
     #[cfg(windows)]
     let original_program_files = std::env::var_os("ProgramFiles");
     #[cfg(windows)]
@@ -331,6 +347,7 @@ fn solve_reports_requested_gpu_sdk_when_that_backend_is_not_detected() {
     std::env::remove_var("CUDA_PATH");
     std::env::remove_var("CUDA_HOME");
     std::env::remove_var("CUDA_ROOT");
+    std::env::set_var("ATLAS_GPU_SKIP_STANDARD_SDK_ROOTS", "1");
     #[cfg(windows)]
     {
         std::env::set_var("ProgramFiles", &tool_dir);
@@ -354,6 +371,10 @@ fn solve_reports_requested_gpu_sdk_when_that_backend_is_not_detected() {
     restore_env("CUDA_PATH", original_cuda_path);
     restore_env("CUDA_HOME", original_cuda_home);
     restore_env("CUDA_ROOT", original_cuda_root);
+    restore_env(
+        "ATLAS_GPU_SKIP_STANDARD_SDK_ROOTS",
+        original_skip_standard_roots,
+    );
     #[cfg(windows)]
     {
         restore_env("ProgramFiles", original_program_files);
@@ -380,19 +401,13 @@ fn benchmark_reports_native_and_forced_gpu_runtime() {
     fs::write(
         &adapter_path,
         if cfg!(windows) {
-            "@echo off\r\necho match=85\r\nexit /b 0\r\n"
+            "@echo off\r\nif \"%1\"==\"--features\" (\r\n  echo hardware=Fixture OpenCL Accelerator via OpenCL\r\n  echo feature=int64\r\n  echo feature=launchAbiU32\r\n  echo feature=launchAbiU64\r\n  exit /b 0\r\n)\r\necho match=85\r\nexit /b 0\r\n"
         } else {
-            "#!/bin/sh\necho match=85\nexit 0\n"
+            "#!/bin/sh\nif [ \"$1\" = \"--features\" ]; then\n  echo hardware=Fixture OpenCL Accelerator via OpenCL\n  echo feature=int64\n  echo feature=launchAbiU32\n  echo feature=launchAbiU64\n  exit 0\nfi\necho match=85\nexit 0\n"
         },
     )
     .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut permissions = fs::metadata(&adapter_path).unwrap().permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&adapter_path, permissions).unwrap();
-    }
+    make_executable(&adapter_path);
     fs::write(tool_dir.join("clinfo.exe"), "").unwrap();
     let original_path = std::env::var_os("PATH").unwrap_or_default();
     let joined_path = std::env::join_paths(
@@ -511,6 +526,35 @@ fn benchmark_samples_forced_gpu_runtime_repeatedly() {
 
 #[test]
 fn benchmark_dense_fixture_uses_scaled_forced_gpu_retained_buffer() {
+    let _env_guard = env_lock();
+    let tool_dir = std::env::temp_dir().join(format!(
+        "atlas-cli-benchmark-dense-gpu-tools-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&tool_dir).unwrap();
+    let adapter_path = tool_dir.join(if cfg!(windows) {
+        "atlas-gpu-opencl-run.bat"
+    } else {
+        "atlas-gpu-opencl-run"
+    });
+    fs::write(
+        &adapter_path,
+        if cfg!(windows) {
+            "@echo off\r\nif \"%1\"==\"--features\" (\r\n  echo hardware=Fixture OpenCL Accelerator via OpenCL\r\n  echo feature=int64\r\n  echo feature=launchAbiU32\r\n  echo feature=launchAbiU64\r\n  exit /b 0\r\n)\r\nfor /l %%i in (0,1,1499) do echo match=%%i\r\nexit /b 0\r\n"
+        } else {
+            "#!/bin/sh\nif [ \"$1\" = \"--features\" ]; then\n  echo hardware=Fixture OpenCL Accelerator via OpenCL\n  echo feature=int64\n  echo feature=launchAbiU32\n  echo feature=launchAbiU64\n  exit 0\nfi\ni=0\nwhile [ \"$i\" -lt 1500 ]; do echo match=$i; i=$((i + 1)); done\nexit 0\n"
+        },
+    )
+    .unwrap();
+    make_executable(&adapter_path);
+    fs::write(tool_dir.join("clinfo.exe"), "").unwrap();
+    let original_path = std::env::var_os("PATH").unwrap_or_default();
+    let joined_path = std::env::join_paths(
+        std::iter::once(tool_dir.clone()).chain(std::env::split_paths(&original_path)),
+    )
+    .unwrap();
+    std::env::set_var("PATH", &joined_path);
+
     let output = run(&[
         "benchmark".to_owned(),
         "--fixture".to_owned(),
@@ -523,6 +567,8 @@ fn benchmark_dense_fixture_uses_scaled_forced_gpu_retained_buffer() {
     ])
     .unwrap();
 
+    std::env::set_var("PATH", original_path);
+    let _ = fs::remove_dir_all(tool_dir);
     assert!(output.contains("\"fixture\":\"dense\""));
     assert!(output.contains("\"mode\":\"DeviceValidated\""));
     assert!(output.contains("\"max_matches\":1500"));
