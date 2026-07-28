@@ -2099,6 +2099,36 @@ fn process_driver_runner_recompiles_invalid_opencl_cached_artifact() {
 }
 
 #[test]
+fn process_driver_runner_recompiles_opencl_cached_artifact_with_wrong_launch_abi() {
+    let program = SearchProgram::try_from_fixture("xor64").unwrap();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "OpenCL runtime int64".to_owned(),
+    };
+    let output_dir = std::env::temp_dir().join(format!(
+        "atlas-gpu-opencl-cache-wrong-abi-{}",
+        std::process::id()
+    ));
+    let output_dir_text = output_dir.to_string_lossy().into_owned();
+    let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
+    fs::create_dir_all(Path::new(&plan.artifact_file).parent().unwrap()).unwrap();
+    fs::write(
+        &plan.artifact_file,
+        b"/* atlas-opencl-u32-abi */\n__kernel void atlas_search() {}",
+    )
+    .unwrap();
+    let runner = RecordingCommandRunner::new();
+
+    let output = ProcessDriverRunner::run_with_command_runner(&plan, &runner);
+
+    assert_eq!(output.exit_code, 0);
+    assert_eq!(
+        runner.commands.borrow().as_slice(),
+        &[plan.compile_command, plan.launch_command]
+    );
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
 fn process_driver_runner_recompiles_invalid_cuda_cached_artifact() {
     let program = SearchProgram::try_from_fixture("xor").unwrap();
     let sdk = GpuSdk::Cuda {
@@ -2112,6 +2142,36 @@ fn process_driver_runner_recompiles_invalid_cuda_cached_artifact() {
     let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
     fs::create_dir_all(Path::new(&plan.artifact_file).parent().unwrap()).unwrap();
     fs::write(&plan.artifact_file, b"not ptx").unwrap();
+    let runner = RecordingCommandRunner::new();
+
+    let output = ProcessDriverRunner::run_with_command_runner(&plan, &runner);
+
+    assert_eq!(output.exit_code, 0);
+    assert_eq!(
+        runner.commands.borrow().as_slice(),
+        &[plan.compile_command, plan.launch_command]
+    );
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+fn process_driver_runner_recompiles_cuda_cached_artifact_with_wrong_launch_abi() {
+    let program = SearchProgram::try_from_fixture("xor64").unwrap();
+    let sdk = GpuSdk::Cuda {
+        sdk: "CUDA runtime int64".to_owned(),
+    };
+    let output_dir = std::env::temp_dir().join(format!(
+        "atlas-gpu-cuda-cache-wrong-abi-{}",
+        std::process::id()
+    ));
+    let output_dir_text = output_dir.to_string_lossy().into_owned();
+    let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
+    fs::create_dir_all(Path::new(&plan.artifact_file).parent().unwrap()).unwrap();
+    fs::write(
+        &plan.artifact_file,
+        b".visible .entry atlas_search() {}\n.visible .global .u32 atlas_search_u32_abi;",
+    )
+    .unwrap();
     let runner = RecordingCommandRunner::new();
 
     let output = ProcessDriverRunner::run_with_command_runner(&plan, &runner);
@@ -2164,6 +2224,36 @@ fn process_driver_runner_recompiles_hip_cached_artifact_without_kernel_entry() {
     let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
     fs::create_dir_all(Path::new(&plan.artifact_file).parent().unwrap()).unwrap();
     fs::write(&plan.artifact_file, [0x7f, b'E', b'L', b'F', 0, 0, 0, 0]).unwrap();
+    let runner = RecordingCommandRunner::new();
+
+    let output = ProcessDriverRunner::run_with_command_runner(&plan, &runner);
+
+    assert_eq!(output.exit_code, 0);
+    assert_eq!(
+        runner.commands.borrow().as_slice(),
+        &[plan.compile_command, plan.launch_command]
+    );
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+fn process_driver_runner_recompiles_hip_cached_artifact_with_wrong_launch_abi() {
+    let program = SearchProgram::try_from_fixture("xor64").unwrap();
+    let sdk = GpuSdk::Hip {
+        sdk: "HIP runtime int64".to_owned(),
+    };
+    let output_dir = std::env::temp_dir().join(format!(
+        "atlas-gpu-hip-cache-wrong-abi-{}",
+        std::process::id()
+    ));
+    let output_dir_text = output_dir.to_string_lossy().into_owned();
+    let plan = DriverCommandPlan::for_sdk(&sdk, &program, &output_dir_text);
+    fs::create_dir_all(Path::new(&plan.artifact_file).parent().unwrap()).unwrap();
+    fs::write(
+        &plan.artifact_file,
+        b"\x7fELFatlas_search atlas_search_u32_abi",
+    )
+    .unwrap();
     let runner = RecordingCommandRunner::new();
 
     let output = ProcessDriverRunner::run_with_command_runner(&plan, &runner);
@@ -3420,7 +3510,7 @@ fn host_runtime_uses_persisted_kernel_cache_for_warmed_gpu_threshold() {
     fs::create_dir_all(Path::new(&cached_plan.artifact_file).parent().unwrap()).unwrap();
     fs::write(
         &cached_plan.artifact_file,
-        b"__kernel void atlas_search(__global uint* out_words) {}",
+        b"/* atlas-opencl-u32-abi */\n__kernel void atlas_search(__global uint* out_words) {}",
     )
     .unwrap();
     let artifact_root = Path::new(&cached_plan.artifact_file)

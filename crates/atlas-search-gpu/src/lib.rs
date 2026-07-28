@@ -566,6 +566,8 @@ pub struct AcceleratorRuntime;
 const DEFAULT_GPU_LOCAL_SIZE: u64 = 256;
 const MAX_DRIVER_LAUNCH_GLOBAL_SIZE: u64 = u32::MAX as u64;
 const ATLAS_SEARCH_ENTRY_BYTES: &[u8] = b"atlas_search";
+const ATLAS_SEARCH_U32_ABI_BYTES: &[u8] = b"atlas_search_u32_abi";
+const ATLAS_OPENCL_U32_ABI_MARKER: &str = "atlas-opencl-u32-abi";
 const ELF_MAGIC_BYTES: [u8; 4] = [0x7f, b'E', b'L', b'F'];
 const SPIRV_MAGIC_BYTES: [u8; 4] = [0x03, 0x02, 0x23, 0x07];
 
@@ -1661,24 +1663,33 @@ fn can_reuse_compiled_artifact(plan: &DriverCommandPlan) -> bool {
     plan.launch_command
         .get(1)
         .is_some_and(|launch_input| launch_input == &plan.artifact_file)
-        && artifact_file_is_reusable_for_sdk(&plan.sdk, Path::new(&plan.artifact_file))
+        && artifact_file_is_reusable_for_plan(plan)
 }
 
-fn artifact_file_is_reusable_for_sdk(sdk: &GpuSdk, path: &Path) -> bool {
+fn artifact_file_is_reusable_for_plan(plan: &DriverCommandPlan) -> bool {
+    let path = Path::new(&plan.artifact_file);
     if !path
         .metadata()
         .is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
     {
         return false;
     }
-    match sdk {
-        GpuSdk::OpenCl { .. } => artifact_text_contains(path, "__kernel void atlas_search"),
+    match &plan.sdk {
+        GpuSdk::OpenCl { .. } => {
+            artifact_text_contains(path, "__kernel void atlas_search")
+                && artifact_matches_opencl_launch_abi(path, plan)
+        }
         GpuSdk::Vulkan { .. } => {
             artifact_has_spirv_magic(path) && artifact_bytes_contain(path, ATLAS_SEARCH_ENTRY_BYTES)
         }
-        GpuSdk::Cuda { .. } => artifact_text_contains(path, ".entry atlas_search"),
+        GpuSdk::Cuda { .. } => {
+            artifact_text_contains(path, ".entry atlas_search")
+                && artifact_matches_binary_launch_abi(path, plan)
+        }
         GpuSdk::Hip { .. } => {
-            artifact_has_elf_magic(path) && artifact_bytes_contain(path, ATLAS_SEARCH_ENTRY_BYTES)
+            artifact_has_elf_magic(path)
+                && artifact_bytes_contain(path, ATLAS_SEARCH_ENTRY_BYTES)
+                && artifact_matches_binary_launch_abi(path, plan)
         }
     }
 }
@@ -1700,6 +1711,30 @@ fn artifact_bytes_contain(path: &Path, needle: &[u8]) -> bool {
     fs::read(path).is_ok_and(|bytes| bytes.windows(needle.len()).any(|window| window == needle))
 }
 
+fn artifact_matches_opencl_launch_abi(path: &Path, plan: &DriverCommandPlan) -> bool {
+    let uses_u32_marker = artifact_text_contains(path, ATLAS_OPENCL_U32_ABI_MARKER);
+    artifact_matches_launch_abi(uses_u32_marker, plan)
+}
+
+fn artifact_matches_binary_launch_abi(path: &Path, plan: &DriverCommandPlan) -> bool {
+    let uses_u32_marker = artifact_bytes_contain(path, ATLAS_SEARCH_U32_ABI_BYTES);
+    artifact_matches_launch_abi(uses_u32_marker, plan)
+}
+
+fn artifact_matches_launch_abi(uses_u32_marker: bool, plan: &DriverCommandPlan) -> bool {
+    match launch_command_abi(plan) {
+        Some("u32") => uses_u32_marker,
+        Some("u64") => !uses_u32_marker,
+        _ => true,
+    }
+}
+
+fn launch_command_abi(plan: &DriverCommandPlan) -> Option<&str> {
+    plan.launch_command
+        .windows(2)
+        .find_map(|window| (window[0] == "--abi").then_some(window[1].as_str()))
+}
+
 fn persisted_kernel_cache_keys(
     program: &SearchProgram,
     domain: SearchDomain,
@@ -1711,8 +1746,7 @@ fn persisted_kernel_cache_keys(
         .iter()
         .filter_map(|sdk| {
             let plan = DriverCommandPlan::for_launch(sdk, program, domain, launch, output_dir);
-            artifact_file_is_reusable_for_sdk(sdk, Path::new(&plan.artifact_file))
-                .then_some(plan.cache_key)
+            artifact_file_is_reusable_for_plan(&plan).then_some(plan.cache_key)
         })
         .collect()
 }
