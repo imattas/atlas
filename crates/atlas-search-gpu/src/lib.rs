@@ -124,6 +124,114 @@ impl GpuSdkPlan {
     }
 }
 
+/// GPU launch configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LaunchConfig {
+    /// Total global invocation count rounded for the selected local size.
+    pub global_size: u64,
+    /// Workgroup local size.
+    pub local_size: u64,
+    /// Maximum retained matches.
+    pub max_matches: usize,
+    /// Output match buffer transfer size in bytes.
+    pub output_buffer_bytes: usize,
+}
+
+/// Runtime execution mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeMode {
+    /// Device was unavailable and CPU fallback produced the result.
+    CpuFallback,
+    /// Device-reported matches were validated on CPU before return.
+    DeviceValidated,
+}
+
+/// Accelerator runtime telemetry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeTelemetry {
+    /// Launch configuration.
+    pub launch: LaunchConfig,
+    /// Selected SDK plan rationale.
+    pub rationale: String,
+    /// Whether every returned match was CPU validated.
+    pub cpu_validated: bool,
+    /// Count of rejected device-reported matches.
+    pub rejected_device_matches: usize,
+}
+
+/// Accelerator execution report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AcceleratorReport {
+    /// Runtime execution mode.
+    pub mode: RuntimeMode,
+    /// Validated match stream.
+    pub matches: Vec<u64>,
+    /// Runtime telemetry.
+    pub telemetry: RuntimeTelemetry,
+}
+
+/// Accelerator runtime boundary.
+pub struct AcceleratorRuntime;
+
+impl AcceleratorRuntime {
+    /// Plans a bounded GPU launch and transfer shape.
+    #[must_use]
+    pub fn plan_launch(domain: SearchDomain, local_size: u64, max_matches: usize) -> LaunchConfig {
+        let local_size = local_size.max(1);
+        let candidates = domain.end.saturating_sub(domain.start);
+        let groups = candidates.saturating_add(local_size - 1) / local_size;
+        let global_size = groups.max(1).saturating_mul(local_size);
+        LaunchConfig {
+            global_size,
+            local_size,
+            max_matches,
+            output_buffer_bytes: max_matches.saturating_mul(std::mem::size_of::<u64>()),
+        }
+    }
+
+    /// Executes through the accelerator boundary.
+    ///
+    /// `reported_device_matches` is the device output buffer supplied by a real
+    /// driver integration or deterministic tests. Returned matches are always
+    /// revalidated by CPU IR semantics.
+    #[must_use]
+    pub fn execute(
+        program: &SearchProgram,
+        domain: SearchDomain,
+        detected_sdks: &[GpuSdk],
+        cancellation: &CancellationToken,
+        reported_device_matches: &[u64],
+    ) -> AcceleratorReport {
+        let launch = Self::plan_launch(domain, 256, 1024);
+        let plan = GpuSdkPlan::choose(detected_sdks, true);
+        if plan.selected.is_none() || reported_device_matches.is_empty() {
+            return AcceleratorReport {
+                mode: RuntimeMode::CpuFallback,
+                matches: NativeSearcher::search(program, domain, cancellation),
+                telemetry: RuntimeTelemetry {
+                    launch,
+                    rationale: plan.rationale,
+                    cpu_validated: true,
+                    rejected_device_matches: 0,
+                },
+            };
+        }
+        let matches = GpuSearcher::cpu_validate_matches(program, reported_device_matches);
+        AcceleratorReport {
+            mode: RuntimeMode::DeviceValidated,
+            telemetry: RuntimeTelemetry {
+                launch,
+                rationale: plan.rationale,
+                cpu_validated: true,
+                rejected_device_matches: reported_device_matches
+                    .len()
+                    .saturating_sub(matches.len()),
+            },
+            matches,
+        }
+    }
+}
+
 /// GPU SDK detector.
 pub struct GpuSdkDetector;
 

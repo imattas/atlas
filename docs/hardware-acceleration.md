@@ -17,8 +17,12 @@ Runtime behavior:
 - missing SDKs produce a precise diagnostic and scalar/SIMD fallback;
 - CUDA, OpenCL, and Vulkan compute sources are generated from the same
   restricted IR boundary;
+- launch configuration records global size, local size, output cap, and transfer
+  bytes;
 - generated kernels are cache-keyed by program, compiler, device, and options;
-- every GPU-reported match is revalidated against CPU IR semantics.
+- every GPU-reported match is revalidated against CPU IR semantics;
+- runtime telemetry records whether the result came from CPU fallback or from a
+  CPU-validated device buffer.
 
 Checked packaging fixtures:
 

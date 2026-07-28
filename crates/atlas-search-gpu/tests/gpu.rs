@@ -1,7 +1,10 @@
 //! GPU boundary and differential tests.
 
 use atlas_scheduler::CancellationToken;
-use atlas_search_gpu::{GpuSdk, GpuSdkDetector, GpuSdkPlan, GpuSearcher, KernelCacheKey};
+use atlas_search_gpu::{
+    AcceleratorRuntime, GpuSdk, GpuSdkDetector, GpuSdkPlan, GpuSearcher, KernelCacheKey,
+    RuntimeMode,
+};
 use atlas_search_ir::{SearchDomain, SearchProgram};
 use atlas_search_native::NativeSearcher;
 
@@ -111,4 +114,48 @@ fn detects_gpu_sdks_from_tool_names_without_touching_host_environment() {
         .iter()
         .any(|sdk| matches!(sdk, GpuSdk::Cuda { .. })));
     assert!(detected.iter().any(|sdk| matches!(sdk, GpuSdk::Hip { .. })));
+}
+
+#[test]
+fn launch_config_bounds_workgroups_and_output_transfer_capacity() {
+    let config = AcceleratorRuntime::plan_launch(SearchDomain::new(0, 1_000_000), 256, 1024);
+
+    assert_eq!(config.local_size, 256);
+    assert_eq!(config.global_size % config.local_size, 0);
+    assert!(config.global_size >= 1_000_000);
+    assert_eq!(config.max_matches, 1024);
+    assert_eq!(config.output_buffer_bytes, 1024 * 8);
+}
+
+#[test]
+fn runtime_falls_back_with_telemetry_when_no_device_is_available() {
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+
+    let report = AcceleratorRuntime::execute(&program, SearchDomain::new(0, 64), &[], &token, &[]);
+
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert_eq!(
+        report.matches,
+        NativeSearcher::search(&program, SearchDomain::new(0, 64), &token)
+    );
+    assert!(report.telemetry.rationale.contains("no GPU SDK"));
+    assert!(report.telemetry.cpu_validated);
+}
+
+#[test]
+fn runtime_validates_reported_device_matches_before_returning_them() {
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "test OpenCL".to_owned(),
+    };
+
+    let report =
+        AcceleratorRuntime::execute(&program, SearchDomain::new(0, 64), &[sdk], &token, &[3, 4]);
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    assert_eq!(report.matches, vec![3]);
+    assert!(report.telemetry.cpu_validated);
+    assert_eq!(report.telemetry.rejected_device_matches, 1);
 }
