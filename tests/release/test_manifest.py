@@ -80,6 +80,23 @@ class ReleaseManifestTest(unittest.TestCase):
         )
         self.assertIn("GPU adapter evidence is incomplete", validate_manifest(missing_cuda))
 
+    def test_hardware_acceleration_docs_cover_all_gpu_backends(self) -> None:
+        text = (ROOT / "docs" / "hardware-acceleration.md").read_text(encoding="utf-8")
+        required_tokens = [
+            "OpenCL",
+            "Vulkan",
+            "WGPU",
+            "CUDA",
+            "HIP",
+            "gpu/wgpu/atlas_search.wgsl",
+            "atlas-gpu-wgpu-run",
+            "generated_wgpu_kernel_runs_on_device_and_preserves_full_candidates",
+        ]
+
+        for token in required_tokens:
+            with self.subTest(token=token):
+                self.assertIn(token, text)
+
     def test_manifest_includes_track3_device_benchmark_evidence(self) -> None:
         text = MANIFEST.read_text(encoding="utf-8")
 

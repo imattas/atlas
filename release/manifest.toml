@@ -207,7 +207,7 @@ digest = "380a0dd843505416682afecea398dcb7caa1c0d43f394ebb30ea7f889dcf2b15"
 [[artifacts]]
 name = "hardware-acceleration"
 path = "docs/hardware-acceleration.md"
-digest = "8919d4b9f35b98fa0c693fdcb27b26ccbeb5a70876172fd051ff300052cbaf46"
+digest = "6daa0865fb4d3577e2b44174589c6132a0f88233ac5107139e37b37ee42b39d7"
 
 [[benchmarks]]
 name = "track2-strategy-baseline"

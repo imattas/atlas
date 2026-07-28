@@ -8,8 +8,11 @@ Recommended SDK order:
 1. OpenCL via the Khronos OpenCL SDK for portable heterogeneous compute.
 2. Vulkan compute via the LunarG Vulkan SDK when shader-based compute is the
    best available cross-vendor path.
-3. CUDA for NVIDIA-specific deployments.
-4. HIP for AMD-specific deployments when available.
+3. WGPU/WebGPU compute via the open-source `wgpu` stack for a cross-platform
+   adapter path that can use Vulkan, Metal, DX12, GLES, or browser WebGPU
+   backends when available.
+4. CUDA for NVIDIA-specific deployments.
+5. HIP for AMD-specific deployments when available.
 
 Runtime behavior:
 
@@ -17,7 +20,7 @@ Runtime behavior:
 - host SDK discovery can scan `PATH` for adapter/compiler/runtime tools and
   route through the selected process-backed driver;
 - missing SDKs produce a precise diagnostic and scalar/SIMD fallback;
-- CUDA, HIP, OpenCL, and Vulkan compute sources are generated from the same
+- CUDA, HIP, OpenCL, Vulkan, and WGPU compute sources are generated from the same
   restricted IR boundary;
 - OpenCL code generation lowers the restricted search operations into device
   predicates for candidate filtering and bounded atomic match output;
@@ -25,10 +28,12 @@ Runtime behavior:
   device predicates with full-candidate output for CPU validation;
 - Vulkan GLSL code generation lowers the same restricted search operations into
   64-bit shader predicates with bounded atomic match output;
+- WGPU WGSL code generation lowers the 32-bit restricted search operations into
+  storage-buffer predicates with bounded atomic match output;
 - per-SDK command plans select checked-in kernel artifacts, `hipcc` where a HIP
   code object is needed, and launcher frontends
   (`atlas-gpu-opencl-run`, `atlas-gpu-vulkan-run`, `atlas-gpu-cuda-run`,
-  `atlas-gpu-hip-run`);
+  `atlas-gpu-hip-run`, `atlas-gpu-wgpu-run`);
 - the OpenCL adapter uses dynamic OpenCL loading, build-checks generated source,
   launches the generated `atlas_search` kernel, and prints `match_count=<n>`
   plus `match=<candidate>` lines for CPU validation by the runtime;
@@ -44,6 +49,10 @@ Runtime behavior:
   dynamic Vulkan loading, shader module validation, compute dispatch, and
   `match_count=<n>` plus `match=<candidate>` output for CPU validation by the
   runtime;
+- the WGPU adapter uses `naga` WGSL validation and `wgpu` device dispatch,
+  validates that host launch local size matches `@workgroup_size(...)`, reads
+  back bounded match buffers, and prints `match_count=<n>` plus
+  `match=<candidate>` output for CPU validation by the runtime;
 - production driver execution is isolated behind a runner boundary so host
   adapters can compile/launch kernels without changing search semantics;
 - process-backed execution writes generated per-program kernel source into the
@@ -74,6 +83,7 @@ Checked packaging fixtures:
 - `gpu/hip/atlas_search.hip`
 - `gpu/opencl/atlas_search.cl`
 - `gpu/vulkan/atlas_search.comp`
+- `gpu/wgpu/atlas_search.wgsl`
 
 Checked adapter artifacts:
 
@@ -85,6 +95,8 @@ Checked adapter artifacts:
 - `crates/atlas-gpu-hip-adapter/src/main.rs`
 - `crates/atlas-gpu-vulkan-adapter/src/lib.rs`
 - `crates/atlas-gpu-vulkan-adapter/src/main.rs`
+- `crates/atlas-gpu-wgpu-adapter/src/lib.rs`
+- `crates/atlas-gpu-wgpu-adapter/src/main.rs`
 
 Real-device validation commands:
 
@@ -103,8 +115,11 @@ Real-device validation commands:
   `cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture`
 - Vulkan:
   `cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture`
+- WGPU:
+  `cargo test -p atlas-gpu-wgpu-adapter --test adapter generated_wgpu_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture`
 
 Primary GPU references checked while implementing this boundary:
 
 - Khronos OpenCL SDK/resources.
 - LunarG/Khronos Vulkan SDK compute documentation.
+- `wgpu` and `naga` project documentation/source.
