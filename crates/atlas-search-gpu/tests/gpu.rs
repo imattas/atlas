@@ -9,7 +9,7 @@ use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram};
 use atlas_search_native::NativeSearcher;
 use std::cell::RefCell;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 struct FixtureDriverRunner {
@@ -705,6 +705,19 @@ fn process_driver_runner_reuses_cached_compiled_artifact_without_recompile() {
 }
 
 #[test]
+fn process_driver_runner_resolves_adjacent_adapter_command_when_not_on_path() {
+    let adapter_name = "atlas-gpu-fallback-test-run";
+    let adapter_path = write_adjacent_test_adapter(adapter_name);
+    let command = vec![adapter_name.to_owned()];
+
+    let output = ProcessDriverRunner.run_command(&command);
+
+    let _ = fs::remove_file(adapter_path);
+    assert_eq!(output.exit_code, 7);
+    assert!(output.stdout.contains("adapter-ok"));
+}
+
+#[test]
 fn driver_launch_plan_carries_domain_and_output_capacity() {
     let program = SearchProgram::try_from_fixture("xor").unwrap();
     let launch = AcceleratorRuntime::plan_launch(SearchDomain::new(10, 99), 128, 17);
@@ -737,6 +750,30 @@ fn driver_launch_plan_carries_domain_and_output_capacity() {
         .windows(2)
         .any(|args| args == ["--global-size", "128"]));
     assert_eq!(plan.launch_command[1], plan.source_file);
+}
+
+fn write_adjacent_test_adapter(name: &str) -> PathBuf {
+    let exe_dir = std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    #[cfg(windows)]
+    {
+        let path = exe_dir.join(format!("{name}.cmd"));
+        fs::write(&path, "@echo off\r\necho adapter-ok\r\nexit /b 7\r\n").unwrap();
+        path
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let path = exe_dir.join(name);
+        fs::write(&path, "#!/bin/sh\necho adapter-ok\nexit 7\n").unwrap();
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&path, permissions).unwrap();
+        path
+    }
 }
 
 #[test]

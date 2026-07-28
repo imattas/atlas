@@ -719,13 +719,54 @@ fn run_command(command: &[String]) -> DriverRunOutput {
             stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
         },
-        Err(error) => DriverRunOutput {
-            exit_code: 127,
-            reported_matches: Vec::new(),
-            stdout: String::new(),
-            stderr: error.to_string(),
-        },
+        Err(error) => {
+            run_resolved_adapter_command(program, args).unwrap_or_else(|| DriverRunOutput {
+                exit_code: 127,
+                reported_matches: Vec::new(),
+                stdout: String::new(),
+                stderr: error.to_string(),
+            })
+        }
     }
+}
+
+fn run_resolved_adapter_command(program: &str, args: &[String]) -> Option<DriverRunOutput> {
+    let program_path = resolve_adjacent_adapter_program(program)?;
+    let output = Command::new(program_path).args(args).output().ok()?;
+    Some(DriverRunOutput {
+        exit_code: output.status.code().unwrap_or(1),
+        reported_matches: DriverRunOutput::parse_reported_matches(&String::from_utf8_lossy(
+            &output.stdout,
+        )),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    })
+}
+
+fn resolve_adjacent_adapter_program(program: &str) -> Option<PathBuf> {
+    let plain_name = Path::new(program).file_name()?.to_str()?;
+    if plain_name != program || !plain_name.starts_with("atlas-gpu-") {
+        return None;
+    }
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let mut dirs = vec![exe_dir.clone()];
+    if let Some(parent) = exe_dir.parent() {
+        dirs.push(parent.to_path_buf());
+    }
+    dirs.into_iter()
+        .flat_map(|dir| adapter_program_candidates(&dir, plain_name))
+        .find(|candidate| candidate.is_file())
+}
+
+fn adapter_program_candidates(dir: &Path, plain_name: &str) -> Vec<PathBuf> {
+    let mut candidates = vec![dir.join(plain_name)];
+    #[cfg(windows)]
+    {
+        candidates.push(dir.join(format!("{plain_name}.exe")));
+        candidates.push(dir.join(format!("{plain_name}.cmd")));
+        candidates.push(dir.join(format!("{plain_name}.bat")));
+    }
+    candidates
 }
 
 fn parse_match_token(token: &str) -> Option<u64> {
