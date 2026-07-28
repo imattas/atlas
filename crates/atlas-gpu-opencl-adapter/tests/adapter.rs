@@ -1,6 +1,8 @@
 //! OpenCL adapter CLI tests.
 
-use atlas_gpu_opencl_adapter::{run_cli, AdapterCommand, LaunchArgs, Launcher};
+use atlas_gpu_opencl_adapter::{
+    opencl_loader_candidates_from_roots, run_cli, AdapterCommand, LaunchArgs, Launcher,
+};
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::SearchProgram;
 use std::cell::RefCell;
@@ -151,6 +153,31 @@ fn cli_emits_match_lines_from_launcher() {
     .unwrap();
 
     assert_eq!(output, "match=11\nmatch=13\nmatch=17\n");
+}
+
+#[test]
+fn opencl_loader_candidates_include_sdk_root_loader_directories() {
+    let root = std::env::temp_dir().join(format!("atlas-opencl-sdk-{}", std::process::id()));
+    let candidates = opencl_loader_candidates_from_roots([root.clone()]);
+
+    assert!(
+        candidates
+            .iter()
+            .any(|candidate| candidate.starts_with(root.join("bin"))),
+        "expected candidates to include OpenCL SDK bin directory, got {candidates:?}"
+    );
+    assert!(
+        candidates
+            .iter()
+            .any(|candidate| candidate.starts_with(root.join("lib"))),
+        "expected candidates to include OpenCL SDK lib directory, got {candidates:?}"
+    );
+    assert!(
+        candidates
+            .iter()
+            .any(|candidate| candidate.starts_with(root.join("lib64"))),
+        "expected candidates to include OpenCL SDK lib64 directory, got {candidates:?}"
+    );
 }
 
 #[test]

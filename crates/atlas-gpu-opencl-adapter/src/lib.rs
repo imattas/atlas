@@ -8,6 +8,7 @@ use opencl3::memory::{Buffer, CL_MEM_READ_WRITE};
 use opencl3::program::Program;
 use opencl3::types::{cl_uint, cl_ulong, CL_BLOCKING};
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::ptr;
 
 /// Parsed OpenCL launch protocol arguments.
@@ -240,10 +241,84 @@ fn build_opencl_program(source: &str) -> Result<(Context, CommandQueue, Program)
 }
 
 fn select_device() -> Result<opencl3::types::cl_device_id, String> {
+    configure_opencl_dylib_path_from_sdk_roots();
     get_all_devices(CL_DEVICE_TYPE_GPU)
         .or_else(|_| get_all_devices(CL_DEVICE_TYPE_ALL))
         .map_err(|error| error.to_string())?
         .into_iter()
         .next()
         .ok_or_else(|| "no OpenCL device found".to_owned())
+}
+
+/// Returns OpenCL loader library candidates under explicit SDK root paths.
+///
+/// The `cl3` dynamic loader honors `OPENCL_DYLIB_PATH`; these candidates let
+/// the adapter configure that path from common SDK roots before the first
+/// OpenCL API call.
+pub fn opencl_loader_candidates_from_roots(
+    roots: impl IntoIterator<Item = PathBuf>,
+) -> Vec<PathBuf> {
+    roots
+        .into_iter()
+        .flat_map(|root| {
+            opencl_loader_dirs(&root).into_iter().flat_map(|dir| {
+                opencl_loader_names()
+                    .into_iter()
+                    .map(move |name| dir.join(name))
+            })
+        })
+        .collect()
+}
+
+fn configure_opencl_dylib_path_from_sdk_roots() {
+    if std::env::var_os("OPENCL_DYLIB_PATH").is_some() {
+        return;
+    }
+    let candidates = opencl_loader_candidates_from_roots(opencl_loader_roots_from_env())
+        .into_iter()
+        .filter(|candidate| candidate.is_file())
+        .map(|candidate| candidate.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    if !candidates.is_empty() {
+        std::env::set_var("OPENCL_DYLIB_PATH", candidates.join(";"));
+    }
+}
+
+fn opencl_loader_roots_from_env() -> Vec<PathBuf> {
+    [
+        "OPENCL_SDK",
+        "OCL_ROOT",
+        "INTELOCLSDKROOT",
+        "AMDAPPSDKROOT",
+        "ONEAPI_ROOT",
+    ]
+    .into_iter()
+    .filter_map(std::env::var_os)
+    .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
+    .collect()
+}
+
+fn opencl_loader_dirs(root: &Path) -> Vec<PathBuf> {
+    vec![
+        root.join("bin"),
+        root.join("Bin"),
+        root.join("lib"),
+        root.join("lib64"),
+        root.join("lib").join("x64"),
+        root.join("compiler").join("latest").join("bin"),
+        root.join("compiler")
+            .join("latest")
+            .join("windows")
+            .join("bin"),
+    ]
+}
+
+fn opencl_loader_names() -> Vec<&'static str> {
+    if cfg!(target_os = "windows") {
+        vec!["OpenCL.dll"]
+    } else if cfg!(target_os = "macos") {
+        vec!["OpenCL", "libOpenCL.dylib"]
+    } else {
+        vec!["libOpenCL.so.1", "libOpenCL.so"]
+    }
 }
