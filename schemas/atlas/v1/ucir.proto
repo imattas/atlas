@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package atlas.v1;
+
+message UcirDocument {
+  uint32 schema_major = 1;
+  uint32 schema_minor = 2;
+  string canonical_hash = 3;
+  repeated UcirNode nodes = 4;
+}
+
+message UcirNode {
+  uint64 id = 1;
+  string type = 2;
+  string operation = 3;
+  repeated uint64 inputs = 4;
+  string source = 5;
+  string provenance = 6;
+}

@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package atlas.v1;
+
+message Job {
+  string id = 1;
+  string kind = 2;
+  bytes payload = 3;
+  uint64 wall_time_ms = 4;
+  uint64 memory_bytes = 5;
+}
+
+message BackendHealth {
+  string name = 1;
+  string version = 2;
+  repeated string capabilities = 3;
+}

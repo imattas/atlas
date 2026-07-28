@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package atlas.v1;
+
+message Event {
+  string job_id = 1;
+  string event_type = 2;
+  uint64 sequence = 3;
+  bytes payload = 4;
+}

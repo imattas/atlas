@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  core:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify core on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/verify.ps1 -Profile core
+      - name: Verify core on Unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash ./scripts/verify.sh --profile core

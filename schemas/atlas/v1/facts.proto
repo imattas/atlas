@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package atlas.v1;
+
+message Fact {
+  string hash = 1;
+  string fact_type = 2;
+  string scope = 3;
+  string trust_level = 4;
+  bytes payload = 5;
+  repeated string assumptions = 6;
+  string producer = 7;
+}
