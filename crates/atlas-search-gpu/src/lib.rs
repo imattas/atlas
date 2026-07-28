@@ -966,6 +966,9 @@ impl AcceleratorRuntime {
         let explicit_zero_match_count = execution.explicit_zero_match_count_for_every_launch();
         let reported_matches = execution.reported_matches;
         if reported_matches.is_empty() {
+            if cancellation.is_cancelled() {
+                return Self::cancelled_report(program, domain, cancellation);
+            }
             if let Some(report) = zero_match_driver_report(
                 program,
                 domain,
