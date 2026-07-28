@@ -297,3 +297,70 @@ fn doctor_reports_gpu_adapter_binary_availability() {
     assert!(output.contains("\"command\":\"atlas-gpu-cuda-run\""));
     assert!(output.contains("\"available\":false"));
 }
+
+#[test]
+fn doctor_reports_adjacent_gpu_adapter_binary_availability() {
+    struct Cleanup {
+        adapter_path: std::path::PathBuf,
+        empty_path_dir: std::path::PathBuf,
+        original_path: std::ffi::OsString,
+    }
+
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            std::env::set_var("PATH", &self.original_path);
+            let _ = fs::remove_file(&self.adapter_path);
+            let _ = fs::remove_dir_all(&self.empty_path_dir);
+        }
+    }
+
+    let _env_guard = env_lock();
+    let adjacent_dir = std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    let adapter_path = adjacent_dir.join(if cfg!(windows) {
+        "atlas-gpu-cuda-run.bat"
+    } else {
+        "atlas-gpu-cuda-run"
+    });
+    assert!(
+        !adapter_path.exists(),
+        "test would overwrite existing adapter: {}",
+        adapter_path.display()
+    );
+    fs::write(
+        &adapter_path,
+        if cfg!(windows) {
+            "@echo off\r\nexit /b 0\r\n"
+        } else {
+            "#!/bin/sh\nexit 0\n"
+        },
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(&adapter_path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&adapter_path, permissions).unwrap();
+    }
+    let empty_path_dir =
+        std::env::temp_dir().join(format!("atlas-cli-empty-path-{}", std::process::id()));
+    fs::create_dir_all(&empty_path_dir).unwrap();
+    let original_path = std::env::var_os("PATH").unwrap_or_default();
+    let joined_path = std::env::join_paths(std::iter::once(empty_path_dir.clone())).unwrap();
+    std::env::set_var("PATH", &joined_path);
+    let _cleanup = Cleanup {
+        adapter_path,
+        empty_path_dir,
+        original_path,
+    };
+
+    let output = run(&["doctor".to_owned()]).unwrap();
+
+    assert!(output.contains("\"name\":\"CUDA\""));
+    assert!(output.contains("\"command\":\"atlas-gpu-cuda-run\""));
+    assert!(output.contains("\"available\":true"));
+}

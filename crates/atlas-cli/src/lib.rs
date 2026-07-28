@@ -269,14 +269,24 @@ fn gpu_adapter_commands() -> [GpuAdapterCommand; 4] {
 }
 
 fn command_available(command: &str) -> bool {
-    std::env::var_os("PATH")
+    adapter_search_dirs().into_iter().any(|dir| {
+        command_candidates(&dir, command)
+            .into_iter()
+            .any(|path| path.is_file())
+    })
+}
+
+fn adapter_search_dirs() -> Vec<PathBuf> {
+    let mut dirs = std::env::var_os("PATH")
         .into_iter()
         .flat_map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
-        .any(|dir| {
-            command_candidates(&dir, command)
-                .into_iter()
-                .any(|path| path.is_file())
-        })
+        .collect::<Vec<_>>();
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(parent) = current_exe.parent() {
+            dirs.push(parent.to_path_buf());
+        }
+    }
+    dirs
 }
 
 fn command_candidates(dir: &std::path::Path, command: &str) -> Vec<PathBuf> {
