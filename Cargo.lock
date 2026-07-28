@@ -34,6 +34,10 @@ name = "atlas-facts"
 version = "0.1.0"
 
 [[package]]
+name = "atlas-placement"
+version = "0.1.0"
+
+[[package]]
 name = "atlas-planner"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,7 @@
+schema_major = 1
+host = "generic-ci"
+
+[thresholds]
+simd_min_candidates = 1024
+gpu_min_candidates = 1000000
+gpu_cache_hit_min_candidates = 100000
