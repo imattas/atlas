@@ -1768,7 +1768,8 @@ fn artifact_file_is_reusable_for_plan(plan: &DriverCommandPlan) -> bool {
                 && artifact_matches_opencl_launch_abi(path, plan)
         }
         GpuSdk::Vulkan { .. } => {
-            artifact_has_spirv_magic(path) && artifact_bytes_contain(path, ATLAS_SEARCH_ENTRY_BYTES)
+            artifact_has_spirv_magic(path)
+                && artifact_bytes_contain_symbol(path, ATLAS_SEARCH_ENTRY_BYTES)
         }
         GpuSdk::Cuda { .. } => {
             artifact_text_has_ptx_entry(path, "atlas_search")
