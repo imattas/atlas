@@ -184,10 +184,10 @@ impl CommandRunner for AdapterFeaturesCommandRunner {
     fn run_command(&self, command: &[String]) -> DriverRunOutput {
         self.commands.borrow_mut().push(command.to_vec());
         let stdout = match command.first().map(String::as_str) {
-            Some("atlas-gpu-vulkan-run") => "feature=shaderInt64\n",
-            Some("atlas-gpu-wgpu-run") => "feature=launchAbiU32\n",
+            Some("atlas-gpu-vulkan-run") => "hardware=Vulkan compute device\nfeature=shaderInt64\n",
+            Some("atlas-gpu-wgpu-run") => "hardware=WGPU adapter\nfeature=launchAbiU32\n",
             Some("atlas-gpu-opencl-run" | "atlas-gpu-cuda-run" | "atlas-gpu-hip-run") => {
-                "feature=int64\n"
+                "hardware=Adapter reported device\nfeature=int64\n"
             }
             Some(other) => panic!("unexpected adapter feature command: {other}"),
             None => panic!("empty adapter feature command"),
@@ -1346,6 +1346,10 @@ fn adapter_feature_detection_queries_all_detected_backend_adapters() {
     assert!(detected.iter().any(|sdk| matches!(
         sdk,
         GpuSdk::Wgpu { sdk } if sdk.contains("launchAbiU32")
+    )));
+    assert!(detected.iter().any(|sdk| matches!(
+        sdk,
+        GpuSdk::Wgpu { sdk } if sdk.contains("WGPU adapter")
     )));
     assert!(detected.iter().any(|sdk| matches!(
         sdk,

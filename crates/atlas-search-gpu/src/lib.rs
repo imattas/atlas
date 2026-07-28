@@ -2375,6 +2375,9 @@ fn detect_from_adapter_features(detected: &mut Vec<GpuSdk>, runner: &dyn Command
         let (adapter, feature) = adapter_feature_probe(&sdk);
         let output = runner.run_command(&[adapter.to_owned(), "--features".to_owned()]);
         if output.exit_code == 0 {
+            if let Some(hardware) = adapter_hardware_identity(&output.stdout) {
+                set_sdk_identity(&mut sdk, hardware);
+            }
             if adapter_features_include(&output.stdout, feature) {
                 append_sdk_feature(&mut sdk, feature);
             }
@@ -2407,8 +2410,13 @@ fn augment_with_adapter_features(detected: &mut [GpuSdk], runner: &dyn CommandRu
     for sdk in detected {
         let (adapter, feature) = adapter_feature_probe(sdk);
         let output = runner.run_command(&[adapter.to_owned(), "--features".to_owned()]);
-        if output.exit_code == 0 && adapter_features_include(&output.stdout, feature) {
-            append_sdk_feature(sdk, feature);
+        if output.exit_code == 0 {
+            if let Some(hardware) = adapter_hardware_identity(&output.stdout) {
+                set_sdk_identity(sdk, hardware);
+            }
+            if adapter_features_include(&output.stdout, feature) {
+                append_sdk_feature(sdk, feature);
+            }
         }
     }
 }
@@ -2435,6 +2443,24 @@ fn append_sdk_feature(sdk: &mut GpuSdk, feature: &str) {
         identity.push(' ');
         identity.push_str(feature);
     }
+}
+
+fn set_sdk_identity(sdk: &mut GpuSdk, identity: String) {
+    let target = match sdk {
+        GpuSdk::OpenCl { sdk }
+        | GpuSdk::Vulkan { sdk }
+        | GpuSdk::Wgpu { sdk }
+        | GpuSdk::Cuda { sdk }
+        | GpuSdk::Hip { sdk } => sdk,
+    };
+    *target = identity;
+}
+
+fn adapter_hardware_identity(stdout: &str) -> Option<String> {
+    stdout.lines().find_map(|line| {
+        let hardware = line.trim().strip_prefix("hardware=")?.trim();
+        (!hardware.is_empty()).then_some(hardware.to_owned())
+    })
 }
 
 fn adapter_features_include(stdout: &str, feature: &str) -> bool {
