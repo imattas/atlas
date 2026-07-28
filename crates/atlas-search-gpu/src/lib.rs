@@ -2067,6 +2067,9 @@ fn run_command(command: &[String]) -> DriverRunOutput {
     if let Some(output) = run_resolved_sdk_tool_command(program, args) {
         return output;
     }
+    if let Some(output) = run_resolved_path_adapter_command(program, args) {
+        return output;
+    }
     match Command::new(program).args(args).output() {
         Ok(output) => DriverRunOutput {
             exit_code: output.status.code().unwrap_or(1),
@@ -2083,6 +2086,19 @@ fn run_command(command: &[String]) -> DriverRunOutput {
             stderr: error.to_string(),
         }),
     }
+}
+
+fn run_resolved_path_adapter_command(program: &str, args: &[String]) -> Option<DriverRunOutput> {
+    let program_path = resolve_path_adapter_program(program)?;
+    let output = Command::new(program_path).args(args).output().ok()?;
+    Some(DriverRunOutput {
+        exit_code: output.status.code().unwrap_or(1),
+        reported_matches: DriverRunOutput::parse_reported_matches(&String::from_utf8_lossy(
+            &output.stdout,
+        )),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    })
 }
 
 fn run_resolved_command(program: &str, args: &[String]) -> Option<DriverRunOutput> {
@@ -2109,6 +2125,17 @@ fn run_resolved_sdk_tool_command(program: &str, args: &[String]) -> Option<Drive
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
         stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
     })
+}
+
+fn resolve_path_adapter_program(program: &str) -> Option<PathBuf> {
+    let plain_name = Path::new(program).file_name()?.to_str()?;
+    if plain_name != program || !plain_name.starts_with("atlas-gpu-") {
+        return None;
+    }
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .flat_map(|dir| adapter_program_candidates(&dir, plain_name))
+        .find(|candidate| candidate.is_file())
 }
 
 fn resolve_adjacent_adapter_program(program: &str) -> Option<PathBuf> {
