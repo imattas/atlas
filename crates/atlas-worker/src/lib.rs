@@ -41,12 +41,18 @@ pub struct SandboxPolicy {
 /// Individual sandbox control.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SandboxControl {
+    /// Jobs run as a non-root user.
+    NonRoot,
     /// Networking is disabled.
     NetworkDisabled,
     /// Host environment variables are denied.
     DenyHostEnv,
+    /// Writes outside ephemeral job storage are denied.
+    DenyWriteFilesystem,
     /// Docker socket mounts are denied.
     DenyDockerSocket,
+    /// Artifacts outside the job manifest are denied.
+    DenyUnrelatedArtifacts,
     /// Artifacts are mounted read-only.
     ReadOnlyArtifacts,
 }
@@ -55,9 +61,12 @@ impl Default for SandboxPolicy {
     fn default() -> Self {
         Self {
             controls: BTreeSet::from([
+                SandboxControl::NonRoot,
                 SandboxControl::NetworkDisabled,
                 SandboxControl::DenyHostEnv,
+                SandboxControl::DenyWriteFilesystem,
                 SandboxControl::DenyDockerSocket,
+                SandboxControl::DenyUnrelatedArtifacts,
                 SandboxControl::ReadOnlyArtifacts,
             ]),
         }
@@ -69,6 +78,12 @@ impl SandboxPolicy {
     #[must_use]
     pub fn has(&self, control: SandboxControl) -> bool {
         self.controls.contains(&control)
+    }
+
+    /// Returns whether a requested artifact is present in the job manifest.
+    #[must_use]
+    pub fn allows_artifact(&self, requested: &str, manifest_artifacts: &[&str]) -> bool {
+        manifest_artifacts.contains(&requested)
     }
 }
 

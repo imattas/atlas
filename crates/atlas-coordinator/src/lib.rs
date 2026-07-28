@@ -103,6 +103,22 @@ pub struct Coordinator {
     workers: BTreeMap<String, WorkerRegistration>,
     accepted_results: BTreeSet<String>,
     cancelled_jobs: BTreeSet<String>,
+    active_leases: BTreeMap<String, String>,
+}
+
+/// Durable coordinator snapshot used for restart recovery.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CoordinatorSnapshot {
+    /// Trusted certificate fingerprints.
+    pub trusted_certificates: BTreeSet<String>,
+    /// Registered workers by id.
+    pub workers: BTreeMap<String, WorkerRegistration>,
+    /// Accepted job ids.
+    pub accepted_results: BTreeSet<String>,
+    /// Cancelled job ids.
+    pub cancelled_jobs: BTreeSet<String>,
+    /// Active job leases keyed by job id with worker id values.
+    pub active_leases: BTreeMap<String, String>,
 }
 
 impl Coordinator {
@@ -114,6 +130,31 @@ impl Coordinator {
             workers: BTreeMap::new(),
             accepted_results: BTreeSet::new(),
             cancelled_jobs: BTreeSet::new(),
+            active_leases: BTreeMap::new(),
+        }
+    }
+
+    /// Restores a coordinator from a durable snapshot.
+    #[must_use]
+    pub fn restore(snapshot: CoordinatorSnapshot) -> Self {
+        Self {
+            trusted_certificates: snapshot.trusted_certificates,
+            workers: snapshot.workers,
+            accepted_results: snapshot.accepted_results,
+            cancelled_jobs: snapshot.cancelled_jobs,
+            active_leases: snapshot.active_leases,
+        }
+    }
+
+    /// Creates a durable snapshot for restart recovery.
+    #[must_use]
+    pub fn snapshot(&self) -> CoordinatorSnapshot {
+        CoordinatorSnapshot {
+            trusted_certificates: self.trusted_certificates.clone(),
+            workers: self.workers.clone(),
+            accepted_results: self.accepted_results.clone(),
+            cancelled_jobs: self.cancelled_jobs.clone(),
+            active_leases: self.active_leases.clone(),
         }
     }
 
@@ -146,6 +187,41 @@ impl Coordinator {
             .min_by_key(|worker| worker.capabilities.labels.len())
             .map(|worker| worker.worker_id.clone())
             .ok_or(CoordinatorError::NoCapableWorker)
+    }
+
+    /// Leases a job to the least-capable matching worker and records the active
+    /// lease for restart/requeue handling.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if no worker can run the job.
+    pub fn lease_job(&mut self, job: &JobEnvelope) -> Result<String, CoordinatorError> {
+        let worker_id = self.schedule(job)?;
+        self.active_leases.insert(job.id.clone(), worker_id.clone());
+        Ok(worker_id)
+    }
+
+    /// Returns the worker id holding an active job lease.
+    #[must_use]
+    pub fn active_lease(&self, job_id: &str) -> Option<&str> {
+        self.active_leases.get(job_id).map(String::as_str)
+    }
+
+    /// Removes a disconnected worker and releases its active job leases for
+    /// requeue.
+    #[must_use]
+    pub fn worker_disconnected(&mut self, worker_id: &str) -> Vec<String> {
+        self.workers.remove(worker_id);
+        let released = self
+            .active_leases
+            .iter()
+            .filter(|(_, leased_worker)| leased_worker.as_str() == worker_id)
+            .map(|(job_id, _)| job_id.clone())
+            .collect::<Vec<_>>();
+        for job_id in &released {
+            self.active_leases.remove(job_id);
+        }
+        released
     }
 
     /// Accepts a signed result if lease and integrity checks pass.

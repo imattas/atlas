@@ -43,6 +43,54 @@ fn scheduling_uses_least_capable_matching_worker() {
 }
 
 #[test]
+fn disconnect_requeues_leased_jobs_to_remaining_capable_workers() {
+    let mut coordinator = Coordinator::new(["trusted".to_owned()]);
+    coordinator
+        .register(registration("worker-1", "trusted", &["cpu"]))
+        .unwrap();
+    coordinator
+        .register(registration("worker-2", "trusted", &["cpu"]))
+        .unwrap();
+    let job = JobEnvelope::new("job", "hash", ["cpu".to_owned()], "secret", 10);
+
+    assert_eq!(coordinator.lease_job(&job).unwrap(), "worker-1");
+    assert_eq!(coordinator.active_lease("job"), Some("worker-1"));
+    assert_eq!(
+        coordinator.worker_disconnected("worker-1"),
+        vec!["job".to_owned()]
+    );
+    assert_eq!(coordinator.active_lease("job"), None);
+    assert_eq!(coordinator.lease_job(&job).unwrap(), "worker-2");
+}
+
+#[test]
+fn coordinator_snapshot_restores_workers_cancellations_leases_and_results() {
+    let mut coordinator = Coordinator::new(["trusted".to_owned()]);
+    coordinator
+        .register(registration("worker-1", "trusted", &["cpu"]))
+        .unwrap();
+    let job = JobEnvelope::new("job", "hash", ["cpu".to_owned()], "secret", 10);
+    let duplicate_job = JobEnvelope::new("duplicate", "hash", ["cpu".to_owned()], "secret", 10);
+    let duplicate_result = WorkerResult::new("duplicate", "result", "secret");
+
+    assert_eq!(coordinator.lease_job(&job).unwrap(), "worker-1");
+    coordinator.cancel("job");
+    coordinator
+        .submit_result(&duplicate_job, &duplicate_result, "secret", 1)
+        .unwrap();
+
+    let mut restored = Coordinator::restore(coordinator.snapshot());
+
+    assert_eq!(restored.active_lease("job"), Some("worker-1"));
+    assert_eq!(restored.schedule(&job).unwrap(), "worker-1");
+    assert!(restored.is_cancelled("job"));
+    assert_eq!(
+        restored.submit_result(&duplicate_job, &duplicate_result, "secret", 1),
+        Err(CoordinatorError::DuplicateResult)
+    );
+}
+
+#[test]
 fn tampered_expired_and_duplicate_results_are_rejected() {
     let mut coordinator = Coordinator::new(["trusted".to_owned()]);
     let job = JobEnvelope::new("job", "hash", ["cpu".to_owned()], "secret", 10);
