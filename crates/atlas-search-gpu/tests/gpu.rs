@@ -171,8 +171,16 @@ fn hip_driver_plan_compiles_loadable_code_object_for_adapter() {
 
     assert!(plan.artifact_file.starts_with("target/atlas-gpu/"));
     assert!(plan.artifact_file.ends_with("/atlas_search.hsaco"));
-    assert_eq!(plan.compile_command[0], "hipcc");
-    assert!(plan.compile_command.iter().any(|arg| arg == "--genco"));
+    assert_eq!(plan.compile_command[0], "atlas-gpu-hip-run");
+    assert!(plan
+        .compile_command
+        .iter()
+        .any(|arg| arg == "--compile-check"));
+    assert!(plan.compile_command.iter().any(|arg| arg == "-o"));
+    assert!(plan
+        .compile_command
+        .iter()
+        .any(|arg| arg == &plan.artifact_file));
     assert!(plan
         .launch_command
         .starts_with(&["atlas-gpu-hip-run".to_owned(), plan.artifact_file.clone()]));

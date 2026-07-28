@@ -3,6 +3,7 @@
 use std::ffi::{c_char, c_int, c_uint, c_void, CString};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::ptr;
 
 type HipModuleHandle = *mut c_void;
@@ -35,8 +36,10 @@ pub struct LaunchArgs {
 pub enum AdapterCommand {
     /// Module-load-check a HIP code object without launching a search.
     CompileCheck {
-        /// Generated HIP code object path.
-        artifact: String,
+        /// Generated HIP source or code object path.
+        input: String,
+        /// Optional compiled HIP code object output path.
+        output: Option<String>,
     },
     /// Launch a HIP search.
     Launch(LaunchArgs),
@@ -54,7 +57,8 @@ impl AdapterCommand {
                 return Err("missing compile-check HIP artifact".to_owned());
             };
             return Ok(Self::CompileCheck {
-                artifact: artifact.clone(),
+                input: artifact.clone(),
+                output: optional_output_path(args)?,
             });
         }
         LaunchArgs::parse(args).map(Self::Launch)
@@ -105,7 +109,7 @@ pub trait Launcher {
     /// # Errors
     ///
     /// Returns an error when the artifact cannot be read, loaded, or queried.
-    fn compile_check(&self, artifact: &str) -> Result<(), String>;
+    fn compile_check(&self, input: &str, output: Option<&str>) -> Result<(), String>;
 
     /// Runs the launch and returns device-reported matches.
     ///
@@ -121,8 +125,12 @@ pub trait Launcher {
 pub struct HipModuleLauncher;
 
 impl Launcher for HipModuleLauncher {
-    fn compile_check(&self, artifact: &str) -> Result<(), String> {
+    fn compile_check(&self, input: &str, output: Option<&str>) -> Result<(), String> {
+        let artifact = read_hip_artifact(input, output)?;
         ensure_artifact_readable(artifact)?;
+        if output.is_some() {
+            return Ok(());
+        }
         if let Ok(runtime) = HipRuntime::load() {
             runtime.init()?;
             runtime.set_device(0)?;
@@ -150,8 +158,8 @@ impl Launcher for HipModuleLauncher {
 /// Returns parse or launcher errors.
 pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, String> {
     match AdapterCommand::parse(args)? {
-        AdapterCommand::CompileCheck { artifact } => {
-            launcher.compile_check(&artifact)?;
+        AdapterCommand::CompileCheck { input, output } => {
+            launcher.compile_check(&input, output.as_deref())?;
             Ok(String::new())
         }
         AdapterCommand::Launch(launch_args) => {
@@ -174,6 +182,45 @@ fn ensure_artifact_readable(path: &str) -> Result<(), String> {
         .map_err(|error| format!("cannot read HIP code object {path}: {error}"))
 }
 
+fn read_hip_artifact<'a>(input: &'a str, output: Option<&'a str>) -> Result<&'a str, String> {
+    let Some(output) = output else {
+        return Ok(input);
+    };
+    compile_hip_source_to_code_object(input, output)?;
+    Ok(output)
+}
+
+fn compile_hip_source_to_code_object(source: &str, output: &str) -> Result<(), String> {
+    if let Some(parent) = Path::new(output).parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("cannot create HIP output directory: {error}"))?;
+    }
+    let hipcc = find_hipcc_command().ok_or_else(|| {
+        format!(
+            "failed to find hipcc compiler command; searched hipcc candidates: {}",
+            format_path_candidates(hipcc_command_candidates_from_roots(
+                hip_root_dirs_from_host()
+            ))
+        )
+    })?;
+    let compile = Command::new(hipcc)
+        .arg("--genco")
+        .arg("-O2")
+        .arg(source)
+        .arg("-o")
+        .arg(output)
+        .output()
+        .map_err(|error| format!("failed to run hipcc: {error}"))?;
+    if compile.status.success() && Path::new(output).is_file() {
+        return Ok(());
+    }
+    Err(format!(
+        "hipcc failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&compile.stdout),
+        String::from_utf8_lossy(&compile.stderr)
+    ))
+}
+
 fn parse_u64_flag(args: &[String], flag: &str) -> Result<u64, String> {
     let value = flag_value(args, flag)?;
     value
@@ -192,6 +239,16 @@ fn flag_value<'a>(args: &'a [String], flag: &str) -> Result<&'a str, String> {
     args.windows(2)
         .find_map(|window| (window[0] == flag).then_some(window[1].as_str()))
         .ok_or_else(|| format!("missing {flag}"))
+}
+
+fn optional_output_path(args: &[String]) -> Result<Option<String>, String> {
+    let Some(index) = args.iter().position(|arg| arg == "-o" || arg == "--output") else {
+        return Ok(None);
+    };
+    args.get(index + 1)
+        .cloned()
+        .map(Some)
+        .ok_or_else(|| "missing output path after -o".to_owned())
 }
 
 fn launch_hip(
@@ -605,6 +662,58 @@ fn sdk_version_key(path: &Path) -> Vec<u32> {
 fn push_existing_dir(paths: &mut Vec<PathBuf>, path: PathBuf) {
     if path.is_dir() {
         paths.push(path);
+    }
+}
+
+fn find_hipcc_command() -> Option<PathBuf> {
+    hipcc_command_candidates_from_roots(hip_root_dirs_from_host())
+        .into_iter()
+        .find(|path| path.is_file())
+        .or_else(|| find_command_on_path(hipcc_command_names()))
+}
+
+fn hipcc_command_candidates_from_roots(roots: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
+    roots
+        .into_iter()
+        .flat_map(|root| {
+            [root.clone(), root.join("bin")]
+                .into_iter()
+                .flat_map(|dir| {
+                    hipcc_command_names()
+                        .into_iter()
+                        .map(move |name| dir.join(name))
+                })
+        })
+        .collect()
+}
+
+fn hipcc_command_names() -> Vec<&'static str> {
+    #[cfg(windows)]
+    {
+        vec!["hipcc.exe", "hipcc.bat", "hipcc.cmd"]
+    }
+    #[cfg(not(windows))]
+    {
+        vec!["hipcc"]
+    }
+}
+
+fn find_command_on_path(names: Vec<&'static str>) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .flat_map(|dir| names.iter().map(move |name| dir.join(name)))
+        .find(|candidate| candidate.is_file())
+}
+
+fn format_path_candidates(candidates: impl IntoIterator<Item = PathBuf>) -> String {
+    let paths = candidates
+        .into_iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>();
+    if paths.is_empty() {
+        "<none>".to_owned()
+    } else {
+        paths.join(", ")
     }
 }
 

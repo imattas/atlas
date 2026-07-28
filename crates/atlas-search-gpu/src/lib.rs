@@ -217,8 +217,8 @@ impl DriverCommandPlan {
                     "gpu/hip/atlas_search.hip",
                     "atlas_search.hip",
                     "atlas_search.hsaco",
-                    "hipcc",
-                    "--genco -O2",
+                    "atlas-gpu-hip-run",
+                    "--compile-check",
                     GpuSearcher::compile_hip(program),
                 ),
             };

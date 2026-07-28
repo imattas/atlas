@@ -8,6 +8,7 @@ use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::SearchProgram;
 use std::cell::RefCell;
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[cfg(windows)]
@@ -25,7 +26,7 @@ fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
 struct FixtureLauncher;
 
 impl Launcher for FixtureLauncher {
-    fn compile_check(&self, _artifact: &str) -> Result<(), String> {
+    fn compile_check(&self, _artifact: &str, _output: Option<&str>) -> Result<(), String> {
         Ok(())
     }
 
@@ -42,7 +43,7 @@ impl Launcher for FixtureLauncher {
 
 #[derive(Debug)]
 struct RecordingLauncher {
-    compile_checked: RefCell<Vec<String>>,
+    compile_checked: RefCell<Vec<(String, Option<String>)>>,
 }
 
 impl RecordingLauncher {
@@ -54,8 +55,10 @@ impl RecordingLauncher {
 }
 
 impl Launcher for RecordingLauncher {
-    fn compile_check(&self, artifact: &str) -> Result<(), String> {
-        self.compile_checked.borrow_mut().push(artifact.to_owned());
+    fn compile_check(&self, artifact: &str, output: Option<&str>) -> Result<(), String> {
+        self.compile_checked
+            .borrow_mut()
+            .push((artifact.to_owned(), output.map(str::to_owned)));
         Ok(())
     }
 
@@ -100,7 +103,27 @@ fn parses_compile_check_command() {
     assert_eq!(
         command,
         AdapterCommand::CompileCheck {
-            artifact: "target/atlas-gpu/atlas_search.hsaco".to_owned(),
+            input: "target/atlas-gpu/atlas_search.hsaco".to_owned(),
+            output: None,
+        }
+    );
+}
+
+#[test]
+fn parses_compile_check_source_and_output_command() {
+    let command = AdapterCommand::parse(&[
+        "--compile-check".to_owned(),
+        "target/atlas-gpu/atlas_search.hip".to_owned(),
+        "-o".to_owned(),
+        "target/atlas-gpu/atlas_search.hsaco".to_owned(),
+    ])
+    .unwrap();
+
+    assert_eq!(
+        command,
+        AdapterCommand::CompileCheck {
+            input: "target/atlas-gpu/atlas_search.hip".to_owned(),
+            output: Some("target/atlas-gpu/atlas_search.hsaco".to_owned()),
         }
     );
 }
@@ -121,7 +144,7 @@ fn cli_compile_check_invokes_launcher_backend() {
     assert_eq!(output, "");
     assert_eq!(
         launcher.compile_checked.borrow().as_slice(),
-        ["target/atlas-gpu/atlas_search.hsaco"]
+        &[("target/atlas-gpu/atlas_search.hsaco".to_owned(), None)]
     );
 }
 
@@ -175,9 +198,35 @@ fn compile_check_rejects_missing_code_object_artifact() {
         .to_string_lossy()
         .into_owned();
 
-    let error = HipModuleLauncher.compile_check(&missing).unwrap_err();
+    let error = HipModuleLauncher.compile_check(&missing, None).unwrap_err();
 
     assert!(error.contains("cannot read HIP code object"));
+}
+
+#[test]
+fn compile_check_writes_code_object_artifact_from_hip_source() {
+    #[cfg(windows)]
+    let _env_lock = WINDOWS_ENV_LOCK.lock().unwrap();
+    let root = std::env::temp_dir().join(format!("atlas-hip-fake-hipcc-{}", std::process::id()));
+    let bin_dir = root.join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+    let hipcc = write_fake_hipcc(&bin_dir);
+    let source = root.join("atlas_search.hip");
+    let artifact = root.join("atlas_search.hsaco");
+    fs::write(&source, "extern \"C\" __global__ void atlas_search() {}\n").unwrap();
+    let original_path = std::env::var_os("PATH");
+    std::env::set_var("PATH", &bin_dir);
+    let source = source.to_string_lossy().into_owned();
+    let artifact_text = artifact.to_string_lossy().into_owned();
+
+    HipModuleLauncher
+        .compile_check(&source, Some(&artifact_text))
+        .unwrap();
+
+    assert!(artifact.exists());
+    restore_env("PATH", original_path);
+    let _ = fs::remove_file(hipcc);
+    let _ = fs::remove_dir_all(root);
 }
 
 #[test]
@@ -361,4 +410,31 @@ fn detect_hip_arch() -> Option<String> {
             .map(|(_, arch)| arch.trim().to_owned())
             .filter(|arch| !arch.is_empty())
     })
+}
+
+fn write_fake_hipcc(bin_dir: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let path = bin_dir.join("hipcc.cmd");
+        fs::write(
+            &path,
+            "@echo off\r\necho fake-hsaco>\"%~5\"\r\nexit /b 0\r\n",
+        )
+        .unwrap();
+        path
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let path = bin_dir.join("hipcc");
+        fs::write(
+            &path,
+            "#!/bin/sh\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = \"-o\" ]; then shift; echo fake-hsaco > \"$1\"; exit 0; fi\n  shift\ndone\nexit 0\n",
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&path, permissions).unwrap();
+        path
+    }
 }
