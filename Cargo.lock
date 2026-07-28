@@ -151,6 +151,7 @@ dependencies = [
 name = "atlas-search-gpu"
 version = "0.1.0"
 dependencies = [
+ "atlas-placement",
  "atlas-scheduler",
  "atlas-search-ir",
  "atlas-search-native",

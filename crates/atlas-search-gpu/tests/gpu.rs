@@ -47,6 +47,19 @@ impl CommandRunner for RecordingCommandRunner {
     }
 }
 
+#[derive(Debug)]
+struct CountingDriverRunner {
+    calls: RefCell<usize>,
+    output: DriverRunOutput,
+}
+
+impl DriverRunner for CountingDriverRunner {
+    fn run(&self, _plan: &DriverCommandPlan) -> DriverRunOutput {
+        *self.calls.borrow_mut() += 1;
+        self.output.clone()
+    }
+}
+
 #[test]
 fn gpu_boundary_matches_native_without_hardware() {
     let token = CancellationToken::new();
@@ -675,7 +688,7 @@ fn runtime_selects_detected_sdk_and_executes_driver_runner() {
 
     let report = AcceleratorRuntime::execute_with_detected_driver(
         &program,
-        SearchDomain::new(0, 64),
+        SearchDomain::new(0, 1_000_000),
         &sdks,
         &token,
         &runner,
@@ -685,6 +698,36 @@ fn runtime_selects_detected_sdk_and_executes_driver_runner() {
     assert_eq!(report.matches, vec![3]);
     assert!(report.telemetry.rationale.contains("OpenCL"));
     assert!(report.telemetry.rationale.contains("driver exit 0"));
+}
+
+#[test]
+fn runtime_uses_scalar_for_tiny_workloads_without_launching_gpu_driver() {
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    let sdks = [GpuSdk::OpenCl {
+        sdk: "test OpenCL".to_owned(),
+    }];
+    let runner = CountingDriverRunner {
+        calls: RefCell::new(0),
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![3],
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_detected_driver(
+        &program,
+        SearchDomain::new(0, 64),
+        &sdks,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert_eq!(*runner.calls.borrow(), 0);
+    assert!(report.telemetry.rationale.contains("Scalar"));
 }
 
 #[test]
@@ -706,7 +749,7 @@ fn runtime_discovers_host_path_sdks_and_executes_driver_runner() {
 
     let report = AcceleratorRuntime::execute_with_path_detected_driver(
         &program,
-        SearchDomain::new(0, 64),
+        SearchDomain::new(0, 1_000_000),
         [tool_dir.clone()],
         &token,
         &runner,

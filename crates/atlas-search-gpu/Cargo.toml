@@ -7,6 +7,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+atlas-placement = { path = "../atlas-placement" }
 atlas-search-ir = { path = "../atlas-search-ir" }
 atlas-search-native = { path = "../atlas-search-native" }
 atlas-scheduler = { path = "../atlas-scheduler" }

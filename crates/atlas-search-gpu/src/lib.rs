@@ -1,5 +1,8 @@
 //! CUDA search boundary with hardware-independent validation behavior.
 
+use atlas_placement::{
+    PlacementCalibration, PlacementCapabilities, PlacementModel, PlacementTarget, SearchFeatures,
+};
 use atlas_scheduler::CancellationToken;
 use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram};
 use atlas_search_native::NativeSearcher;
@@ -481,6 +484,37 @@ impl AcceleratorRuntime {
                 },
             };
         };
+        let placement = PlacementModel::choose_with_calibration(
+            SearchFeatures {
+                candidates: domain.end.saturating_sub(domain.start),
+                regular: true,
+                kernel_cache_hit: false,
+            },
+            PlacementCapabilities {
+                scalar: true,
+                simd: false,
+                gpu: true,
+            },
+            PlacementCalibration::default(),
+        );
+        if placement.target != PlacementTarget::Gpu {
+            let launch = Self::plan_launch(domain, 256, 1024);
+            return AcceleratorReport {
+                mode: RuntimeMode::CpuFallback,
+                matches: NativeSearcher::search(program, domain, cancellation),
+                telemetry: RuntimeTelemetry {
+                    launch,
+                    rationale: format!(
+                        "{:?} placement selected: {}; {}",
+                        placement.target,
+                        placement.rationale,
+                        selected.name()
+                    ),
+                    cpu_validated: true,
+                    rejected_device_matches: 0,
+                },
+            };
+        }
         Self::execute_with_driver(program, domain, &selected, cancellation, runner)
     }
 
