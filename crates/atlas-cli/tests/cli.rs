@@ -503,6 +503,7 @@ fn benchmark_dense_fixture_uses_scaled_forced_gpu_retained_buffer() {
     assert!(output.contains("\"max_matches\":1500"));
     assert!(output.contains("\"output_buffer_bytes\":12000"));
     assert!(output.contains("\"matches\":[0,1,2"));
+    assert!(output.contains(",1499]"));
 }
 
 #[test]

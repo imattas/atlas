@@ -21,6 +21,8 @@ pub struct SearchResult {
 pub struct NativeSearcher;
 
 impl NativeSearcher {
+    const DEFAULT_MATCH_LIMIT: usize = 1024;
+
     /// Searches a bounded domain with cancellation polling and bounded output.
     #[must_use]
     pub fn search(
@@ -31,12 +33,38 @@ impl NativeSearcher {
         Self::search_with_stats(program, domain, cancellation).matches
     }
 
+    /// Searches a bounded domain with cancellation polling and caller-selected
+    /// bounded output.
+    #[must_use]
+    pub fn search_with_match_limit(
+        program: &SearchProgram,
+        domain: SearchDomain,
+        cancellation: &CancellationToken,
+        match_limit: usize,
+    ) -> MatchStream {
+        Self::search_with_stats_and_match_limit(program, domain, cancellation, match_limit).matches
+    }
+
     /// Searches a bounded domain and returns execution statistics.
     #[must_use]
     pub fn search_with_stats(
         program: &SearchProgram,
         domain: SearchDomain,
         cancellation: &CancellationToken,
+    ) -> SearchResult {
+        Self::search_with_stats_and_match_limit(
+            program,
+            domain,
+            cancellation,
+            Self::DEFAULT_MATCH_LIMIT,
+        )
+    }
+
+    fn search_with_stats_and_match_limit(
+        program: &SearchProgram,
+        domain: SearchDomain,
+        cancellation: &CancellationToken,
+        match_limit: usize,
     ) -> SearchResult {
         if cancellation.is_cancelled() {
             return SearchResult {
@@ -45,7 +73,14 @@ impl NativeSearcher {
                 used_closed_form: false,
             };
         }
-        if let Some(matches) = closed_form_matches(program, domain) {
+        if match_limit == 0 {
+            return SearchResult {
+                matches: Vec::new(),
+                candidates_evaluated: 0,
+                used_closed_form: false,
+            };
+        }
+        if let Some(matches) = closed_form_matches(program, domain, match_limit) {
             let candidates_evaluated = u64::try_from(matches.len()).unwrap_or(u64::MAX);
             return SearchResult {
                 matches,
@@ -57,7 +92,7 @@ impl NativeSearcher {
         let mut matches = Vec::new();
         let mut candidates_evaluated = 0_u64;
         for candidate in domain.start..domain.end {
-            if cancellation.is_cancelled() || matches.len() >= 1024 {
+            if cancellation.is_cancelled() || matches.len() >= match_limit {
                 break;
             }
             candidates_evaluated = candidates_evaluated.saturating_add(1);
@@ -73,13 +108,17 @@ impl NativeSearcher {
     }
 }
 
-fn closed_form_matches(program: &SearchProgram, domain: SearchDomain) -> Option<MatchStream> {
+fn closed_form_matches(
+    program: &SearchProgram,
+    domain: SearchDomain,
+    match_limit: usize,
+) -> Option<MatchStream> {
     if program
         .ops
         .iter()
         .all(|op| matches!(op, SearchOp::ByteEq { .. }))
     {
-        return byte_constraint_matches(program, domain);
+        return byte_constraint_matches(program, domain, match_limit);
     }
     let [op] = program.ops.as_slice() else {
         return None;
@@ -106,14 +145,24 @@ fn closed_form_matches(program: &SearchProgram, domain: SearchDomain) -> Option<
             target,
         } => rotate_right_width((target ^ xor_mask) & mask, rotate_left, program.width),
         SearchOp::ChecksumEq { modulus, target } => {
-            return checksum_matches(program, domain, mask, modulus, target);
+            return checksum_matches(program, domain, mask, modulus, target, match_limit);
         }
-        SearchOp::ByteEq { .. } => return byte_constraint_matches(program, domain),
+        SearchOp::ByteEq { .. } => return byte_constraint_matches(program, domain, match_limit),
     };
-    residue_matches(program, domain, mask.saturating_add(1), candidate)
+    residue_matches(
+        program,
+        domain,
+        mask.saturating_add(1),
+        candidate,
+        match_limit,
+    )
 }
 
-fn byte_constraint_matches(program: &SearchProgram, domain: SearchDomain) -> Option<MatchStream> {
+fn byte_constraint_matches(
+    program: &SearchProgram,
+    domain: SearchDomain,
+    match_limit: usize,
+) -> Option<MatchStream> {
     let mut fixed_mask = 0_u64;
     let mut fixed_value = 0_u64;
     for op in &program.ops {
@@ -151,7 +200,7 @@ fn byte_constraint_matches(program: &SearchProgram, domain: SearchDomain) -> Opt
         }
         if candidate >= domain.start && candidate < domain.end && program.accepts(candidate) {
             matches.push(candidate);
-            if matches.len() >= 1024 {
+            if matches.len() >= match_limit {
                 break;
             }
         }
@@ -205,13 +254,14 @@ fn checksum_matches(
     _mask: u64,
     modulus: u64,
     target: u64,
+    match_limit: usize,
 ) -> Option<MatchStream> {
     if modulus == 0 || target >= modulus {
         return Some(Vec::new());
     }
     let mut matches = Vec::new();
     let mut candidate = first_checksum_candidate_at_or_above(domain.start, modulus, target)?;
-    while candidate < domain.end && matches.len() < 1024 {
+    while candidate < domain.end && matches.len() < match_limit {
         if program.accepts(candidate) {
             matches.push(candidate);
         }
@@ -234,9 +284,10 @@ fn residue_matches(
     domain: SearchDomain,
     stride: u64,
     residue: u64,
+    match_limit: usize,
 ) -> Option<MatchStream> {
     let mut matches = Vec::new();
-    extend_residue_matches(program, domain, stride, residue, &mut matches)?;
+    extend_residue_matches(program, domain, stride, residue, match_limit, &mut matches)?;
     Some(matches)
 }
 
@@ -245,10 +296,11 @@ fn extend_residue_matches(
     domain: SearchDomain,
     stride: u64,
     residue: u64,
+    match_limit: usize,
     matches: &mut MatchStream,
 ) -> Option<()> {
     let mut current = first_candidate_at_or_above(residue, stride, domain.start)?;
-    while current < domain.end && matches.len() < 1024 {
+    while current < domain.end && matches.len() < match_limit {
         if program.accepts(current) {
             matches.push(current);
         }

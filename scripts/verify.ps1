@@ -148,7 +148,7 @@ function Invoke-ForcedGpuBenchmark {
             if ($Benchmark.accelerator.launch.output_buffer_bytes -lt $MinOutputBufferBytes) {
                 throw "expected benchmark output_buffer_bytes at least $MinOutputBufferBytes, got $($Benchmark.accelerator.launch.output_buffer_bytes)"
             }
-            $ExpectedCanonicalMatches = [Math]::Min(1024, $MinRetainedMatches)
+            $ExpectedCanonicalMatches = $MinRetainedMatches
             if (@($Benchmark.accelerator.matches).Count -lt $ExpectedCanonicalMatches) {
                 throw "expected at least $ExpectedCanonicalMatches returned matches, got $(@($Benchmark.accelerator.matches).Count)"
             }

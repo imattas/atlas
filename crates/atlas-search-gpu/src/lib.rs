@@ -1023,12 +1023,8 @@ impl AcceleratorRuntime {
                 telemetry: sdk_runtime_telemetry(launch, sdk, base_rationale, 0),
             };
         }
-        let validation = validate_device_matches(
-            program,
-            domain,
-            &reported_matches,
-            DEFAULT_GPU_RETAINED_MATCHES,
-        );
+        let validation =
+            validate_device_matches(program, domain, &reported_matches, launch.max_matches);
         let matches = validation.matches;
         if matches.is_empty() {
             return AcceleratorReport {
@@ -1777,7 +1773,12 @@ fn exact_small_domain_matches(
     if candidates > u64::try_from(max_matches).ok()? {
         return None;
     }
-    Some(NativeSearcher::search(program, domain, cancellation))
+    Some(NativeSearcher::search_with_match_limit(
+        program,
+        domain,
+        cancellation,
+        max_matches,
+    ))
 }
 
 fn driver_launch_domains(domain: SearchDomain) -> Vec<SearchDomain> {

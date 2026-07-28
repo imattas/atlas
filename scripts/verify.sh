@@ -152,7 +152,7 @@ if min_retained_matches > 0:
         raise SystemExit(
             f"expected benchmark output_buffer_bytes at least {min_output_buffer_bytes}, got {output_buffer_bytes}"
         )
-    expected_canonical_matches = min(1024, min_retained_matches)
+    expected_canonical_matches = min_retained_matches
     actual_matches = len(accelerator.get("matches") or [])
     if actual_matches < expected_canonical_matches:
         raise SystemExit(f"expected at least {expected_canonical_matches} returned matches, got {actual_matches}")

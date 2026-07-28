@@ -67,6 +67,23 @@ fn native_search_solves_checksum_residues_without_enumerating_domain() {
 }
 
 #[test]
+fn native_search_with_match_limit_extends_dense_output_cap() {
+    let program = SearchProgram::try_from_fixture("dense").unwrap();
+    let token = CancellationToken::new();
+
+    let matches = NativeSearcher::search_with_match_limit(
+        &program,
+        SearchDomain::new(0, 1_500),
+        &token,
+        1_500,
+    );
+
+    assert_eq!(matches.len(), 1_500);
+    assert_eq!(matches[0], 0);
+    assert_eq!(matches[1_499], 1_499);
+}
+
+#[test]
 fn native_search_handles_64_bit_checksum_modulus_one_without_enumerating_residues() {
     let program = SearchProgram::new(
         64,

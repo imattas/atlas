@@ -3288,11 +3288,17 @@ fn runtime_keeps_bounded_dense_gpu_results_when_device_reports_all_matches() {
     assert_eq!(report.mode, RuntimeMode::DeviceValidated);
     assert_eq!(
         report.matches,
-        NativeSearcher::search(&program, SearchDomain::new(0, 1_500), &token)
+        NativeSearcher::search_with_match_limit(
+            &program,
+            SearchDomain::new(0, 1_500),
+            &token,
+            1_500,
+        )
     );
     assert!(report.telemetry.rationale.contains("driver exit 0"));
     assert_eq!(report.telemetry.launch.max_matches, 1_500);
     assert_eq!(report.telemetry.launch.output_buffer_bytes, 12_000);
+    assert_eq!(report.telemetry.rejected_device_matches, 0);
 }
 
 #[test]
