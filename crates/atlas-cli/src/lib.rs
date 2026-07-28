@@ -237,12 +237,15 @@ fn execute_accelerator(
         let detected_sdks =
             GpuSdkDetector::detect_from_host_path_with_adapter_features(&ProcessDriverRunner);
         let selected_sdks = filter_detected_sdks(detected_sdks, gpu_sdk);
+        let force_accelerator = force_gpu || gpu_sdk.is_some();
         AcceleratorRuntime::execute_with_detected_driver_and_policy(
             program,
             domain,
             &selected_sdks,
             token,
-            RuntimePolicy { force_gpu },
+            RuntimePolicy {
+                force_gpu: force_accelerator,
+            },
             &[],
             &ProcessDriverRunner,
         )
