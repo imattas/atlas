@@ -99,6 +99,24 @@ fn cli_supports_required_commands() {
 }
 
 #[test]
+fn cli_help_is_stable_and_lists_public_commands() {
+    let output = run(&["help".to_owned()]).unwrap();
+
+    assert!(output.starts_with("AtlasCTF CLI v1\n"));
+    for command in ["solve", "inspect", "benchmark", "worker", "doctor"] {
+        assert!(output.contains(command), "help omitted {command}");
+    }
+}
+
+#[test]
+fn cli_accepts_explicit_json_format_without_changing_schema() {
+    let output = run(&["solve".to_owned(), "--format".to_owned(), "json".to_owned()]).unwrap();
+
+    assert!(output.starts_with('{'));
+    assert!(output.contains("\"schema_major\":1"));
+}
+
+#[test]
 fn solve_emits_machine_readable_json() {
     let output = run(&["solve".to_owned()]).unwrap();
 

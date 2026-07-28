@@ -24,6 +24,7 @@ pub fn run(args: &[String]) -> Result<String, String> {
         return Err("missing command".to_owned());
     };
     match command {
+        "help" | "--help" | "-h" => Ok(help()),
         "doctor" => Ok(doctor()),
         "inspect" => Ok("{\"schema_major\":1,\"kind\":\"inspect\"}\n".to_owned()),
         "benchmark" => benchmark(&args[1..]),
@@ -31,6 +32,10 @@ pub fn run(args: &[String]) -> Result<String, String> {
         "solve" => solve(&args[1..]),
         other => Err(format!("unknown command '{other}'")),
     }
+}
+
+fn help() -> String {
+    "AtlasCTF CLI v1\n\nCommands:\n  solve       solve a bounded challenge fixture\n  inspect     inspect an input or fixture\n  benchmark   compare native, SIMD, and accelerator paths\n  worker      run the worker protocol surface\n  doctor      report detected GPU SDKs and adapters\n\nStable output: JSON on stdout; diagnostics on stderr.\nUse --format json explicitly for machine-readable output.\n".to_owned()
 }
 
 fn doctor() -> String {
@@ -105,6 +110,7 @@ fn doctor() -> String {
 }
 
 fn solve(args: &[String]) -> Result<String, String> {
+    validate_format(args)?;
     let request = SolveRequest::parse(args)?;
     let token = CancellationToken::new();
     let report = execute_accelerator(
@@ -142,6 +148,7 @@ fn solve(args: &[String]) -> Result<String, String> {
 }
 
 fn benchmark(args: &[String]) -> Result<String, String> {
+    validate_format(args)?;
     let request = SolveRequest::parse(args)?;
     let token = CancellationToken::new();
     let mut native_samples_ns = Vec::with_capacity(request.samples);
@@ -201,6 +208,15 @@ fn benchmark(args: &[String]) -> Result<String, String> {
         accelerator.telemetry.launch.output_buffer_bytes,
         json_escape(&accelerator.telemetry.rationale)
     ))
+}
+
+fn validate_format(args: &[String]) -> Result<(), String> {
+    if let Some(format) = optional_flag(args, "--format") {
+        if format != "json" {
+            return Err(format!("unsupported --format '{format}'; use json"));
+        }
+    }
+    Ok(())
 }
 
 fn requested_gpu_sdk_json(gpu_sdk: Option<GpuSdkChoice>) -> String {

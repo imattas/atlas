@@ -1,8 +1,10 @@
 # Repository layout
 
-AtlasCTF is currently a multi-track workspace rather than a single CLI crate.
-That is why the repository has several top-level folders: each one maps to a
-separate part of the system or release evidence.
+AtlasCTF is a multi-crate workspace with a deliberately small set of canonical
+top-level boundaries. New production Rust code belongs under `crates/`; new
+user-facing documentation under `docs/`; challenge-independent benchmark
+evidence under `benchmarks/`; and automation under `scripts/` or `.github/`.
+Do not add another top-level folder for a single feature.
 
 ## Tracked top-level folders
 
@@ -35,12 +37,16 @@ tree:
   Releases.
 - `.worktrees/`, `.venv/`, `dist/`, `build/`, `tmp/`, and cache folders.
 
-## Cleanup direction
+## Layout rules
 
-The current layout favors explicit subsystem boundaries over a compact tree. If
-the repo needs to become easier to browse, the safest next cleanup is to group
-documentation-only surfaces under `docs/` first, then migrate experimental
-strategy/backend folders behind workspace-aware path updates. Moving `crates/`,
-`gpu/`, `benchmarks/`, or `tests/` should be done as a separate mechanical PR
-with CI coverage because those paths are referenced by Cargo manifests, release
-metadata, tests, and benchmark manifests.
+- Root files are limited to workspace manifests, release metadata, and primary
+  project documentation.
+- `crates/` is the only production Rust source boundary.
+- `gpu/` contains kernels only; host adapters remain in `crates/`.
+- `backends/`, `plugins/`, `frontends/`, and `models/` are integration or
+  experiment inputs, not alternate production source trees.
+- `target/`, `release/`, and benchmark scratch output are ignored local state.
+
+This formalizes the existing paths without a risky mass move. Any future move
+should be a separate mechanical change with Cargo, workflow, manifest, and
+installer validation in the same change.

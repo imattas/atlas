@@ -469,6 +469,240 @@ pub fn discrete_log_prime(base: u64, target: u64, modulus: u64) -> Option<u64> {
     None
 }
 
+/// Decodes hexadecimal bytes, accepting upper- or lower-case digits.
+#[must_use]
+pub fn hex_decode(input: &str) -> Option<Vec<u8>> {
+    let bytes = input.as_bytes();
+    if !bytes.len().is_multiple_of(2) {
+        return None;
+    }
+    bytes
+        .chunks_exact(2)
+        .map(|pair| Some((hex_digit(pair[0])? << 4) | hex_digit(pair[1])?))
+        .collect()
+}
+
+/// Encodes bytes as lower-case hexadecimal.
+#[must_use]
+pub fn hex_encode(input: &[u8]) -> String {
+    input.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// Encodes bytes using RFC 4648 base64 without external dependencies.
+#[must_use]
+pub fn base64_encode(input: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut output = String::new();
+    for chunk in input.chunks(3) {
+        let a = chunk[0];
+        let b = chunk.get(1).copied().unwrap_or(0);
+        let c = chunk.get(2).copied().unwrap_or(0);
+        output.push(ALPHABET[(a >> 2) as usize] as char);
+        output.push(ALPHABET[((a & 3) << 4 | b >> 4) as usize] as char);
+        output.push(if chunk.len() > 1 {
+            ALPHABET[((b & 15) << 2 | c >> 6) as usize] as char
+        } else {
+            '='
+        });
+        output.push(if chunk.len() > 2 {
+            ALPHABET[(c & 63) as usize] as char
+        } else {
+            '='
+        });
+    }
+    output
+}
+
+/// Decodes strict RFC 4648 base64.
+#[must_use]
+pub fn base64_decode(input: &str) -> Option<Vec<u8>> {
+    if input.is_empty() || !input.len().is_multiple_of(4) {
+        return if input.is_empty() {
+            Some(Vec::new())
+        } else {
+            None
+        };
+    }
+    let bytes = input.as_bytes();
+    let mut output = Vec::new();
+    for (index, chunk) in bytes.chunks_exact(4).enumerate() {
+        let padding = usize::from(chunk[2] == b'=') + usize::from(chunk[3] == b'=');
+        if padding > 2
+            || (padding > 0 && index + 1 != bytes.len() / 4)
+            || (padding == 1 && chunk[2] == b'=')
+        {
+            return None;
+        }
+        let a = base64_digit(chunk[0])?;
+        let b = base64_digit(chunk[1])?;
+        let c = if chunk[2] == b'=' {
+            0
+        } else {
+            base64_digit(chunk[2])?
+        };
+        let d = if chunk[3] == b'=' {
+            0
+        } else {
+            base64_digit(chunk[3])?
+        };
+        if (padding == 2 && b & 15 != 0) || (padding == 1 && c & 3 != 0) {
+            return None;
+        }
+        output.push((a << 2) | (b >> 4));
+        if padding < 2 {
+            output.push((b << 4) | (c >> 2));
+        }
+        if padding == 0 {
+            output.push((c << 6) | d);
+        }
+    }
+    Some(output)
+}
+
+/// Applies a repeating-key XOR operation, a common CTF stream primitive.
+#[must_use]
+pub fn repeating_xor(input: &[u8], key: &[u8]) -> Vec<u8> {
+    if key.is_empty() {
+        return Vec::new();
+    }
+    input
+        .iter()
+        .enumerate()
+        .map(|(index, byte)| byte ^ key[index % key.len()])
+        .collect()
+}
+
+/// Applies a Caesar shift to ASCII letters while preserving case and symbols.
+#[must_use]
+pub fn caesar_shift(input: &[u8], shift: i32) -> Vec<u8> {
+    input
+        .iter()
+        .map(|byte| {
+            let (start, width) = if byte.is_ascii_lowercase() {
+                (b'a', 26)
+            } else if byte.is_ascii_uppercase() {
+                (b'A', 26)
+            } else {
+                return *byte;
+            };
+            start + ((*byte - start) as i32 + shift).rem_euclid(width) as u8
+        })
+        .collect()
+}
+
+/// Removes PKCS#7 padding, returning a slice into the input on success.
+#[must_use]
+pub fn pkcs7_unpad(input: &[u8]) -> Option<&[u8]> {
+    let &padding = input.last()?;
+    let length = usize::from(padding);
+    if length == 0
+        || length > input.len()
+        || input[input.len() - length..]
+            .iter()
+            .any(|byte| *byte != padding)
+    {
+        return None;
+    }
+    Some(&input[..input.len() - length])
+}
+
+/// Computes SHA-256 and returns the lower-case hexadecimal digest.
+#[must_use]
+pub fn sha256_hex(input: &[u8]) -> String {
+    const K: [u32; 64] = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+        0xc67178f2,
+    ];
+    let mut data = input.to_vec();
+    data.push(0x80);
+    while data.len() % 64 != 56 {
+        data.push(0);
+    }
+    data.extend_from_slice(
+        &(u64::try_from(input.len())
+            .unwrap_or(u64::MAX)
+            .saturating_mul(8))
+        .to_be_bytes(),
+    );
+    let mut h: [u32; 8] = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
+    ];
+    for block in data.chunks_exact(64) {
+        let mut w = [0_u32; 64];
+        for (i, word) in w[..16].iter_mut().enumerate() {
+            *word = u32::from_be_bytes(block[i * 4..i * 4 + 4].try_into().unwrap());
+        }
+        for i in 16..64 {
+            let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
+            let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
+            w[i] = w[i - 16]
+                .wrapping_add(s0)
+                .wrapping_add(w[i - 7])
+                .wrapping_add(s1);
+        }
+        let mut a = h[0];
+        let mut b = h[1];
+        let mut c = h[2];
+        let mut d = h[3];
+        let mut e = h[4];
+        let mut f = h[5];
+        let mut g = h[6];
+        let mut hh = h[7];
+        for i in 0..64 {
+            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+            let ch = (e & f) ^ (!e & g);
+            let temp1 = hh
+                .wrapping_add(s1)
+                .wrapping_add(ch)
+                .wrapping_add(K[i])
+                .wrapping_add(w[i]);
+            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+            let maj = (a & b) ^ (a & c) ^ (b & c);
+            let temp2 = s0.wrapping_add(maj);
+            hh = g;
+            g = f;
+            f = e;
+            e = d.wrapping_add(temp1);
+            d = c;
+            c = b;
+            b = a;
+            a = temp1.wrapping_add(temp2);
+        }
+        for (value, add) in h.iter_mut().zip([a, b, c, d, e, f, g, hh]) {
+            *value = (*value).wrapping_add(add);
+        }
+    }
+    h.iter().map(|word| format!("{word:08x}")).collect()
+}
+
+fn hex_digit(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+fn base64_digit(byte: u8) -> Option<u8> {
+    match byte {
+        b'A'..=b'Z' => Some(byte - b'A'),
+        b'a'..=b'z' => Some(byte - b'a' + 26),
+        b'0'..=b'9' => Some(byte - b'0' + 52),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        _ => None,
+    }
+}
+
 fn gcd_i64(left: i64, right: i64) -> i64 {
     let mut left = left.unsigned_abs();
     let mut right = right.unsigned_abs();

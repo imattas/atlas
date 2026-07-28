@@ -153,6 +153,38 @@ class ReleaseManifestTest(unittest.TestCase):
             validate_manifest(missing_track3_benchmark),
         )
 
+    def test_release_workflow_publishes_three_platform_cli_binaries(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        for token in [
+            "release-binaries",
+            "ubuntu-latest",
+            "macos-latest",
+            "windows-latest",
+            "atlas-${version}-${{ matrix.target }}",
+            "actions/upload-artifact@v4",
+        ]:
+            self.assertIn(token, workflow)
+
+    def test_docs_define_v1_contract_and_backend_matrix(self) -> None:
+        cli = (ROOT / "docs" / "cli-contract.md").read_text(encoding="utf-8")
+        matrix = (ROOT / "docs" / "support-matrix.md").read_text(encoding="utf-8")
+        compatibility = (ROOT / "docs" / "compatibility.md").read_text(encoding="utf-8")
+        for token in ["schema_major: 1", "atlas benchmark", "JSON"]:
+            self.assertIn(token, cli)
+        for token in ["Linux", "macOS", "Windows", "WGPU", "OpenCL", "CUDA", "HIP"]:
+            self.assertIn(token, matrix)
+        self.assertIn("Semantic Versioning", compatibility)
+
+    def test_installers_can_consume_verified_release_binaries_with_cargo_fallback(self) -> None:
+        sh = (ROOT / "install.sh").read_text(encoding="utf-8")
+        ps = (ROOT / "install.ps1").read_text(encoding="utf-8")
+        for installer in [sh, ps]:
+            self.assertIn("ATLAS_BINARY", installer)
+            self.assertIn("checksums", installer.lower())
+            self.assertIn("cargo", installer.lower())
+        self.assertIn("x86_64-unknown-linux-gnu", sh)
+        self.assertIn("x86_64-pc-windows-msvc", ps)
+
     def test_manifest_includes_ctf_benchmark_evidence(self) -> None:
         text = MANIFEST.read_text(encoding="utf-8")
 

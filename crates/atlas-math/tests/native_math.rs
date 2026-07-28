@@ -3,6 +3,39 @@
 use atlas_math::{ModularLinearSystem, Polynomial, Rational};
 
 #[test]
+fn ctf_encoding_and_xor_utilities_are_native_and_deterministic() {
+    assert_eq!(atlas_math::hex_decode("48656c6c6f").unwrap(), b"Hello");
+    assert_eq!(atlas_math::hex_encode(b"Hello"), "48656c6c6f");
+    assert_eq!(atlas_math::base64_decode("SGVsbG8=").unwrap(), b"Hello");
+    assert_eq!(atlas_math::base64_encode(b"Hello"), "SGVsbG8=");
+    assert_eq!(
+        atlas_math::repeating_xor(b"ICE", b"\x01\x02"),
+        vec![72, 65, 68]
+    );
+}
+
+#[test]
+fn ctf_classical_and_padding_helpers_cover_common_challenge_inputs() {
+    assert_eq!(
+        atlas_math::caesar_shift(b"Khoor, Zruog!", -3),
+        b"Hello, World!"
+    );
+    assert_eq!(
+        atlas_math::pkcs7_unpad(&[1, 2, 3, 3, 3]).unwrap(),
+        &[1, 2][..]
+    );
+    assert!(atlas_math::pkcs7_unpad(&[1, 2, 3, 0]).is_none());
+}
+
+#[test]
+fn ctf_hash_surface_has_known_sha256_vector() {
+    assert_eq!(
+        atlas_math::sha256_hex(b"abc"),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
+}
+
+#[test]
 fn exact_rationals_normalize_and_preserve_arithmetic() {
     let left = Rational::new(2, 4).unwrap();
     let right = Rational::new(-3, 9).unwrap();

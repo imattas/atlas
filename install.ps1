@@ -10,7 +10,8 @@ param(
     [string]$Rev = $env:ATLAS_REV,
     [string]$Release = $(if ($env:ATLAS_RELEASE) { $env:ATLAS_RELEASE } else { "latest" }),
     [string]$Root = $env:ATLAS_ROOT,
-    [string]$CargoArgs = $env:ATLAS_CARGO_ARGS
+    [string]$CargoArgs = $env:ATLAS_CARGO_ARGS,
+    [string]$Binary = $(if ($env:ATLAS_BINARY) { $env:ATLAS_BINARY } else { "auto" })
 )
 
 Set-StrictMode -Version Latest
@@ -41,6 +42,7 @@ Environment:
   ATLAS_REV=<sha>         Git revision to install.
   ATLAS_RELEASE=latest    Install latest GitHub Release tag by default. Use "off" for ATLAS_BRANCH.
   ATLAS_INSTALL_GPU=1     Also install GPU adapter binaries.
+  ATLAS_BINARY=auto       Use a verified release binary when available; use "off" for Cargo only.
   ATLAS_ROOT=$HOME\.cargo Cargo install root. Defaults to Cargo's install root.
   ATLAS_CARGO_ARGS="..."  Extra arguments appended to each cargo install command.
 "@
@@ -130,10 +132,43 @@ function Install-Package([string]$Package, [string]$Bin) {
     & $script:CargoCommand @cargoInstallArgs
 }
 
+function Install-ReleaseBinary {
+    if ($DryRun -or $Binary -eq "off" -or -not $Tag) { return $false }
+    $target = "x86_64-pc-windows-msvc"
+    $asset = "atlas-$Tag-$target.exe"
+    $temp = Join-Path ([System.IO.Path]::GetTempPath()) ("atlas-install-" + [guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force $temp | Out-Null
+    try {
+        $base = "https://github.com/$Repo/releases/download/$Tag"
+        $binaryPath = Join-Path $temp $asset
+        $checksumsPath = Join-Path $temp "checksums.txt"
+        Invoke-WebRequest -Uri "$base/$asset" -OutFile $binaryPath -UseBasicParsing
+        Invoke-WebRequest -Uri "$base/atlas-$Tag-checksums.txt" -OutFile $checksumsPath -UseBasicParsing
+        $line = Get-Content $checksumsPath | Where-Object { $_ -match "(?:dist/)?$([regex]::Escape($asset))$" } | Select-Object -First 1
+        if (-not $line) { throw "release checksum entry missing for $asset" }
+        $expected = ($line -split '\s+')[0].ToLowerInvariant()
+        $actual = (Get-FileHash $binaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($expected -ne $actual) { throw "release binary checksum mismatch" }
+        $binDir = if ($Root) { Join-Path $Root "bin" } else { Join-Path $HOME ".cargo\bin" }
+        New-Item -ItemType Directory -Force $binDir | Out-Null
+        Copy-Item $binaryPath (Join-Path $binDir "atlas.exe") -Force
+        Write-Host "==> Installed atlas to $(Join-Path $binDir 'atlas.exe')"
+        return $true
+    }
+    catch {
+        if ($Binary -eq "always") { throw }
+        Write-Warning "release binary unavailable or failed verification; falling back to Cargo: $($_.Exception.Message)"
+        return $false
+    }
+    finally { Remove-Item $temp -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 $script:CargoCommand = Resolve-Cargo
 Resolve-ReleaseTag
 
-Install-Package "atlas-cli" "atlas"
+if (-not (Install-ReleaseBinary)) {
+    Install-Package "atlas-cli" "atlas"
+}
 
 if ($InstallGpu) {
     Install-Package "atlas-gpu-opencl-adapter" "atlas-gpu-opencl-run"

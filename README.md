@@ -7,6 +7,10 @@ AtlasCTF is a from-scratch CTF math, symbolic-solving, and hardware-accelerated 
 - Typed UCIR and program-analysis crates for deterministic reasoning over challenge-like inputs.
 - Native and SIMD bounded-search engines for bit-vector, checksum, rotate/XOR, modular arithmetic, and serial-byte constraints.
 - From-scratch math routines for common CTF crypto tasks such as CRT, modular exponentiation, finite-field linear solving, modular square roots, discrete logs, LFSR recovery, and exact rational arithmetic.
+- Native CTF crypto utilities for hex/base64, repeating-key XOR, Caesar shifts,
+  PKCS#7 validation, and SHA-256 known-vector workflows. This is an auditable
+  CTF toolkit, not a claim to implement every production cryptosystem or to
+  replace audited cryptographic libraries.
 - Hardware acceleration through explicit OpenCL, Vulkan, WGPU, CUDA, and HIP adapter boundaries.
 - Release validation, CTF benchmark manifests, and reproducible evidence under `benchmarks/`.
 
@@ -18,8 +22,10 @@ Install the CLI from GitHub:
 curl -fsSL https://raw.githubusercontent.com/imattas/atlas/main/install.sh | sh
 ```
 
-Installers use the latest GitHub Release tag by default and fall back to `main`
-when no release exists yet.
+Installers use the latest GitHub Release tag and verified platform binary by
+default, then fall back to a locked Cargo source build when that asset is not
+available. Set `ATLAS_BINARY=off` to force Cargo or `ATLAS_BINARY=always` to
+fail instead of falling back.
 
 On Windows PowerShell:
 
@@ -97,7 +103,10 @@ This repository uses GitHub Releases rather than a checked-in `release/` directo
 - `schemas/release-manifest.schema.json`
 - `.github/workflows/release.yml`
 
-Create a release by pushing a tag like `v0.1.0`. The workflow validates release metadata, runs release tests, builds a source archive, writes checksums, and publishes the GitHub Release.
+Create a release by pushing a tag like `v1.0.0-rc.1`. The workflow validates
+release metadata, runs release tests, builds x86_64 Windows/Linux/macOS CLI
+binaries plus a source archive, writes checksums, and publishes the GitHub
+Release.
 
 You can also run the release workflow manually with a version input such as
 `v0.1.0`; it will create/update the tag and publish the GitHub Release.
@@ -109,6 +118,9 @@ crates, GPU kernels, Python helpers, benchmark evidence, schemas, docs, and
 release tests. See `docs/repository-layout.md` for the current map and cleanup
 direction. Local `target/` and `release/` folders are ignored build/scratch
 output, not GitHub source folders.
+
+The v1 contracts are documented in `docs/cli-contract.md`,
+`docs/support-matrix.md`, and `docs/compatibility.md`.
 
 ## Verification profiles
 
