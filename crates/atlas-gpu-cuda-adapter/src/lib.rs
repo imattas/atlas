@@ -1103,9 +1103,9 @@ pub fn cuda_sdk_root_candidates_from_bases(
     let mut roots = Vec::new();
     for base in bases {
         let cuda_base = base.join("NVIDIA GPU Computing Toolkit").join("CUDA");
-        roots.push(cuda_base.clone());
+        let mut versioned_roots = Vec::new();
         if let Ok(entries) = fs::read_dir(&cuda_base) {
-            roots.extend(
+            versioned_roots.extend(
                 entries
                     .filter_map(Result::ok)
                     .map(|entry| entry.path())
@@ -1117,10 +1117,28 @@ pub fn cuda_sdk_root_candidates_from_bases(
                     }),
             );
         }
+        versioned_roots.sort_by(|left, right| {
+            cuda_version_key(right)
+                .cmp(&cuda_version_key(left))
+                .then_with(|| right.cmp(left))
+        });
+        roots.extend(versioned_roots);
+        roots.push(cuda_base);
     }
-    roots.sort();
-    roots.reverse();
     dedup_paths(roots)
+}
+
+fn cuda_version_key(path: &Path) -> Vec<u32> {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.trim_start_matches('v'))
+        .map(|version| {
+            version
+                .split('.')
+                .map(|component| component.parse::<u32>().unwrap_or(0))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
 }
 
 fn dedup_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {

@@ -285,6 +285,37 @@ fn cuda_sdk_root_candidates_include_versioned_standard_install_dirs() {
 }
 
 #[test]
+fn cuda_sdk_root_candidates_order_versioned_installs_newest_first() {
+    let program_files = std::env::temp_dir().join(format!(
+        "atlas-cuda-program-files-order-{}",
+        std::process::id()
+    ));
+    let cuda_base = program_files
+        .join("NVIDIA GPU Computing Toolkit")
+        .join("CUDA");
+    let v9 = cuda_base.join("v9.0");
+    let v12 = cuda_base.join("v12.4");
+    let v13 = cuda_base.join("v13.0");
+    fs::create_dir_all(&v9).unwrap();
+    fs::create_dir_all(&v12).unwrap();
+    fs::create_dir_all(&v13).unwrap();
+
+    let candidates = cuda_sdk_root_candidates_from_bases([program_files.clone()]);
+    let versioned = candidates
+        .iter()
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with('v'))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+
+    assert_eq!(versioned, vec![v13, v12, v9]);
+    let _ = fs::remove_dir_all(program_files);
+}
+
+#[test]
 fn nvcc_command_candidates_include_cuda_sdk_bins() {
     let cuda_root = std::env::temp_dir().join(format!("atlas-cuda-nvcc-{}", std::process::id()));
     let candidates = nvcc_command_candidates_from_roots([cuda_root.clone()]);
