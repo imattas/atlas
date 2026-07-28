@@ -2,8 +2,9 @@
 
 use atlas_gpu_cuda_adapter::{
     cuda_driver_library_candidates_from_roots, cuda_sdk_root_candidates_from_bases,
-    nvcc_command_candidates_from_roots, nvrtc_library_candidates_from_roots, run_cli,
-    AdapterCommand, CudaPtxLauncher, LaunchArgs, Launcher,
+    nvcc_command_candidates_from_roots, nvcc_ptx_output_path_for_source,
+    nvrtc_library_candidates_from_roots, run_cli, AdapterCommand, CudaPtxLauncher, LaunchArgs,
+    Launcher,
 };
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::SearchProgram;
@@ -296,6 +297,22 @@ fn nvcc_command_candidates_include_cuda_sdk_bins() {
             .and_then(|name| name.to_str())
             .is_some_and(|name| name.starts_with("nvcc"))
     }));
+}
+
+#[test]
+fn nvcc_fallback_uses_distinct_ptx_outputs_for_distinct_sources() {
+    let first = nvcc_ptx_output_path_for_source("target/atlas-gpu/first/atlas_search.cu");
+    let second = nvcc_ptx_output_path_for_source("target/atlas-gpu/second/atlas_search.cu");
+
+    assert_ne!(first, second);
+    assert_eq!(
+        first.extension().and_then(|value| value.to_str()),
+        Some("ptx")
+    );
+    assert_eq!(
+        second.extension().and_then(|value| value.to_str()),
+        Some("ptx")
+    );
 }
 
 #[test]

@@ -2,6 +2,7 @@
 
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::ptr;
@@ -447,8 +448,7 @@ impl NvccCompiler {
     }
 
     fn compile_source_file_to_ptx(&self, source_path: &str) -> Result<String, String> {
-        let output_path =
-            std::env::temp_dir().join(format!("atlas-cuda-nvcc-{}.ptx", std::process::id()));
+        let output_path = nvcc_ptx_output_path_for_source(source_path);
         let output = Command::new(&self.command)
             .arg("-ptx")
             .arg("-std=c++11")
@@ -477,6 +477,18 @@ impl NvccCompiler {
         let _ = fs::remove_file(output_path);
         Ok(ptx)
     }
+}
+
+/// Returns a deterministic temporary PTX output path for one CUDA source path.
+#[must_use]
+pub fn nvcc_ptx_output_path_for_source(source_path: &str) -> PathBuf {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    source_path.hash(&mut hasher);
+    std::env::temp_dir().join(format!(
+        "atlas-cuda-nvcc-{}-{:016x}.ptx",
+        std::process::id(),
+        hasher.finish()
+    ))
 }
 
 #[derive(Debug)]
