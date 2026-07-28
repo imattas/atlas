@@ -10,6 +10,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "atlas-benchmark-db"
+version = "0.1.0"
+
+[[package]]
 name = "atlas-cache"
 version = "0.1.0"
 
@@ -38,6 +42,10 @@ dependencies = [
 
 [[package]]
 name = "atlas-facts"
+version = "0.1.0"
+
+[[package]]
+name = "atlas-learning"
 version = "0.1.0"
 
 [[package]]
