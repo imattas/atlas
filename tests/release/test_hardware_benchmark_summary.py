@@ -15,7 +15,11 @@ class HardwareBenchmarkSummaryTests(unittest.TestCase):
             "fixture": "dense",
             "domain": {"start": 0, "end": 1500},
             "sample_count": 3,
+            "native_samples_ns": [100, 110, 120],
+            "simd_samples_ns": [80, 85, 90],
+            "accelerator_samples_ns": [200, 210, 220],
             "native": {"elapsed_ns": 100, "matches": list(range(1500))},
+            "simd": {"elapsed_ns": 80, "matches": list(range(1500))},
             "accelerator": {
                 "elapsed_ns": 200,
                 "requested_gpu_sdk": "hip",
@@ -45,6 +49,11 @@ class HardwareBenchmarkSummaryTests(unittest.TestCase):
         summary = json.loads(result.stdout)
         self.assertEqual(summary["fixture"], "dense")
         self.assertEqual(summary["sample_count"], 3)
+        self.assertEqual(summary["native_samples_ns"], [100, 110, 120])
+        self.assertEqual(summary["simd_samples_ns"], [80, 85, 90])
+        self.assertEqual(summary["accelerator_samples_ns"], [200, 210, 220])
+        self.assertEqual(summary["simd"]["elapsed_ns"], 80)
+        self.assertEqual(summary["simd"]["match_count"], 1500)
         self.assertEqual(summary["accelerator"]["mode"], "DeviceValidated")
         self.assertEqual(summary["accelerator"]["actual_gpu_sdk"], "HIP")
         self.assertEqual(summary["accelerator"]["match_count"], 1500)

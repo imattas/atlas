@@ -18,15 +18,23 @@ def summarize_matches(matches: Any) -> dict[str, Any]:
 def summarize_benchmark(document: dict[str, Any]) -> dict[str, Any]:
     accelerator = document.get("accelerator") or {}
     native = document.get("native") or {}
+    simd = document.get("simd") or {}
     summary: dict[str, Any] = {
         "schema_major": document.get("schema_major"),
         "kind": document.get("kind"),
         "fixture": document.get("fixture"),
         "domain": document.get("domain"),
         "sample_count": document.get("sample_count"),
+        "native_samples_ns": document.get("native_samples_ns"),
+        "simd_samples_ns": document.get("simd_samples_ns"),
+        "accelerator_samples_ns": document.get("accelerator_samples_ns"),
         "native": {
             "elapsed_ns": native.get("elapsed_ns"),
             **summarize_matches(native.get("matches")),
+        },
+        "simd": {
+            "elapsed_ns": simd.get("elapsed_ns"),
+            **summarize_matches(simd.get("matches")),
         },
         "accelerator": {
             "elapsed_ns": accelerator.get("elapsed_ns"),
