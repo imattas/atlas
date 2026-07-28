@@ -188,7 +188,7 @@ impl Launcher for HipModuleLauncher {
         let runtime = HipRuntime::load()?;
         runtime.init()?;
         runtime.set_device(0)?;
-        Ok(vec!["int64".to_owned()])
+        Ok(features_from_int64_probe(probe_hip_int64(&runtime)))
     }
 
     fn compile_check(&self, input: &str, output: Option<&str>) -> Result<(), String> {
@@ -268,6 +268,56 @@ fn format_matches(matches: &[u64]) -> String {
         .iter()
         .map(|candidate| format!("match={candidate}\n"))
         .collect()
+}
+
+fn features_from_int64_probe(probe: Result<(), String>) -> Vec<String> {
+    if probe.is_ok() {
+        vec!["int64".to_owned()]
+    } else {
+        Vec::new()
+    }
+}
+
+fn probe_hip_int64(runtime: &HipRuntime) -> Result<(), String> {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let root = std::env::temp_dir().join(format!(
+        "atlas-hip-int64-probe-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root)
+        .map_err(|error| format!("cannot create HIP int64 probe directory: {error}"))?;
+    let source = root.join("atlas_int64_probe.hip");
+    let artifact = root.join("atlas_int64_probe.hsaco");
+    fs::write(&source, hip_int64_probe_source())
+        .map_err(|error| format!("cannot write HIP int64 probe source: {error}"))?;
+    let source = source.to_string_lossy().into_owned();
+    let artifact = artifact.to_string_lossy().into_owned();
+    let result = compile_hip_source_to_code_object(&source, &artifact).and_then(|()| {
+        let module = runtime.load_module(&artifact)?;
+        runtime
+            .get_function(module.raw, "atlas_int64_probe")
+            .map(|_| ())
+    });
+    let _ = fs::remove_dir_all(root);
+    result
+}
+
+fn hip_int64_probe_source() -> &'static str {
+    r#"
+#define __device__ __attribute__((device))
+#define __global__ __attribute__((global))
+static __device__ unsigned int atlas_probe_global_id_x() {
+    return __builtin_amdgcn_workgroup_id_x() * __builtin_amdgcn_workgroup_size_x()
+        + __builtin_amdgcn_workitem_id_x();
+}
+extern "C" __global__ void atlas_int64_probe(unsigned long long* out) {
+    unsigned long long candidate = (unsigned long long)atlas_probe_global_id_x();
+    out[0] = (candidate << 32) ^ candidate;
+}
+"#
 }
 
 fn ensure_artifact_readable(path: &str) -> Result<(), String> {
@@ -1025,7 +1075,7 @@ unsafe fn platform_close(handle: *mut c_void) {
 
 #[cfg(test)]
 mod tests {
-    use super::artifact_uses_u32_launch_abi;
+    use super::{artifact_uses_u32_launch_abi, features_from_int64_probe, hip_int64_probe_source};
 
     #[test]
     fn hip_artifact_marker_selects_u32_launch_abi() {
@@ -1038,5 +1088,25 @@ mod tests {
         assert!(!artifact_uses_u32_launch_abi(
             b"extern \"C\" __global__ void atlas_search(unsigned long long start)"
         ));
+    }
+
+    #[test]
+    fn hip_features_report_int64_only_after_successful_probe() {
+        assert_eq!(features_from_int64_probe(Ok(())), vec!["int64".to_owned()]);
+        assert_eq!(
+            features_from_int64_probe(Err("build failed".to_owned())),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn hip_int64_probe_source_uses_kernel_visible_64_bit_arithmetic() {
+        let source = hip_int64_probe_source();
+
+        assert!(source.contains("atlas_int64_probe"));
+        assert!(source.contains("unsigned long long"));
+        assert!(source.contains("__builtin_amdgcn_workitem_id_x"));
+        assert!(!source.contains("threadIdx"));
+        assert!(!source.contains("blockIdx"));
     }
 }
