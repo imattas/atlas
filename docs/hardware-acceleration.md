@@ -17,6 +17,8 @@ Runtime behavior:
 - missing SDKs produce a precise diagnostic and scalar/SIMD fallback;
 - CUDA, HIP, OpenCL, and Vulkan compute sources are generated from the same
   restricted IR boundary;
+- OpenCL code generation lowers the restricted search operations into device
+  predicates for candidate filtering and bounded atomic match output;
 - per-SDK command plans select checked-in kernel artifacts and compiler
   frontends (`opencl-clang`, `glslc`, `nvcc`, or `hipcc`);
 - production driver execution is isolated behind a runner boundary so host

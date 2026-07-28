@@ -1,7 +1,7 @@
 //! CUDA search boundary with hardware-independent validation behavior.
 
 use atlas_scheduler::CancellationToken;
-use atlas_search_ir::{SearchDomain, SearchProgram};
+use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram};
 use atlas_search_native::NativeSearcher;
 use std::collections::BTreeSet;
 use std::process::Command;
@@ -543,8 +543,37 @@ impl GpuSearcher {
     /// Generates `OpenCL` C source for the restricted IR.
     #[must_use]
     pub fn compile_opencl(program: &SearchProgram) -> String {
+        let mask = width_mask(program.width);
+        let predicates = program
+            .ops
+            .iter()
+            .map(|op| opencl_predicate(op, program.width))
+            .collect::<Vec<_>>()
+            .join(" &&\n      ");
         format!(
-            "__kernel void atlas_search(ulong start, ulong end, __global ulong* out, __global uint* out_len) {{ /* width={} ops={} */ size_t gid = get_global_id(0); (void)gid; (void)start; (void)end; (void)out; (void)out_len; }}",
+            r"ulong rotate_left_width(ulong value, uint amount, uint width) {{
+  ulong mask = width == 64U ? 18446744073709551615UL : ((1UL << width) - 1UL);
+  value = value & mask;
+  amount = amount % width;
+  return amount == 0U ? value : (((value << amount) | (value >> (width - amount))) & mask);
+}}
+
+__kernel void atlas_search(ulong start, ulong end, __global ulong* out, __global uint* out_len, uint max_matches) {{
+  /* width={} ops={} */
+  ulong gid = (ulong)get_global_id(0);
+  ulong candidate = start + gid;
+  ulong mask = {mask}UL;
+  if (candidate >= end) {{
+    return;
+  }}
+  candidate = candidate & {mask}UL;
+  if ({predicates}) {{
+    uint slot = atomic_inc(out_len);
+    if (slot < max_matches) {{
+      out[slot] = candidate;
+    }}
+  }}
+}}",
             program.width,
             program.ops.len()
         )
@@ -581,5 +610,50 @@ impl GpuSearcher {
             .copied()
             .filter(|candidate| program.accepts(*candidate))
             .collect()
+    }
+}
+
+fn width_mask(width: u32) -> u64 {
+    if width == 64 {
+        u64::MAX
+    } else {
+        (1_u64 << width) - 1
+    }
+}
+
+fn opencl_predicate(op: &SearchOp, width: u32) -> String {
+    match *op {
+        SearchOp::AddEq { addend, target } => {
+            format!("((candidate + {addend}UL) & mask) == {target}UL")
+        }
+        SearchOp::XorEq { mask, target } => {
+            format!("((candidate ^ {mask}UL) & mask) == {target}UL")
+        }
+        SearchOp::ChecksumEq { modulus, target } => {
+            format!("(candidate % {modulus}UL) == {target}UL")
+        }
+        SearchOp::MulAddEq {
+            multiplier,
+            addend,
+            target,
+        } => {
+            format!("((candidate * {multiplier}UL + {addend}UL) & mask) == {target}UL")
+        }
+        SearchOp::RotateXorEq {
+            rotate_left,
+            mask,
+            target,
+        } => {
+            format!(
+                "((rotate_left_width(candidate, {rotate_left}U, {width}U) ^ {mask}UL) & mask) == {target}UL"
+            )
+        }
+        SearchOp::ByteEq { byte_index, value } => {
+            let shift = byte_index.saturating_mul(8);
+            format!(
+                "((candidate >> {shift}U) & 255UL) == {}UL",
+                u64::from(value)
+            )
+        }
     }
 }

@@ -5,7 +5,7 @@ use atlas_search_gpu::{
     AcceleratorRuntime, DriverCommandPlan, DriverRunOutput, DriverRunner, GpuSdk, GpuSdkDetector,
     GpuSdkPlan, GpuSearcher, KernelCacheKey, RuntimeMode,
 };
-use atlas_search_ir::{SearchDomain, SearchProgram};
+use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram};
 use atlas_search_native::NativeSearcher;
 use std::path::Path;
 
@@ -53,6 +53,54 @@ fn opencl_and_vulkan_codegen_are_hardware_independent_and_encode_shape() {
     assert!(vulkan.contains("#version 450"));
     assert!(vulkan.contains("layout(local_size_x"));
     assert!(vulkan.contains("width=8"));
+}
+
+#[test]
+fn opencl_codegen_emits_restricted_ir_predicates() {
+    let program = SearchProgram::new(
+        24,
+        vec![
+            SearchOp::XorEq {
+                mask: 0xaa,
+                target: 0xff,
+            },
+            SearchOp::AddEq {
+                addend: 1,
+                target: 4,
+            },
+            SearchOp::ChecksumEq {
+                modulus: 17,
+                target: 3,
+            },
+            SearchOp::MulAddEq {
+                multiplier: 65_537,
+                addend: 0x1337,
+                target: 0xC0_FF_EE,
+            },
+            SearchOp::RotateXorEq {
+                rotate_left: 7,
+                mask: 0xA5_A5_A5,
+                target: 0x12_34_56,
+            },
+            SearchOp::ByteEq {
+                byte_index: 1,
+                value: b'T',
+            },
+        ],
+    )
+    .unwrap();
+
+    let opencl = GpuSearcher::compile_opencl(&program);
+
+    assert!(opencl.contains("candidate = start + gid"));
+    assert!(opencl.contains("candidate = candidate & 16777215UL"));
+    assert!(opencl.contains("((candidate ^ 170UL) & mask) == 255UL"));
+    assert!(opencl.contains("((candidate + 1UL) & mask) == 4UL"));
+    assert!(opencl.contains("(candidate % 17UL) == 3UL"));
+    assert!(opencl.contains("((candidate * 65537UL + 4919UL) & mask) == 12648430UL"));
+    assert!(opencl.contains("rotate_left_width(candidate, 7U, 24U)"));
+    assert!(opencl.contains("((candidate >> 8U) & 255UL) == 84UL"));
+    assert!(opencl.contains("atomic_inc(out_len)"));
 }
 
 #[test]
