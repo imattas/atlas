@@ -4,6 +4,7 @@ use atlas_scheduler::CancellationToken;
 use atlas_search_gpu::{
     AcceleratorRuntime, CommandRunner, DriverCommandPlan, DriverRunOutput, DriverRunner, GpuSdk,
     GpuSdkDetector, GpuSdkPlan, GpuSearcher, KernelCacheKey, ProcessDriverRunner, RuntimeMode,
+    RuntimePolicy,
 };
 use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram};
 use atlas_search_native::NativeSearcher;
@@ -1592,6 +1593,38 @@ fn runtime_uses_scalar_for_tiny_workloads_without_launching_gpu_driver() {
     assert_eq!(report.mode, RuntimeMode::CpuFallback);
     assert_eq!(*runner.calls.borrow(), 0);
     assert!(report.telemetry.rationale.contains("Scalar"));
+}
+
+#[test]
+fn runtime_force_gpu_policy_launches_driver_for_tiny_workloads() {
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    let sdks = [GpuSdk::OpenCl {
+        sdk: "test OpenCL".to_owned(),
+    }];
+    let runner = CountingDriverRunner {
+        calls: RefCell::new(0),
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![3],
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_detected_driver_and_policy(
+        &program,
+        SearchDomain::new(0, 64),
+        &sdks,
+        &token,
+        RuntimePolicy { force_gpu: true },
+        &[],
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    assert_eq!(*runner.calls.borrow(), 1);
+    assert_eq!(report.matches, vec![3]);
 }
 
 #[test]

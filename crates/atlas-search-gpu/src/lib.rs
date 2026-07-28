@@ -378,6 +378,14 @@ pub enum RuntimeMode {
     DeviceValidated,
 }
 
+/// Runtime execution policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RuntimePolicy {
+    /// Launch the selected GPU driver even when placement would normally choose
+    /// scalar CPU execution for the workload shape.
+    pub force_gpu: bool,
+}
+
 /// Accelerator runtime telemetry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeTelemetry {
@@ -521,6 +529,30 @@ impl AcceleratorRuntime {
         cached_kernel_keys: &[KernelCacheKey],
         runner: &dyn DriverRunner,
     ) -> AcceleratorReport {
+        Self::execute_with_detected_driver_and_policy(
+            program,
+            domain,
+            detected_sdks,
+            cancellation,
+            RuntimePolicy::default(),
+            cached_kernel_keys,
+            runner,
+        )
+    }
+
+    /// Selects the best detected SDK, applies an execution policy, accounts for
+    /// warmed kernel cache keys, executes through the supplied GPU driver
+    /// runner, and validates device-reported matches.
+    #[must_use]
+    pub fn execute_with_detected_driver_and_policy(
+        program: &SearchProgram,
+        domain: SearchDomain,
+        detected_sdks: &[GpuSdk],
+        cancellation: &CancellationToken,
+        policy: RuntimePolicy,
+        cached_kernel_keys: &[KernelCacheKey],
+        runner: &dyn DriverRunner,
+    ) -> AcceleratorReport {
         if cancellation.is_cancelled() {
             return Self::cancelled_report(program, domain, cancellation);
         }
@@ -542,35 +574,37 @@ impl AcceleratorRuntime {
         let driver_plan =
             DriverCommandPlan::for_launch(&selected, program, domain, launch, "target/atlas-gpu");
         let kernel_cache_hit = cached_kernel_keys.contains(&driver_plan.cache_key);
-        let placement = PlacementModel::choose_with_calibration(
-            SearchFeatures {
-                candidates: domain.end.saturating_sub(domain.start),
-                regular: true,
-                kernel_cache_hit,
-            },
-            PlacementCapabilities {
-                scalar: true,
-                simd: false,
-                gpu: true,
-            },
-            PlacementCalibration::default(),
-        );
-        if placement.target != PlacementTarget::Gpu {
-            return AcceleratorReport {
-                mode: RuntimeMode::CpuFallback,
-                matches: NativeSearcher::search(program, domain, cancellation),
-                telemetry: RuntimeTelemetry {
-                    launch,
-                    rationale: format!(
-                        "{:?} placement selected: {}; {}",
-                        placement.target,
-                        placement.rationale,
-                        selected.name()
-                    ),
-                    cpu_validated: true,
-                    rejected_device_matches: 0,
+        if !policy.force_gpu {
+            let placement = PlacementModel::choose_with_calibration(
+                SearchFeatures {
+                    candidates: domain.end.saturating_sub(domain.start),
+                    regular: true,
+                    kernel_cache_hit,
                 },
-            };
+                PlacementCapabilities {
+                    scalar: true,
+                    simd: false,
+                    gpu: true,
+                },
+                PlacementCalibration::default(),
+            );
+            if placement.target != PlacementTarget::Gpu {
+                return AcceleratorReport {
+                    mode: RuntimeMode::CpuFallback,
+                    matches: NativeSearcher::search(program, domain, cancellation),
+                    telemetry: RuntimeTelemetry {
+                        launch,
+                        rationale: format!(
+                            "{:?} placement selected: {}; {}",
+                            placement.target,
+                            placement.rationale,
+                            selected.name()
+                        ),
+                        cpu_validated: true,
+                        rejected_device_matches: 0,
+                    },
+                };
+            }
         }
         Self::execute_with_driver(program, domain, &selected, cancellation, runner)
     }
