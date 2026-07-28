@@ -1,0 +1,8 @@
+schema_major = 1
+symbol = "strlen"
+abi = "sysv"
+version = 1
+memory_effect = "read-only"
+return_effect = "bounded-length"
+max = 4096
+provenance = "libc bounded string fixture"

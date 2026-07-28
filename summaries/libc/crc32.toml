@@ -1,0 +1,8 @@
+schema_major = 1
+symbol = "crc32"
+abi = "sysv"
+version = 1
+memory_effect = "read-only"
+return_effect = "checksum"
+modulus = 4294967296
+provenance = "authorized checksum fixture"

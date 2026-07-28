@@ -1,0 +1,2 @@
+schema_major = 1
+required = ["symbol", "abi", "version", "memory_effect", "return_effect", "provenance"]

@@ -23,6 +23,7 @@ members = [
     "crates/atlas-coordinator",
     "crates/atlas-benchmark-db",
     "crates/atlas-learning",
+    "crates/atlas-summaries",
 ]
 resolver = "2"
 
