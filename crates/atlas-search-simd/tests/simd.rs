@@ -1,7 +1,7 @@
 //! SIMD differential tests.
 
 use atlas_scheduler::CancellationToken;
-use atlas_search_ir::{SearchDomain, SearchProgram};
+use atlas_search_ir::{SearchDomain, SearchOp, SearchProgram};
 use atlas_search_native::NativeSearcher;
 use atlas_search_simd::SimdSearcher;
 
@@ -27,4 +27,24 @@ fn simd_honors_cancellation() {
     token.cancel();
 
     assert!(SimdSearcher::search(&program, SearchDomain::new(0, 100), &token, 4).is_empty());
+}
+
+#[test]
+fn simd_preserves_native_output_bound_for_dense_matches() {
+    let program = SearchProgram::new(
+        64,
+        vec![SearchOp::ChecksumEq {
+            modulus: 1,
+            target: 0,
+        }],
+    )
+    .unwrap();
+    let token = CancellationToken::new();
+    let domain = SearchDomain::new(0, 2_000);
+
+    let simd = SimdSearcher::search(&program, domain, &token, 8);
+    let native = NativeSearcher::search(&program, domain, &token);
+
+    assert_eq!(simd, native);
+    assert_eq!(simd.len(), 1024);
 }

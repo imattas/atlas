@@ -18,7 +18,7 @@ impl SimdSearcher {
         let lanes = lanes.max(1);
         let mut matches = Vec::new();
         let mut cursor = domain.start;
-        while cursor < domain.end {
+        while cursor < domain.end && matches.len() < 1024 {
             if cancellation.is_cancelled() {
                 break;
             }
@@ -28,6 +28,9 @@ impl SimdSearcher {
             for candidate in cursor..batch_end {
                 if program.accepts(candidate) {
                     matches.push(candidate);
+                    if matches.len() >= 1024 {
+                        break;
+                    }
                 }
             }
             cursor = batch_end;
