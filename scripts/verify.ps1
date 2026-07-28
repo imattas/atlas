@@ -207,9 +207,13 @@ if ($Profile -eq "hardware") {
         Invoke-HardwareStep "OpenCL real-device search" {
             cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
         }
+        Invoke-HardwareStep "OpenCL int64 real-device search" {
+            cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_64_bit_kernel_runs_on_device -- --ignored --nocapture
+        }
     } else {
         Skip-HardwareStep "Forced-GPU OpenCL benchmark" "OpenCL runtime feature probe unavailable"
         Skip-HardwareStep "OpenCL real-device search" "OpenCL runtime feature probe unavailable"
+        Skip-HardwareStep "OpenCL int64 real-device search" "OpenCL runtime feature probe unavailable"
     }
     if (Get-GpuFeatureProbeOk $HardwareDoctor "Vulkan") {
         Invoke-ForcedGpuBenchmark "Forced-GPU Vulkan benchmark" "vulkan" "Vulkan"
@@ -229,18 +233,26 @@ if ($Profile -eq "hardware") {
         Invoke-HardwareStep "CUDA real-device search" {
             cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
         }
+        Invoke-HardwareStep "CUDA int64 real-device search" {
+            cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_64_bit_kernel_runs_on_device -- --ignored --nocapture
+        }
     } else {
         Skip-HardwareStep "Forced-GPU CUDA benchmark" "CUDA runtime feature probe unavailable"
         Skip-HardwareStep "CUDA real-device search" "CUDA runtime feature probe unavailable"
+        Skip-HardwareStep "CUDA int64 real-device search" "CUDA runtime feature probe unavailable"
     }
     if (Get-GpuFeatureProbeOk $HardwareDoctor "HIP") {
         Invoke-ForcedGpuBenchmark "Forced-GPU HIP benchmark" "hip" "HIP"
         Invoke-HardwareStep "HIP real-device search" {
             cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
         }
+        Invoke-HardwareStep "HIP int64 real-device search" {
+            cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_64_bit_kernel_runs_on_device -- --ignored --nocapture
+        }
     } else {
         Skip-HardwareStep "Forced-GPU HIP benchmark" "HIP runtime feature probe unavailable"
         Skip-HardwareStep "HIP real-device search" "HIP runtime feature probe unavailable"
+        Skip-HardwareStep "HIP int64 real-device search" "HIP runtime feature probe unavailable"
     }
     if ($HardwareFailures.Count -ne 0) {
         Write-Error "Hardware verification failed after attempting every backend: $($HardwareFailures -join '; ')"

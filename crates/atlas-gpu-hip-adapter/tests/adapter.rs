@@ -5,7 +5,7 @@ use atlas_gpu_hip_adapter::{
     run_cli, AdapterCommand, HipLaunchAbi, HipModuleLauncher, LaunchArgs, LaunchOutput, Launcher,
 };
 use atlas_search_gpu::GpuSearcher;
-use atlas_search_ir::SearchProgram;
+use atlas_search_ir::{SearchOp, SearchProgram};
 use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -570,6 +570,49 @@ fn generated_hip_kernel_runs_on_device_and_preserves_full_candidates() {
 
     assert_eq!(output.matches, vec![0x55, 0x155]);
     assert_eq!(output.match_count, 2);
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+#[ignore = "requires hipcc, HIP runtime, and an AMD HIP-capable device with int64 support"]
+fn generated_hip_64_bit_kernel_runs_on_device() {
+    let program = SearchProgram::new(
+        64,
+        vec![SearchOp::XorEq {
+            mask: 1,
+            target: 0x8000_0000_0000_0001,
+        }],
+    )
+    .unwrap();
+    let source = GpuSearcher::compile_hip(&program);
+    let output_dir = std::env::temp_dir().join(format!("atlas-hip-64-e2e-{}", std::process::id()));
+    fs::create_dir_all(&output_dir).unwrap();
+    let source_path = output_dir.join("atlas_search.hip");
+    let code_object_path = output_dir.join("atlas_search.hsaco");
+    fs::write(&source_path, source).unwrap();
+    let arch = detect_hip_arch().unwrap_or_else(|| "gfx1100".to_owned());
+
+    let source_path_text = source_path.to_string_lossy().into_owned();
+    let code_object_path_text = code_object_path.to_string_lossy().into_owned();
+    HipModuleLauncher
+        .compile_check(&source_path_text, Some(&code_object_path_text))
+        .unwrap_or_else(|error| {
+            panic!("HIP 64-bit source compile failed for detected arch {arch}: {error}")
+        });
+    let args = LaunchArgs {
+        artifact: code_object_path.to_string_lossy().into_owned(),
+        start: 0x8000_0000_0000_0000,
+        end: 0x8000_0000_0000_0002,
+        max_matches: 2,
+        global_size: 256,
+        local_size: 64,
+        launch_abi: Some(HipLaunchAbi::U64),
+    };
+
+    let output = HipModuleLauncher.launch(&args).unwrap();
+
+    assert_eq!(output.matches, vec![0x8000_0000_0000_0000]);
+    assert_eq!(output.match_count, 1);
     let _ = fs::remove_dir_all(output_dir);
 }
 

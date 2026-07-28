@@ -42,8 +42,11 @@ class VerifyScriptTests(unittest.TestCase):
     def test_hardware_profile_runs_all_real_device_gpu_tests_on_windows_and_unix(self):
         hardware_test_cases = [
             ("atlas-gpu-opencl-adapter", "generated_opencl_kernel_runs_on_device_and_preserves_full_candidates"),
+            ("atlas-gpu-opencl-adapter", "generated_opencl_64_bit_kernel_runs_on_device"),
             ("atlas-gpu-cuda-adapter", "generated_cuda_kernel_runs_on_device_and_preserves_full_candidates"),
+            ("atlas-gpu-cuda-adapter", "generated_cuda_64_bit_kernel_runs_on_device"),
             ("atlas-gpu-hip-adapter", "generated_hip_kernel_runs_on_device_and_preserves_full_candidates"),
+            ("atlas-gpu-hip-adapter", "generated_hip_64_bit_kernel_runs_on_device"),
             ("atlas-gpu-vulkan-adapter", "generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates"),
             ("atlas-gpu-vulkan-adapter", "generated_vulkan_64_bit_kernel_runs_on_device"),
         ]

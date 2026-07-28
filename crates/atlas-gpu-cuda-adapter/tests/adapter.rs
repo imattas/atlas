@@ -7,7 +7,7 @@ use atlas_gpu_cuda_adapter::{
     LaunchArgs, LaunchOutput, Launcher,
 };
 use atlas_search_gpu::GpuSearcher;
-use atlas_search_ir::SearchProgram;
+use atlas_search_ir::{SearchOp, SearchProgram};
 use std::cell::RefCell;
 use std::fs;
 use std::sync::{Mutex, OnceLock};
@@ -597,6 +597,42 @@ fn generated_cuda_kernel_runs_on_device_and_preserves_full_candidates() {
 
     assert_eq!(output.matches, vec![0x55, 0x155]);
     assert_eq!(output.match_count, 2);
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+#[ignore = "requires NVRTC, CUDA driver runtime, and an NVIDIA CUDA device with int64 support"]
+fn generated_cuda_64_bit_kernel_runs_on_device() {
+    let program = SearchProgram::new(
+        64,
+        vec![SearchOp::XorEq {
+            mask: 1,
+            target: 0x8000_0000_0000_0001,
+        }],
+    )
+    .unwrap();
+    let source = GpuSearcher::compile_cuda(&program);
+    let output_dir = std::env::temp_dir().join(format!("atlas-cuda-64-e2e-{}", std::process::id()));
+    fs::create_dir_all(&output_dir).unwrap();
+    let source_path = output_dir.join("atlas_search.cu");
+    fs::write(&source_path, source).unwrap();
+
+    let args = LaunchArgs {
+        artifact: source_path.to_string_lossy().into_owned(),
+        start: 0x8000_0000_0000_0000,
+        end: 0x8000_0000_0000_0002,
+        max_matches: 2,
+        global_size: 256,
+        local_size: 64,
+        launch_abi: Some(LaunchAbi::U64),
+    };
+
+    let output = CudaPtxLauncher.launch(&args).unwrap_or_else(|error| {
+        panic!("CUDA NVRTC/driver/device 64-bit e2e prerequisites failed: {error}")
+    });
+
+    assert_eq!(output.matches, vec![0x8000_0000_0000_0000]);
+    assert_eq!(output.match_count, 1);
     let _ = fs::remove_dir_all(output_dir);
 }
 
