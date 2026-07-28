@@ -963,8 +963,32 @@ impl AcceleratorRuntime {
         ) {
             return report;
         }
+        let explicit_zero_match_count = execution.explicit_zero_match_count_for_every_launch();
         let reported_matches = execution.reported_matches;
         if reported_matches.is_empty() {
+            if explicit_zero_match_count {
+                if let Some(cpu_matches) =
+                    exact_small_domain_matches(program, domain, launch.max_matches, cancellation)
+                {
+                    if !cpu_matches.is_empty() {
+                        return AcceleratorReport {
+                            mode: RuntimeMode::CpuFallback,
+                            matches: cpu_matches,
+                            telemetry: sdk_runtime_telemetry(
+                                launch,
+                                sdk,
+                                format!("{base_rationale}; incomplete device matches"),
+                                0,
+                            ),
+                        };
+                    }
+                }
+                return AcceleratorReport {
+                    mode: RuntimeMode::DeviceValidated,
+                    matches: Vec::new(),
+                    telemetry: sdk_runtime_telemetry(launch, sdk, base_rationale, 0),
+                };
+            }
             return AcceleratorReport {
                 mode: RuntimeMode::CpuFallback,
                 matches: NativeSearcher::search(program, domain, cancellation),
@@ -1471,6 +1495,7 @@ struct DriverExecution {
     malformed_device_match: Option<DeviceMatchMalformed>,
     conflicting_device_match_count: Option<DeviceMatchCountConflict>,
     aggregate_device_match_count: usize,
+    explicit_device_match_count_launches: usize,
 }
 
 impl DriverExecution {
@@ -1487,6 +1512,7 @@ impl DriverExecution {
             malformed_device_match: None,
             conflicting_device_match_count: None,
             aggregate_device_match_count: 0,
+            explicit_device_match_count_launches: 0,
         }
     }
 
@@ -1511,8 +1537,11 @@ impl DriverExecution {
             self.missing_full_buffer_match_count = Some(launch.max_matches);
         }
         let retained_matches = output.reported_matches.len();
-        let device_match_count =
-            DriverRunOutput::parse_reported_match_count(&output.stdout).unwrap_or(retained_matches);
+        let parsed_device_match_count = DriverRunOutput::parse_reported_match_count(&output.stdout);
+        if parsed_device_match_count.is_some() {
+            self.explicit_device_match_count_launches += 1;
+        }
+        let device_match_count = parsed_device_match_count.unwrap_or(retained_matches);
         self.aggregate_device_match_count = self
             .aggregate_device_match_count
             .saturating_add(device_match_count);
@@ -1523,6 +1552,12 @@ impl DriverExecution {
             });
         }
         self.reported_matches.extend(output.reported_matches);
+    }
+
+    fn explicit_zero_match_count_for_every_launch(&self) -> bool {
+        self.launch_count > 0
+            && self.explicit_device_match_count_launches == self.launch_count
+            && self.aggregate_device_match_count == 0
     }
 }
 
