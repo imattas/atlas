@@ -200,6 +200,70 @@ function Invoke-PlacementSelectedGpuBenchmark {
     }
 }
 
+function Invoke-WarmCachePlacementGpuBenchmark {
+    param([string]$WarmName, [string]$AutoName)
+    Invoke-HardwareStep $WarmName {
+        $BenchmarkArgs = @("run", "-q", "-p", "atlas-cli", "--", "benchmark", "--fixture", "xor", "--start", "0", "--end", "100000", "--force-gpu", "--samples", $BenchmarkSamples)
+        $Output = cargo @BenchmarkArgs
+        $Status = $LASTEXITCODE
+        if ($Status -ne 0) {
+            $global:LASTEXITCODE = $Status
+            return
+        }
+        Write-Host $Output
+        $Benchmark = $Output | ConvertFrom-Json
+        if ($Benchmark.accelerator.mode -ne "DeviceValidated") {
+            throw "expected DeviceValidated warm-cache GPU benchmark, got $($Benchmark.accelerator.mode)"
+        }
+        if ($Benchmark.sample_count -ne $BenchmarkSamples) {
+            throw "expected sample_count $BenchmarkSamples, got $($Benchmark.sample_count)"
+        }
+        if ([string]::IsNullOrEmpty([string]$Benchmark.accelerator.actual_gpu_sdk)) {
+            throw "expected warm-cache benchmark to report actual_gpu_sdk"
+        }
+        $Telemetry = [string]$Benchmark.accelerator.telemetry
+        foreach ($RequiredTelemetry in @("driver exit 0", "driver launches", "launch abi")) {
+            if (!$Telemetry.Contains($RequiredTelemetry)) {
+                throw "expected warm-cache benchmark telemetry to include '$RequiredTelemetry', got '$Telemetry'"
+            }
+        }
+        $global:LASTEXITCODE = 0
+    }
+    Invoke-HardwareStep $AutoName {
+        $BenchmarkArgs = @("run", "-q", "-p", "atlas-cli", "--", "benchmark", "--fixture", "xor", "--start", "0", "--end", "100000", "--samples", $BenchmarkSamples)
+        $Output = cargo @BenchmarkArgs
+        $Status = $LASTEXITCODE
+        if ($Status -ne 0) {
+            $global:LASTEXITCODE = $Status
+            return
+        }
+        Write-Host $Output
+        $Benchmark = $Output | ConvertFrom-Json
+        if ($Benchmark.accelerator.requested_gpu_sdk -ne $null) {
+            throw "expected warm-cache auto-placement benchmark to omit requested_gpu_sdk, got $($Benchmark.accelerator.requested_gpu_sdk)"
+        }
+        if ($Benchmark.accelerator.mode -ne "DeviceValidated") {
+            throw "expected DeviceValidated warm-cache auto-placement GPU benchmark, got $($Benchmark.accelerator.mode)"
+        }
+        if ($Benchmark.sample_count -ne $BenchmarkSamples) {
+            throw "expected sample_count $BenchmarkSamples, got $($Benchmark.sample_count)"
+        }
+        if ([string]::IsNullOrEmpty([string]$Benchmark.accelerator.actual_gpu_sdk)) {
+            throw "expected warm-cache auto-placement benchmark to report actual_gpu_sdk"
+        }
+        if ($Benchmark.accelerator.launch.global_size -lt 100000) {
+            throw "expected warm-cache auto-placement benchmark global_size to cover 100000 candidates, got $($Benchmark.accelerator.launch.global_size)"
+        }
+        $Telemetry = [string]$Benchmark.accelerator.telemetry
+        foreach ($RequiredTelemetry in @("driver exit 0", "driver launches", "launch abi")) {
+            if (!$Telemetry.Contains($RequiredTelemetry)) {
+                throw "expected warm-cache auto-placement telemetry to include '$RequiredTelemetry', got '$Telemetry'"
+            }
+        }
+        $global:LASTEXITCODE = 0
+    }
+}
+
 if ($Profile -in @("distributed", "advanced", "full")) {
     foreach ($RequiredPath in @(
         "tests/e2e/track3/manifest.toml",
@@ -298,6 +362,7 @@ if ($Profile -eq "hardware") {
     } else {
         Skip-HardwareStep "Forced-GPU int64 benchmark" "No GPU int64 feature probe available"
     }
+    Invoke-WarmCachePlacementGpuBenchmark "Warm-cache placement GPU benchmark" "Warm-cache auto-placement GPU benchmark"
     if (Get-GpuFeatureProbeOk $HardwareDoctor "OpenCL") {
         Invoke-ForcedGpuBenchmark "Forced-GPU OpenCL benchmark" "opencl" "OpenCL"
         Invoke-ForcedGpuBenchmark "Forced-GPU OpenCL dense benchmark" "opencl" "OpenCL" "dense" "0" "1500" 1500

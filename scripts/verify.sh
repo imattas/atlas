@@ -200,6 +200,66 @@ PY
   ' _ "$cargo_cmd" "$benchmark_samples"
 }
 
+run_warm_cache_placement_gpu_benchmark() {
+  local warm_name="$1"
+  local auto_name="$2"
+  run_hardware_step "$warm_name" bash -c '
+    set -euo pipefail
+    output=$("$1" run -q -p atlas-cli -- benchmark --fixture xor --start 0 --end 100000 --force-gpu --samples "$2")
+    printf "%s\n" "$output"
+    BENCHMARK_JSON="$output" BENCHMARK_SAMPLES="$2" python - <<'"'"'PY'"'"'
+import json
+import os
+
+benchmark_samples = int(os.environ["BENCHMARK_SAMPLES"])
+document = json.loads(os.environ["BENCHMARK_JSON"])
+accelerator = document["accelerator"]
+if accelerator["mode"] != "DeviceValidated":
+    raise SystemExit(f"expected DeviceValidated warm-cache GPU benchmark, got {accelerator['mode']}")
+if document.get("sample_count") != benchmark_samples:
+    raise SystemExit(f"expected sample_count {benchmark_samples}, got {document.get('sample_count')}")
+if not accelerator.get("actual_gpu_sdk"):
+    raise SystemExit("expected warm-cache benchmark to report actual_gpu_sdk")
+telemetry = accelerator.get("telemetry") or ""
+for required in ["driver exit 0", "driver launches", "launch abi"]:
+    if required not in telemetry:
+        raise SystemExit(f"expected warm-cache benchmark telemetry to include {required!r}, got {telemetry!r}")
+PY
+  ' _ "$cargo_cmd" "$benchmark_samples"
+  run_hardware_step "$auto_name" bash -c '
+    set -euo pipefail
+    output=$("$1" run -q -p atlas-cli -- benchmark --fixture xor --start 0 --end 100000 --samples "$2")
+    printf "%s\n" "$output"
+    BENCHMARK_JSON="$output" BENCHMARK_SAMPLES="$2" python - <<'"'"'PY'"'"'
+import json
+import os
+
+benchmark_samples = int(os.environ["BENCHMARK_SAMPLES"])
+document = json.loads(os.environ["BENCHMARK_JSON"])
+accelerator = document["accelerator"]
+if accelerator.get("requested_gpu_sdk") is not None:
+    raise SystemExit(
+        f"expected warm-cache auto-placement benchmark to omit requested_gpu_sdk, got {accelerator.get('requested_gpu_sdk')}"
+    )
+if accelerator["mode"] != "DeviceValidated":
+    raise SystemExit(f"expected DeviceValidated warm-cache auto-placement GPU benchmark, got {accelerator['mode']}")
+if document.get("sample_count") != benchmark_samples:
+    raise SystemExit(f"expected sample_count {benchmark_samples}, got {document.get('sample_count')}")
+if not accelerator.get("actual_gpu_sdk"):
+    raise SystemExit("expected warm-cache auto-placement benchmark to report actual_gpu_sdk")
+launch = accelerator["launch"]
+if launch["global_size"] < 100000:
+    raise SystemExit(
+        f"expected warm-cache auto-placement benchmark global_size to cover 100000 candidates, got {launch['global_size']}"
+    )
+telemetry = accelerator.get("telemetry") or ""
+for required in ["driver exit 0", "driver launches", "launch abi"]:
+    if required not in telemetry:
+        raise SystemExit(f"expected warm-cache auto-placement telemetry to include {required!r}, got {telemetry!r}")
+PY
+  ' _ "$cargo_cmd" "$benchmark_samples"
+}
+
 "$cargo_cmd" fmt --all -- --check
 "$cargo_cmd" clippy --workspace --all-targets -- -D warnings
 "$cargo_cmd" test --workspace --all-targets
@@ -309,6 +369,7 @@ if [[ "$profile" == "hardware" ]]; then
   else
     skip_hardware_step "Forced-GPU int64 benchmark" "No GPU int64 feature probe available"
   fi
+  run_warm_cache_placement_gpu_benchmark "Warm-cache placement GPU benchmark" "Warm-cache auto-placement GPU benchmark"
   if gpu_feature_probe_ok "$hardware_doctor_json" OpenCL; then
     run_forced_gpu_benchmark "Forced-GPU OpenCL benchmark" opencl OpenCL
     run_forced_gpu_benchmark "Forced-GPU OpenCL dense benchmark" opencl OpenCL dense 0 1500 1500

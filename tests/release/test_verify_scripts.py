@@ -138,6 +138,42 @@ class VerifyScriptTests(unittest.TestCase):
                 self.assertNotEqual(-1, forced_index)
                 self.assertLess(placement_index, forced_index)
 
+    def test_hardware_profile_records_warm_cache_placement_benchmark(self):
+        expectations = {
+            "verify.ps1": [
+                "Invoke-WarmCachePlacementGpuBenchmark",
+                "Warm-cache placement GPU benchmark",
+                "--force-gpu",
+                "Warm-cache auto-placement GPU benchmark",
+                "requested_gpu_sdk",
+                "actual_gpu_sdk",
+                "DeviceValidated",
+            ],
+            "verify.sh": [
+                "run_warm_cache_placement_gpu_benchmark",
+                "Warm-cache placement GPU benchmark",
+                "--force-gpu",
+                "Warm-cache auto-placement GPU benchmark",
+                "requested_gpu_sdk",
+                "actual_gpu_sdk",
+                "DeviceValidated",
+            ],
+        }
+
+        for script_name, required_tokens in expectations.items():
+            with self.subTest(script=script_name):
+                text = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+                for token in required_tokens:
+                    self.assertIn(token, text)
+                forced_warm_index = text.find("Warm-cache placement GPU benchmark")
+                auto_warm_index = text.find("Warm-cache auto-placement GPU benchmark")
+                first_backend_index = text.find("Forced-GPU OpenCL benchmark")
+                self.assertNotEqual(-1, forced_warm_index)
+                self.assertNotEqual(-1, auto_warm_index)
+                self.assertNotEqual(-1, first_backend_index)
+                self.assertLess(forced_warm_index, auto_warm_index)
+                self.assertLess(auto_warm_index, first_backend_index)
+
     def test_unix_verify_script_falls_back_to_windows_cargo_exe(self):
         text = (ROOT / "scripts" / "verify.sh").read_text(encoding="utf-8")
         for token in [
