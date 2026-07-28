@@ -756,6 +756,42 @@ fn runtime_uses_scalar_for_tiny_workloads_without_launching_gpu_driver() {
 }
 
 #[test]
+fn runtime_uses_gpu_cache_hit_threshold_for_warmed_kernel() {
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    let domain = SearchDomain::new(0, 100_000);
+    let sdk = GpuSdk::OpenCl {
+        sdk: "test OpenCL runtime".to_owned(),
+    };
+    let launch = AcceleratorRuntime::plan_launch(domain, 256, 1024);
+    let cached_plan =
+        DriverCommandPlan::for_launch(&sdk, &program, domain, launch, "target/atlas-gpu");
+    let sdks = [sdk];
+    let runner = CountingDriverRunner {
+        calls: RefCell::new(0),
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![3],
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_detected_driver_and_kernel_cache(
+        &program,
+        domain,
+        &sdks,
+        &token,
+        &[cached_plan.cache_key],
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    assert_eq!(*runner.calls.borrow(), 1);
+    assert!(report.telemetry.rationale.contains("driver exit 0"));
+}
+
+#[test]
 fn public_execute_uses_placement_before_process_gpu_launch() {
     let tool_dir =
         std::env::temp_dir().join(format!("atlas-gpu-public-path-{}", std::process::id()));

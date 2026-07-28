@@ -472,6 +472,28 @@ impl AcceleratorRuntime {
         cancellation: &CancellationToken,
         runner: &dyn DriverRunner,
     ) -> AcceleratorReport {
+        Self::execute_with_detected_driver_and_kernel_cache(
+            program,
+            domain,
+            detected_sdks,
+            cancellation,
+            &[],
+            runner,
+        )
+    }
+
+    /// Selects the best detected SDK, accounts for warmed kernel cache keys,
+    /// executes through the supplied GPU driver runner, and validates
+    /// device-reported matches.
+    #[must_use]
+    pub fn execute_with_detected_driver_and_kernel_cache(
+        program: &SearchProgram,
+        domain: SearchDomain,
+        detected_sdks: &[GpuSdk],
+        cancellation: &CancellationToken,
+        cached_kernel_keys: &[KernelCacheKey],
+        runner: &dyn DriverRunner,
+    ) -> AcceleratorReport {
         let plan = GpuSdkPlan::choose(detected_sdks, true);
         let Some(selected) = plan.selected else {
             let launch = Self::plan_launch(domain, 256, 1024);
@@ -486,11 +508,15 @@ impl AcceleratorRuntime {
                 },
             };
         };
+        let launch = Self::plan_launch(domain, 256, 1024);
+        let driver_plan =
+            DriverCommandPlan::for_launch(&selected, program, domain, launch, "target/atlas-gpu");
+        let kernel_cache_hit = cached_kernel_keys.contains(&driver_plan.cache_key);
         let placement = PlacementModel::choose_with_calibration(
             SearchFeatures {
                 candidates: domain.end.saturating_sub(domain.start),
                 regular: true,
-                kernel_cache_hit: false,
+                kernel_cache_hit,
             },
             PlacementCapabilities {
                 scalar: true,
@@ -500,7 +526,6 @@ impl AcceleratorRuntime {
             PlacementCalibration::default(),
         );
         if placement.target != PlacementTarget::Gpu {
-            let launch = Self::plan_launch(domain, 256, 1024);
             return AcceleratorReport {
                 mode: RuntimeMode::CpuFallback,
                 matches: NativeSearcher::search(program, domain, cancellation),
