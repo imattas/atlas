@@ -14,6 +14,20 @@ case "$profile" in
     ;;
 esac
 
+hardware_failures=()
+run_hardware_step() {
+  local name="$1"
+  shift
+  echo "==> $name"
+  set +e
+  "$@"
+  local status=$?
+  set -e
+  if [[ "$status" -ne 0 ]]; then
+    hardware_failures+=("$name exited with $status")
+  fi
+}
+
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-targets
@@ -102,12 +116,17 @@ if [[ "$profile" == "full" ]]; then
 fi
 
 if [[ "$profile" == "hardware" ]]; then
-  cargo run -q -p atlas-cli -- doctor
-  cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
-  cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
-  cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
-  cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
-  cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_64_bit_kernel_runs_on_device -- --ignored --nocapture
+  run_hardware_step "GPU doctor diagnostics" cargo run -q -p atlas-cli -- doctor
+  run_hardware_step "OpenCL real-device search" cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+  run_hardware_step "CUDA real-device search" cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+  run_hardware_step "HIP real-device search" cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+  run_hardware_step "Vulkan real-device search" cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
+  run_hardware_step "Vulkan shaderInt64 real-device search" cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_64_bit_kernel_runs_on_device -- --ignored --nocapture
+  if [[ "${#hardware_failures[@]}" -ne 0 ]]; then
+    echo "Hardware verification failed after attempting every backend:" >&2
+    printf '  - %s\n' "${hardware_failures[@]}" >&2
+    exit 1
+  fi
 fi
 
 if [[ -d python/tests ]]; then

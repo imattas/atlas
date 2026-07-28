@@ -35,6 +35,16 @@ if ($Profile -in @("analysis", "distributed", "advanced", "full")) {
     }
 }
 
+$HardwareFailures = @()
+function Invoke-HardwareStep {
+    param([string]$Name, [scriptblock]$Command)
+    Write-Host "==> $Name"
+    & $Command
+    if ($LASTEXITCODE -ne 0) {
+        $script:HardwareFailures += "$Name exited with $LASTEXITCODE"
+    }
+}
+
 if ($Profile -in @("distributed", "advanced", "full")) {
     foreach ($RequiredPath in @(
         "tests/e2e/track3/manifest.toml",
@@ -102,21 +112,25 @@ if ($Profile -eq "full") {
 }
 
 if ($Profile -eq "hardware") {
-    Invoke-Step "GPU doctor diagnostics" { cargo run -q -p atlas-cli -- doctor }
-    Invoke-Step "OpenCL real-device search" {
+    Invoke-HardwareStep "GPU doctor diagnostics" { cargo run -q -p atlas-cli -- doctor }
+    Invoke-HardwareStep "OpenCL real-device search" {
         cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
     }
-    Invoke-Step "CUDA real-device search" {
+    Invoke-HardwareStep "CUDA real-device search" {
         cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
     }
-    Invoke-Step "HIP real-device search" {
+    Invoke-HardwareStep "HIP real-device search" {
         cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
     }
-    Invoke-Step "Vulkan real-device search" {
+    Invoke-HardwareStep "Vulkan real-device search" {
         cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
     }
-    Invoke-Step "Vulkan shaderInt64 real-device search" {
+    Invoke-HardwareStep "Vulkan shaderInt64 real-device search" {
         cargo test -p atlas-gpu-vulkan-adapter --test adapter generated_vulkan_64_bit_kernel_runs_on_device -- --ignored --nocapture
+    }
+    if ($HardwareFailures.Count -ne 0) {
+        Write-Error "Hardware verification failed after attempting every backend: $($HardwareFailures -join '; ')"
+        exit 1
     }
 }
 

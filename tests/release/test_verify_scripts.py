@@ -68,6 +68,18 @@ class VerifyScriptTests(unittest.TestCase):
                 self.assertNotEqual(-1, first_hardware_test_index)
                 self.assertLess(doctor_index, first_hardware_test_index)
 
+    def test_hardware_profile_attempts_every_backend_before_reporting_failure(self):
+        expectations = {
+            "verify.ps1": ["Invoke-HardwareStep", "$HardwareFailures", "$HardwareFailures.Count"],
+            "verify.sh": ["run_hardware_step", "hardware_failures", "set +e"],
+        }
+
+        for script_name, required_tokens in expectations.items():
+            with self.subTest(script=script_name):
+                text = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+                for token in required_tokens:
+                    self.assertIn(token, text)
+
 
 if __name__ == "__main__":
     unittest.main()
