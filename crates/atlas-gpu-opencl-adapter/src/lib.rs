@@ -175,8 +175,12 @@ pub struct OpenClLauncher;
 
 impl Launcher for OpenClLauncher {
     fn features(&self) -> Result<Vec<String>, String> {
-        let _device = Device::new(select_device()?);
-        Ok(vec!["int64".to_owned()])
+        let device = Device::new(select_device()?);
+        let context = Context::from_device(&device).map_err(|error| error.to_string())?;
+        let int64_probe =
+            Program::create_and_build_from_source(&context, opencl_int64_probe_source(), "")
+                .map(|_| ());
+        Ok(features_from_int64_probe(int64_probe))
     }
 
     fn compile_check(&self, source: &str, output: Option<&str>) -> Result<(), String> {
@@ -235,6 +239,23 @@ fn format_matches(matches: &[u64]) -> String {
         .iter()
         .map(|candidate| format!("match={candidate}\n"))
         .collect()
+}
+
+fn features_from_int64_probe(probe: Result<(), String>) -> Vec<String> {
+    if probe.is_ok() {
+        vec!["int64".to_owned()]
+    } else {
+        Vec::new()
+    }
+}
+
+fn opencl_int64_probe_source() -> &'static str {
+    r#"
+__kernel void atlas_int64_probe(__global ulong* out) {
+    ulong candidate = (ulong)get_global_id(0);
+    out[0] = (candidate << 32) ^ candidate;
+}
+"#
 }
 
 fn parse_u64_flag(args: &[String], flag: &str) -> Result<u64, String> {
@@ -579,7 +600,7 @@ fn opencl_loader_names() -> Vec<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::uses_u32_launch_abi;
+    use super::{features_from_int64_probe, uses_u32_launch_abi};
 
     #[test]
     fn opencl_source_marker_selects_u32_launch_abi() {
@@ -587,5 +608,14 @@ mod tests {
         assert!(!uses_u32_launch_abi(
             "__kernel void atlas_search(ulong start, ulong end)"
         ));
+    }
+
+    #[test]
+    fn features_report_int64_only_after_successful_probe() {
+        assert_eq!(features_from_int64_probe(Ok(())), vec!["int64".to_owned()]);
+        assert_eq!(
+            features_from_int64_probe(Err("build failed".to_owned())),
+            Vec::<String>::new()
+        );
     }
 }
