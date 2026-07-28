@@ -3412,11 +3412,21 @@ fn runtime_falls_back_when_driver_reports_malformed_match_line() {
 #[test]
 fn driver_output_parses_decimal_and_hex_device_matches_from_stdout() {
     assert_eq!(
-        DriverRunOutput::parse_reported_matches("match=3\n0x04\nignored\n5\n"),
-        vec![3, 4, 5]
+        DriverRunOutput::parse_reported_matches("match=3\nmatch=0x04\nignored\n5\n"),
+        vec![3, 4]
     );
     assert_eq!(
         DriverRunOutput::parse_reported_match_count("match=3\nmatch_count=1500\n"),
         Some(1500)
+    );
+}
+
+#[test]
+fn driver_output_ignores_bare_numeric_stdout_lines_as_matches() {
+    assert_eq!(
+        DriverRunOutput::parse_reported_matches(
+            "compile warning on line 42\nmatch_count=1\n7\nmatch=0x55\n"
+        ),
+        vec![0x55]
     );
 }

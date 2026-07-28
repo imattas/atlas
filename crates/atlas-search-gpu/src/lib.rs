@@ -394,13 +394,14 @@ pub struct DriverRunOutput {
 impl DriverRunOutput {
     /// Parses newline-separated device matches from launcher output.
     ///
-    /// Accepted tokens are decimal values, hexadecimal values prefixed by
-    /// `0x`, or `match=<value>` lines using either numeric form.
+    /// Accepted tokens are explicit `match=<value>` lines, where the value is
+    /// decimal or hexadecimal prefixed by `0x`.
     #[must_use]
     pub fn parse_reported_matches(stdout: &str) -> Vec<u64> {
         stdout
             .lines()
-            .filter_map(|line| parse_match_token(line.trim()))
+            .filter_map(|line| line.trim().strip_prefix("match="))
+            .filter_map(parse_match_token)
             .collect()
     }
 
