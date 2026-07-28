@@ -36,6 +36,12 @@ if [[ "$profile" == "distributed" || "$profile" == "advanced" || "$profile" == "
     deploy/worker/README.md \
     crates/atlas-gpu-opencl-adapter/src/lib.rs \
     crates/atlas-gpu-opencl-adapter/src/main.rs \
+    crates/atlas-gpu-cuda-adapter/src/lib.rs \
+    crates/atlas-gpu-cuda-adapter/src/main.rs \
+    crates/atlas-gpu-hip-adapter/src/lib.rs \
+    crates/atlas-gpu-hip-adapter/src/main.rs \
+    crates/atlas-gpu-vulkan-adapter/src/lib.rs \
+    crates/atlas-gpu-vulkan-adapter/src/main.rs \
     gpu/cuda/atlas_search.cu \
     gpu/hip/atlas_search.hip \
     gpu/opencl/atlas_search.cl \
