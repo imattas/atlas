@@ -90,6 +90,18 @@ class VerifyScriptTests(unittest.TestCase):
                 self.assertLess(doctor_index, benchmark_index)
                 self.assertLess(benchmark_index, first_hardware_test_index)
 
+    def test_hardware_profile_records_per_sdk_forced_gpu_benchmarks(self):
+        scripts = [
+            ROOT / "scripts" / "verify.ps1",
+            ROOT / "scripts" / "verify.sh",
+        ]
+
+        for script in scripts:
+            with self.subTest(script=script.name):
+                text = script.read_text(encoding="utf-8")
+                for sdk in ["opencl", "vulkan", "cuda", "hip"]:
+                    self.assertIn(f"--gpu-sdk {sdk}", text)
+
     def test_hardware_profile_attempts_every_backend_before_reporting_failure(self):
         expectations = {
             "verify.ps1": ["Invoke-HardwareStep", "$HardwareFailures", "$HardwareFailures.Count"],

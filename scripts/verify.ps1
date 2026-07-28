@@ -116,6 +116,18 @@ if ($Profile -eq "hardware") {
     Invoke-HardwareStep "Forced-GPU benchmark" {
         cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu
     }
+    Invoke-HardwareStep "Forced-GPU OpenCL benchmark" {
+        cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk opencl
+    }
+    Invoke-HardwareStep "Forced-GPU Vulkan benchmark" {
+        cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk vulkan
+    }
+    Invoke-HardwareStep "Forced-GPU CUDA benchmark" {
+        cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk cuda
+    }
+    Invoke-HardwareStep "Forced-GPU HIP benchmark" {
+        cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk hip
+    }
     Invoke-HardwareStep "OpenCL real-device search" {
         cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
     }

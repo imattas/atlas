@@ -118,6 +118,10 @@ fi
 if [[ "$profile" == "hardware" ]]; then
   run_hardware_step "GPU doctor diagnostics" cargo run -q -p atlas-cli -- doctor
   run_hardware_step "Forced-GPU benchmark" cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu
+  run_hardware_step "Forced-GPU OpenCL benchmark" cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk opencl
+  run_hardware_step "Forced-GPU Vulkan benchmark" cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk vulkan
+  run_hardware_step "Forced-GPU CUDA benchmark" cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk cuda
+  run_hardware_step "Forced-GPU HIP benchmark" cargo run -q -p atlas-cli -- benchmark --fixture xor --start 0x50 --end 0x60 --force-gpu --gpu-sdk hip
   run_hardware_step "OpenCL real-device search" cargo test -p atlas-gpu-opencl-adapter --test adapter generated_opencl_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
   run_hardware_step "CUDA real-device search" cargo test -p atlas-gpu-cuda-adapter --test adapter generated_cuda_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
   run_hardware_step "HIP real-device search" cargo test -p atlas-gpu-hip-adapter --test adapter generated_hip_kernel_runs_on_device_and_preserves_full_candidates -- --ignored --nocapture
