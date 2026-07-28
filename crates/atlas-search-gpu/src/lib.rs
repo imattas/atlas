@@ -1019,6 +1019,7 @@ fn standard_sdk_root_dirs() -> Vec<PathBuf> {
                     }
                 }
             }
+            roots.push(base.join("Khronos").join("OpenCL-SDK"));
         }
         if let Some(drive) = std::env::var_os("SystemDrive").map(PathBuf::from) {
             let vulkan_base = drive.join("VulkanSDK");

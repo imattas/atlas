@@ -652,6 +652,42 @@ fn detects_vulkan_from_standard_sdk_layout() {
 }
 
 #[test]
+fn detects_opencl_from_standard_sdk_layout() {
+    let _env_guard = env_lock();
+    let root = std::env::temp_dir().join(format!("atlas-gpu-open-files-{}", std::process::id()));
+    let opencl = root.join("Khronos").join("OpenCL-SDK");
+    fs::create_dir_all(&opencl).unwrap();
+    let original_path = std::env::var_os("PATH");
+    let original_program_files = std::env::var_os("ProgramFiles");
+    let original_opencl_sdk = std::env::var_os("OPENCL_SDK");
+    let original_ocl_root = std::env::var_os("OCL_ROOT");
+    let original_intel = std::env::var_os("INTELOCLSDKROOT");
+    let original_amd = std::env::var_os("AMDAPPSDKROOT");
+    std::env::set_var("PATH", "");
+    std::env::set_var("ProgramFiles", &root);
+    std::env::remove_var("OPENCL_SDK");
+    std::env::remove_var("OCL_ROOT");
+    std::env::remove_var("INTELOCLSDKROOT");
+    std::env::remove_var("AMDAPPSDKROOT");
+
+    let detected = GpuSdkDetector::detect_from_host_path();
+
+    restore_env("PATH", original_path);
+    restore_env("ProgramFiles", original_program_files);
+    restore_env("OPENCL_SDK", original_opencl_sdk);
+    restore_env("OCL_ROOT", original_ocl_root);
+    restore_env("INTELOCLSDKROOT", original_intel);
+    restore_env("AMDAPPSDKROOT", original_amd);
+    let _ = fs::remove_dir_all(root);
+    assert!(
+        detected
+            .iter()
+            .any(|sdk| matches!(sdk, GpuSdk::OpenCl { .. })),
+        "expected OpenCL detection from standard SDK layout, got {detected:?}"
+    );
+}
+
+#[test]
 fn launch_config_bounds_workgroups_and_output_transfer_capacity() {
     let config = AcceleratorRuntime::plan_launch(SearchDomain::new(0, 1_000_000), 256, 1024);
 
