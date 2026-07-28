@@ -264,9 +264,16 @@ fn compile_hip_source_to_code_object(source: &str, output: &str) -> Result<(), S
             ))
         )
     })?;
-    let compile = Command::new(hipcc)
+    let mut command = Command::new(hipcc);
+    command
         .arg("--genco")
         .arg("-O2")
+        .arg("-nogpuinc")
+        .arg("-nogpulib");
+    if let Some(arch) = detect_hip_arch() {
+        command.arg(format!("--offload-arch={arch}"));
+    }
+    let compile = command
         .arg(source)
         .arg("-o")
         .arg(output)
@@ -280,6 +287,16 @@ fn compile_hip_source_to_code_object(source: &str, output: &str) -> Result<(), S
         String::from_utf8_lossy(&compile.stdout),
         String::from_utf8_lossy(&compile.stderr)
     ))
+}
+
+fn detect_hip_arch() -> Option<String> {
+    let output = Command::new("hipInfo").output().ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout.lines().find_map(|line| {
+        line.split_once("gcnArchName:")
+            .map(|(_, arch)| arch.trim().to_owned())
+            .filter(|arch| !arch.is_empty())
+    })
 }
 
 fn parse_u64_flag(args: &[String], flag: &str) -> Result<u64, String> {

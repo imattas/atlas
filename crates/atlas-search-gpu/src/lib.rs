@@ -1442,6 +1442,15 @@ fn normalize_tool_name(name: &str) -> String {
 /// GPU searcher boundary.
 pub struct GpuSearcher;
 
+const HIP_SELF_CONTAINED_DEVICE_HEADER: &str = r"#define __device__ __attribute__((device))
+#define __global__ __attribute__((global))
+static __device__ unsigned int atlas_global_id_x() {
+  return __builtin_amdgcn_workgroup_id_x() * __builtin_amdgcn_workgroup_size_x() + __builtin_amdgcn_workitem_id_x();
+}
+static __device__ unsigned int atlas_atomic_add_u32(unsigned int* ptr, unsigned int value) {
+  return __atomic_fetch_add(ptr, value, __ATOMIC_RELAXED);
+}";
+
 impl GpuSearcher {
     /// Generates CUDA source for the restricted IR.
     #[must_use]
@@ -1535,8 +1544,7 @@ extern "C" __global__ void atlas_search(unsigned long long start, unsigned long 
                 .collect::<Vec<_>>()
                 .join(" &&\n      ");
             return format!(
-                r#"#include <hip/hip_runtime.h>
-
+                r#"{hip_header}
 extern "C" __device__ unsigned int atlas_search_u32_abi = 1U;
 
 __device__ unsigned int rotate_left_width(unsigned int value, unsigned int amount, unsigned int width) {{
@@ -1548,7 +1556,7 @@ __device__ unsigned int rotate_left_width(unsigned int value, unsigned int amoun
 
 extern "C" __global__ void atlas_search(unsigned int start_lo, unsigned int start_hi, unsigned int end_lo, unsigned int end_hi, unsigned int* out_words, unsigned int* out_len, unsigned int max_matches) {{
   /* width={} ops={} */
-  unsigned int gid = blockIdx.x * blockDim.x + threadIdx.x;
+  unsigned int gid = atlas_global_id_x();
   unsigned int raw_low = start_lo + gid;
   unsigned int raw_high = start_hi + (raw_low < start_lo ? 1U : 0U);
   unsigned int mask = {mask}U;
@@ -1558,7 +1566,7 @@ extern "C" __global__ void atlas_search(unsigned int start_lo, unsigned int star
   unsigned int raw_candidate = raw_low;
   unsigned int candidate = raw_candidate & mask;
   if ({predicates}) {{
-    unsigned int slot = atomicAdd(out_len, 1U);
+    unsigned int slot = atlas_atomic_add_u32(out_len, 1U);
     if (slot < max_matches) {{
       unsigned int word_index = slot * 2U;
       out_words[word_index] = raw_low;
@@ -1567,7 +1575,8 @@ extern "C" __global__ void atlas_search(unsigned int start_lo, unsigned int star
   }}
 }}"#,
                 program.width,
-                program.ops.len()
+                program.ops.len(),
+                hip_header = HIP_SELF_CONTAINED_DEVICE_HEADER
             );
         }
         let predicates = program
@@ -1577,8 +1586,7 @@ extern "C" __global__ void atlas_search(unsigned int start_lo, unsigned int star
             .collect::<Vec<_>>()
             .join(" &&\n      ");
         format!(
-            r#"#include <hip/hip_runtime.h>
-
+            r#"{hip_header}
 __device__ unsigned long long rotate_left_width(unsigned long long value, unsigned int amount, unsigned int width) {{
   unsigned long long mask = width == 64U ? 18446744073709551615ULL : ((1ULL << width) - 1ULL);
   value = value & mask;
@@ -1588,7 +1596,7 @@ __device__ unsigned long long rotate_left_width(unsigned long long value, unsign
 
 extern "C" __global__ void atlas_search(unsigned long long start, unsigned long long end, unsigned long long* out, unsigned int* out_len, unsigned int max_matches) {{
   /* width={} ops={} */
-  unsigned long long gid = (unsigned long long)(blockIdx.x * blockDim.x + threadIdx.x);
+  unsigned long long gid = (unsigned long long)(atlas_global_id_x());
   unsigned long long raw_candidate = start + gid;
   unsigned long long mask = {mask}ULL;
   if (raw_candidate >= end) {{
@@ -1596,14 +1604,15 @@ extern "C" __global__ void atlas_search(unsigned long long start, unsigned long 
   }}
   unsigned long long candidate = raw_candidate & mask;
   if ({predicates}) {{
-    unsigned int slot = atomicAdd(out_len, 1U);
+    unsigned int slot = atlas_atomic_add_u32(out_len, 1U);
     if (slot < max_matches) {{
       out[slot] = raw_candidate;
     }}
   }}
 }}"#,
             program.width,
-            program.ops.len()
+            program.ops.len(),
+            hip_header = HIP_SELF_CONTAINED_DEVICE_HEADER
         )
     }
 

@@ -15,7 +15,10 @@ use std::sync::{Mutex, OnceLock};
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+    ENV_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 #[derive(Debug)]
@@ -293,7 +296,10 @@ fn hip_driver_plan_uses_generated_hip_kernel_source() {
     assert_eq!(plan.template_file, "gpu/hip/atlas_search.hip");
     assert!(plan.source_file.starts_with("target/atlas-gpu/"));
     assert!(plan.source_file.ends_with("/atlas_search.hip"));
-    assert!(plan.kernel_source.contains("#include <hip/hip_runtime.h>"));
+    assert!(!plan.kernel_source.contains("#include <hip/hip_runtime.h>"));
+    assert!(plan
+        .kernel_source
+        .contains("__builtin_amdgcn_workitem_id_x"));
     assert!(plan.kernel_source.contains("__global__ void atlas_search"));
     assert!(plan
         .kernel_source
@@ -315,6 +321,21 @@ fn hip_32_bit_codegen_does_not_require_64_bit_device_integer_ops() {
     assert!(hip.contains("unsigned int* out_words"));
     assert!(hip.contains("out_words[word_index] = raw_low"));
     assert!(hip.contains("out_words[word_index + 1U] = raw_high"));
+}
+
+#[test]
+fn hip_codegen_is_self_contained_for_headerless_device_compilation() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+
+    let hip = GpuSearcher::compile_hip(&program);
+
+    assert!(!hip.contains("#include <hip/hip_runtime.h>"));
+    assert!(hip.contains("#define __device__ __attribute__((device))"));
+    assert!(hip.contains("#define __global__ __attribute__((global))"));
+    assert!(hip.contains("__builtin_amdgcn_workgroup_id_x"));
+    assert!(hip.contains("__atomic_fetch_add"));
+    assert!(hip.contains("atlas_global_id_x()"));
+    assert!(hip.contains("atlas_atomic_add_u32(out_len, 1U)"));
 }
 
 #[test]
@@ -2434,20 +2455,23 @@ fn host_runtime_uses_persisted_kernel_cache_for_warmed_gpu_threshold() {
     } else {
         "atlas-gpu-opencl-run"
     });
+    let adapter_fixture = if cfg!(windows) {
+        "@echo off\r\necho match=3\r\nexit /b 0\r\n"
+    } else {
+        "#!/bin/sh\necho match=3\nexit 0\n"
+    };
+    if adapter_path.exists() {
+        let existing = fs::read_to_string(&adapter_path).unwrap_or_default();
+        if existing == adapter_fixture {
+            fs::remove_file(&adapter_path).unwrap();
+        }
+    }
     assert!(
         !adapter_path.exists(),
         "test would overwrite existing adapter: {}",
         adapter_path.display()
     );
-    fs::write(
-        &adapter_path,
-        if cfg!(windows) {
-            "@echo off\r\necho match=3\r\nexit /b 0\r\n"
-        } else {
-            "#!/bin/sh\necho match=3\nexit 0\n"
-        },
-    )
-    .unwrap();
+    fs::write(&adapter_path, adapter_fixture).unwrap();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

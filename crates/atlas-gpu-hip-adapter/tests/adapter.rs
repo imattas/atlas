@@ -317,7 +317,22 @@ fn compile_check_writes_code_object_artifact_from_hip_source() {
     let artifact = root.join("atlas_search.hsaco");
     fs::write(&source, "extern \"C\" __global__ void atlas_search() {}\n").unwrap();
     let original_path = std::env::var_os("PATH");
+    let original_hip_path = std::env::var_os("HIP_PATH");
+    let original_rocm_path = std::env::var_os("ROCM_PATH");
+    let original_rocm_home = std::env::var_os("ROCM_HOME");
+    #[cfg(windows)]
+    let original_program_files = std::env::var_os("ProgramFiles");
+    #[cfg(windows)]
+    let original_program_files_x86 = std::env::var_os("ProgramFiles(x86)");
     std::env::set_var("PATH", &bin_dir);
+    std::env::set_var("HIP_PATH", &root);
+    std::env::set_var("ROCM_PATH", &root);
+    std::env::set_var("ROCM_HOME", &root);
+    #[cfg(windows)]
+    {
+        std::env::set_var("ProgramFiles", &root);
+        std::env::remove_var("ProgramFiles(x86)");
+    }
     let source = source.to_string_lossy().into_owned();
     let artifact_text = artifact.to_string_lossy().into_owned();
 
@@ -327,6 +342,14 @@ fn compile_check_writes_code_object_artifact_from_hip_source() {
 
     assert!(artifact.exists());
     restore_env("PATH", original_path);
+    restore_env("HIP_PATH", original_hip_path);
+    restore_env("ROCM_PATH", original_rocm_path);
+    restore_env("ROCM_HOME", original_rocm_home);
+    #[cfg(windows)]
+    {
+        restore_env("ProgramFiles", original_program_files);
+        restore_env("ProgramFiles(x86)", original_program_files_x86);
+    }
     let _ = fs::remove_file(hipcc);
     let _ = fs::remove_dir_all(root);
 }
@@ -474,21 +497,13 @@ fn generated_hip_kernel_runs_on_device_and_preserves_full_candidates() {
     fs::write(&source_path, source).unwrap();
     let arch = detect_hip_arch().unwrap_or_else(|| "gfx1100".to_owned());
 
-    let compile = Command::new("hipcc")
-        .arg("--genco")
-        .arg("-O2")
-        .arg(format!("--offload-arch={arch}"))
-        .arg(&source_path)
-        .arg("-o")
-        .arg(&code_object_path)
-        .output()
-        .unwrap();
-    assert!(
-        compile.status.success() && code_object_path.exists(),
-        "hipcc failed: stdout={} stderr={}",
-        String::from_utf8_lossy(&compile.stdout),
-        String::from_utf8_lossy(&compile.stderr)
-    );
+    let source_path_text = source_path.to_string_lossy().into_owned();
+    let code_object_path_text = code_object_path.to_string_lossy().into_owned();
+    HipModuleLauncher
+        .compile_check(&source_path_text, Some(&code_object_path_text))
+        .unwrap_or_else(|error| {
+            panic!("HIP source compile failed for detected arch {arch}: {error}")
+        });
     let args = LaunchArgs {
         artifact: code_object_path.to_string_lossy().into_owned(),
         start: 0x50,
@@ -520,7 +535,7 @@ fn write_fake_hipcc(bin_dir: &Path) -> PathBuf {
         let path = bin_dir.join("hipcc.cmd");
         fs::write(
             &path,
-            "@echo off\r\necho fake-hsaco>\"%~5\"\r\nexit /b 0\r\n",
+            "@echo off\r\nset args=%*\r\nif \"%args:-nogpuinc=%\"==\"%args%\" exit /b 3\r\nif \"%args:-nogpulib=%\"==\"%args%\" exit /b 4\r\nif not \"%~6\"==\"-o\" exit /b 5\r\necho fake-hsaco>\"%~7\"\r\nexit /b 0\r\n",
         )
         .unwrap();
         path
@@ -531,7 +546,7 @@ fn write_fake_hipcc(bin_dir: &Path) -> PathBuf {
         let path = bin_dir.join("hipcc");
         fs::write(
             &path,
-            "#!/bin/sh\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = \"-o\" ]; then shift; echo fake-hsaco > \"$1\"; exit 0; fi\n  shift\ndone\nexit 0\n",
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" | grep -- '-nogpuinc' >/dev/null || exit 3\nprintf '%s\\n' \"$@\" | grep -- '-nogpulib' >/dev/null || exit 4\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = \"-o\" ]; then shift; echo fake-hsaco > \"$1\"; exit 0; fi\n  shift\ndone\nexit 5\n",
         )
         .unwrap();
         let mut permissions = fs::metadata(&path).unwrap().permissions();
