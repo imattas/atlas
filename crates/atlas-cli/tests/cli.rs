@@ -182,3 +182,39 @@ fn doctor_reports_detected_gpu_sdk_families() {
     assert!(output.contains("\"Vulkan\""));
     assert!(output.contains("\"HIP\""));
 }
+
+#[test]
+fn doctor_reports_gpu_adapter_binary_availability() {
+    let _env_guard = env_lock();
+    let tool_dir =
+        std::env::temp_dir().join(format!("atlas-cli-doctor-adapters-{}", std::process::id()));
+    fs::create_dir_all(&tool_dir).unwrap();
+    fs::write(
+        tool_dir.join(if cfg!(windows) {
+            "atlas-gpu-opencl-run.bat"
+        } else {
+            "atlas-gpu-opencl-run"
+        }),
+        if cfg!(windows) {
+            "@echo off\r\nexit /b 0\r\n"
+        } else {
+            "#!/bin/sh\nexit 0\n"
+        },
+    )
+    .unwrap();
+    let original_path = std::env::var_os("PATH").unwrap_or_default();
+    let joined_path = std::env::join_paths(std::iter::once(tool_dir.clone())).unwrap();
+    std::env::set_var("PATH", &joined_path);
+
+    let output = run(&["doctor".to_owned()]).unwrap();
+
+    std::env::set_var("PATH", original_path);
+    let _ = fs::remove_dir_all(tool_dir);
+    assert!(output.contains("\"adapter_binaries\""));
+    assert!(output.contains("\"name\":\"OpenCL\""));
+    assert!(output.contains("\"command\":\"atlas-gpu-opencl-run\""));
+    assert!(output.contains("\"available\":true"));
+    assert!(output.contains("\"name\":\"CUDA\""));
+    assert!(output.contains("\"command\":\"atlas-gpu-cuda-run\""));
+    assert!(output.contains("\"available\":false"));
+}

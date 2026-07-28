@@ -8,6 +8,7 @@ use atlas_search_gpu::{
 use atlas_search_ir::{SearchDomain, SearchProgram};
 use atlas_search_native::NativeSearcher;
 use atlas_validator::ResultLevel;
+use std::path::PathBuf;
 use std::time::Instant;
 
 /// Runs the CLI with explicit args and returns stdout.
@@ -37,7 +38,21 @@ fn doctor() -> String {
         .map(|name| format!("\"{}\"", json_escape(name)))
         .collect::<Vec<_>>()
         .join(",");
-    format!("{{\"schema_major\":1,\"kind\":\"doctor\",\"gpu_sdks\":[{sdk_names}]}}\n")
+    let adapter_binaries = gpu_adapter_commands()
+        .iter()
+        .map(|adapter| {
+            format!(
+                "{{\"name\":\"{}\",\"command\":\"{}\",\"available\":{}}}",
+                adapter.name,
+                adapter.command,
+                command_available(adapter.command)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        "{{\"schema_major\":1,\"kind\":\"doctor\",\"gpu_sdks\":[{sdk_names}],\"adapter_binaries\":[{adapter_binaries}]}}\n"
+    )
 }
 
 fn solve(args: &[String]) -> Result<String, String> {
@@ -159,6 +174,53 @@ fn gpu_sdk_name(sdk: &GpuSdk) -> &'static str {
         GpuSdk::Cuda { .. } => "CUDA",
         GpuSdk::Hip { .. } => "HIP",
     }
+}
+
+struct GpuAdapterCommand {
+    name: &'static str,
+    command: &'static str,
+}
+
+fn gpu_adapter_commands() -> [GpuAdapterCommand; 4] {
+    [
+        GpuAdapterCommand {
+            name: "OpenCL",
+            command: "atlas-gpu-opencl-run",
+        },
+        GpuAdapterCommand {
+            name: "Vulkan",
+            command: "atlas-gpu-vulkan-run",
+        },
+        GpuAdapterCommand {
+            name: "CUDA",
+            command: "atlas-gpu-cuda-run",
+        },
+        GpuAdapterCommand {
+            name: "HIP",
+            command: "atlas-gpu-hip-run",
+        },
+    ]
+}
+
+fn command_available(command: &str) -> bool {
+    std::env::var_os("PATH")
+        .into_iter()
+        .flat_map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
+        .any(|dir| {
+            command_candidates(&dir, command)
+                .into_iter()
+                .any(|path| path.is_file())
+        })
+}
+
+fn command_candidates(dir: &std::path::Path, command: &str) -> Vec<PathBuf> {
+    let mut candidates = vec![dir.join(command)];
+    if cfg!(windows) {
+        candidates.push(dir.join(format!("{command}.exe")));
+        candidates.push(dir.join(format!("{command}.bat")));
+        candidates.push(dir.join(format!("{command}.cmd")));
+    }
+    candidates
 }
 
 fn optional_flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
