@@ -11,6 +11,7 @@ atlas-report = { path = "../atlas-report" }
 atlas-scheduler = { path = "../atlas-scheduler" }
 atlas-search-gpu = { path = "../atlas-search-gpu" }
 atlas-search-ir = { path = "../atlas-search-ir" }
+atlas-search-native = { path = "../atlas-search-native" }
 atlas-validator = { path = "../atlas-validator" }
 
 [[bin]]
