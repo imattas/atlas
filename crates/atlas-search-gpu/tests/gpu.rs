@@ -70,6 +70,74 @@ fn cuda_codegen_is_hardware_independent_and_mentions_shape() {
 }
 
 #[test]
+fn cuda_codegen_emits_restricted_ir_predicates_and_preserves_full_candidate() {
+    let program = SearchProgram::new(
+        24,
+        vec![
+            SearchOp::XorEq {
+                mask: 0xaa,
+                target: 0xff,
+            },
+            SearchOp::AddEq {
+                addend: 1,
+                target: 4,
+            },
+            SearchOp::ChecksumEq {
+                modulus: 17,
+                target: 3,
+            },
+            SearchOp::MulAddEq {
+                multiplier: 65_537,
+                addend: 0x1337,
+                target: 0xC0_FF_EE,
+            },
+            SearchOp::RotateXorEq {
+                rotate_left: 7,
+                mask: 0xA5_A5_A5,
+                target: 0x12_34_56,
+            },
+            SearchOp::ByteEq {
+                byte_index: 1,
+                value: b'T',
+            },
+        ],
+    )
+    .unwrap();
+
+    let cuda = GpuSearcher::compile_cuda(&program);
+
+    assert!(cuda.contains("unsigned long long raw_candidate = start + gid"));
+    assert!(cuda.contains("unsigned long long candidate = raw_candidate & mask"));
+    assert!(cuda.contains("((candidate ^ 170ULL) & mask) == 255ULL"));
+    assert!(cuda.contains("((candidate + 1ULL) & mask) == 4ULL"));
+    assert!(cuda.contains("(candidate % 17ULL) == 3ULL"));
+    assert!(cuda.contains("((candidate * 65537ULL + 4919ULL) & mask) == 12648430ULL"));
+    assert!(cuda.contains("rotate_left_width(candidate, 7U, 24U)"));
+    assert!(cuda.contains("((candidate >> 8U) & 255ULL) == 84ULL"));
+    assert!(cuda.contains("atomicAdd(out_len, 1U)"));
+    assert!(cuda.contains("out[slot] = raw_candidate"));
+}
+
+#[test]
+fn hip_driver_plan_uses_generated_hip_kernel_source() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let plan = DriverCommandPlan::for_sdk(
+        &GpuSdk::Hip {
+            sdk: "AMD HIP SDK".to_owned(),
+        },
+        &program,
+        "target/atlas-gpu",
+    );
+
+    assert_eq!(plan.template_file, "gpu/hip/atlas_search.hip");
+    assert_eq!(plan.source_file, "target/atlas-gpu/atlas_search.hip");
+    assert!(plan.kernel_source.contains("__global__ void atlas_search"));
+    assert!(plan
+        .kernel_source
+        .contains("((candidate ^ 170ULL) & mask) == 255ULL"));
+}
+
+#[test]
 fn opencl_and_vulkan_codegen_are_hardware_independent_and_encode_shape() {
     let program = SearchProgram::try_from_fixture("xor").unwrap();
     let opencl = GpuSearcher::compile_opencl(&program);

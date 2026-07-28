@@ -595,8 +595,37 @@ impl GpuSearcher {
     /// Generates CUDA source for the restricted IR.
     #[must_use]
     pub fn compile_cuda(program: &SearchProgram) -> String {
+        let mask = width_mask(program.width);
+        let predicates = program
+            .ops
+            .iter()
+            .map(|op| cuda_predicate(op, program.width))
+            .collect::<Vec<_>>()
+            .join(" &&\n      ");
         format!(
-            "__global__ void atlas_search(unsigned long long start, unsigned long long end, unsigned long long* out, unsigned int* out_len) {{ /* width={} ops={} */ (void)start; (void)end; (void)out; (void)out_len; }}",
+            r#"__device__ unsigned long long rotate_left_width(unsigned long long value, unsigned int amount, unsigned int width) {{
+  unsigned long long mask = width == 64U ? 18446744073709551615ULL : ((1ULL << width) - 1ULL);
+  value = value & mask;
+  amount = amount % width;
+  return amount == 0U ? value : (((value << amount) | (value >> (width - amount))) & mask);
+}}
+
+extern "C" __global__ void atlas_search(unsigned long long start, unsigned long long end, unsigned long long* out, unsigned int* out_len, unsigned int max_matches) {{
+  /* width={} ops={} */
+  unsigned long long gid = (unsigned long long)(blockIdx.x * blockDim.x + threadIdx.x);
+  unsigned long long raw_candidate = start + gid;
+  unsigned long long mask = {mask}ULL;
+  if (raw_candidate >= end) {{
+    return;
+  }}
+  unsigned long long candidate = raw_candidate & mask;
+  if ({predicates}) {{
+    unsigned int slot = atomicAdd(out_len, 1U);
+    if (slot < max_matches) {{
+      out[slot] = raw_candidate;
+    }}
+  }}
+}}"#,
             program.width,
             program.ops.len()
         )
@@ -714,6 +743,43 @@ fn opencl_predicate(op: &SearchOp, width: u32) -> String {
             let shift = byte_index.saturating_mul(8);
             format!(
                 "((candidate >> {shift}U) & 255UL) == {}UL",
+                u64::from(value)
+            )
+        }
+    }
+}
+
+fn cuda_predicate(op: &SearchOp, width: u32) -> String {
+    match *op {
+        SearchOp::AddEq { addend, target } => {
+            format!("((candidate + {addend}ULL) & mask) == {target}ULL")
+        }
+        SearchOp::XorEq { mask, target } => {
+            format!("((candidate ^ {mask}ULL) & mask) == {target}ULL")
+        }
+        SearchOp::ChecksumEq { modulus, target } => {
+            format!("(candidate % {modulus}ULL) == {target}ULL")
+        }
+        SearchOp::MulAddEq {
+            multiplier,
+            addend,
+            target,
+        } => {
+            format!("((candidate * {multiplier}ULL + {addend}ULL) & mask) == {target}ULL")
+        }
+        SearchOp::RotateXorEq {
+            rotate_left,
+            mask,
+            target,
+        } => {
+            format!(
+                "((rotate_left_width(candidate, {rotate_left}U, {width}U) ^ {mask}ULL) & mask) == {target}ULL"
+            )
+        }
+        SearchOp::ByteEq { byte_index, value } => {
+            let shift = byte_index.saturating_mul(8);
+            format!(
+                "((candidate >> {shift}U) & 255ULL) == {}ULL",
                 u64::from(value)
             )
         }

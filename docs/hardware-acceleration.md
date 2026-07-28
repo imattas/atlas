@@ -19,6 +19,8 @@ Runtime behavior:
   restricted IR boundary;
 - OpenCL code generation lowers the restricted search operations into device
   predicates for candidate filtering and bounded atomic match output;
+- CUDA/HIP code generation lowers the same restricted search operations into
+  device predicates with full-candidate output for CPU validation;
 - per-SDK command plans select checked-in kernel artifacts and compiler or
   launcher frontends (`atlas-gpu-opencl-run`, `glslc`, `nvcc`, or `hipcc`);
 - the OpenCL adapter uses dynamic OpenCL loading, build-checks generated source,
