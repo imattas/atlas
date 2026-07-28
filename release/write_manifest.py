@@ -29,6 +29,12 @@ GPU_KERNEL_EVIDENCE = {
 GPU_ADAPTER_EVIDENCE = {
     "crates/atlas-gpu-opencl-adapter/src/lib.rs",
     "crates/atlas-gpu-opencl-adapter/src/main.rs",
+    "crates/atlas-gpu-cuda-adapter/src/lib.rs",
+    "crates/atlas-gpu-cuda-adapter/src/main.rs",
+    "crates/atlas-gpu-hip-adapter/src/lib.rs",
+    "crates/atlas-gpu-hip-adapter/src/main.rs",
+    "crates/atlas-gpu-vulkan-adapter/src/lib.rs",
+    "crates/atlas-gpu-vulkan-adapter/src/main.rs",
 }
 
 
@@ -120,6 +126,12 @@ def render_manifest() -> str:
         "backends/native-math/atlas_native_math_backend.py",
         "crates/atlas-gpu-opencl-adapter/src/lib.rs",
         "crates/atlas-gpu-opencl-adapter/src/main.rs",
+        "crates/atlas-gpu-cuda-adapter/src/lib.rs",
+        "crates/atlas-gpu-cuda-adapter/src/main.rs",
+        "crates/atlas-gpu-hip-adapter/src/lib.rs",
+        "crates/atlas-gpu-hip-adapter/src/main.rs",
+        "crates/atlas-gpu-vulkan-adapter/src/lib.rs",
+        "crates/atlas-gpu-vulkan-adapter/src/main.rs",
         "gpu/cuda/atlas_search.cu",
         "gpu/hip/atlas_search.hip",
         "gpu/opencl/atlas_search.cl",
@@ -153,6 +165,9 @@ def render_manifest() -> str:
         ("native-exact-math", "crates/atlas-math"),
         ("portable-gpu-sdk-selection", "crates/atlas-search-gpu/src/lib.rs"),
         ("opencl-device-adapter", "crates/atlas-gpu-opencl-adapter"),
+        ("cuda-device-adapter", "crates/atlas-gpu-cuda-adapter"),
+        ("hip-device-adapter", "crates/atlas-gpu-hip-adapter"),
+        ("vulkan-device-adapter", "crates/atlas-gpu-vulkan-adapter"),
     ]:
         body.extend(["[[capabilities]]", f'name = "{name}"', 'status = "supported"', f'evidence = "{evidence}"', ""])
     for path in evidence_paths:

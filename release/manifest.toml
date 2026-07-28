@@ -1,13 +1,13 @@
 manifest_version = "1"
-source_revision = "atlas-full-build"
+source_revision = "8a1835998710"
 schema_version = "protocol-v1"
 toolchain = "rust-1.97 python-3"
-signature = "development-attestation-sha256-release-evidence-v1"
+signature = "development-attestation-sha256-19156aa7063d134b98be495917c3efabe6ca5003722740a507bcecc9b7b6c024"
 
 [[required_suites]]
-name = "core"
+name = "advanced"
 status = "passed"
-evidence = "scripts/verify.ps1 -Profile core"
+evidence = "scripts/verify.ps1 -Profile advanced"
 
 [[required_suites]]
 name = "analysis"
@@ -15,14 +15,14 @@ status = "passed"
 evidence = "scripts/verify.ps1 -Profile analysis"
 
 [[required_suites]]
+name = "core"
+status = "passed"
+evidence = "scripts/verify.ps1 -Profile core"
+
+[[required_suites]]
 name = "distributed"
 status = "passed"
 evidence = "scripts/verify.ps1 -Profile distributed"
-
-[[required_suites]]
-name = "advanced"
-status = "passed"
-evidence = "scripts/verify.ps1 -Profile advanced"
 
 [[capabilities]]
 name = "typed-ucir"
@@ -59,101 +59,146 @@ name = "opencl-device-adapter"
 status = "supported"
 evidence = "crates/atlas-gpu-opencl-adapter"
 
+[[capabilities]]
+name = "cuda-device-adapter"
+status = "supported"
+evidence = "crates/atlas-gpu-cuda-adapter"
+
+[[capabilities]]
+name = "hip-device-adapter"
+status = "supported"
+evidence = "crates/atlas-gpu-hip-adapter"
+
+[[capabilities]]
+name = "vulkan-device-adapter"
+status = "supported"
+evidence = "crates/atlas-gpu-vulkan-adapter"
+
 [[artifacts]]
-name = "protocol-schema"
+name = "lib"
 path = "crates/atlas-protocol/src/lib.rs"
-digest = "tracked-by-git"
+digest = "92343202aa031a4a2c40ea2aa209ea59e66d294ae270f725dcd3dee13e46c887"
 
 [[artifacts]]
-name = "track2-analysis"
+name = "manifest"
 path = "tests/e2e/track2/manifest.toml"
-digest = "tracked-by-git"
+digest = "92e36566ce157aaf3fa4e2dedb9685db67004c685d2a2dcf5dd60a7289820fe1"
 
 [[artifacts]]
-name = "track3-distributed"
+name = "manifest"
 path = "tests/e2e/track3/manifest.toml"
-digest = "tracked-by-git"
+digest = "c875691d070c08119919a2664325e9fd5c81b4dcece084db323451bfd30fd550"
 
 [[artifacts]]
-name = "track4-advanced"
+name = "manifest"
 path = "tests/e2e/track4/manifest.toml"
-digest = "tracked-by-git"
+digest = "2bf652b98cac34351d23e8de9a793729ff072c629a77dd115a36cdc9a71f0382"
 
 [[artifacts]]
-name = "x86-32-evidence"
+name = "x86_32"
 path = "tests/fixtures/architectures/x86_32.toml"
-digest = "tracked-by-git"
+digest = "84dba4ab328b57a9bd783cce7be07b22caea78c42b4df75240a9b5fa20bcb1ef"
 
 [[artifacts]]
-name = "arm64-evidence"
+name = "arm64"
 path = "tests/fixtures/architectures/arm64.toml"
-digest = "tracked-by-git"
+digest = "87d1154cb6954c0904054424b8956c1896bb3c0b046a5a20026bb0da114da59a"
 
 [[artifacts]]
-name = "wasm-evidence"
+name = "wasm"
 path = "tests/fixtures/architectures/wasm.toml"
-digest = "tracked-by-git"
+digest = "93eea10de7cd7576c2bcaf2924055af0094a40462b8d537c5e061350699edac3"
 
 [[artifacts]]
-name = "notebook-replay"
+name = "track1_stream"
 path = "tests/fixtures/events/track1_stream.toml"
-digest = "tracked-by-git"
+digest = "b5eb4df13dab1204f64f6e76a9818df30d5cd103a0578303e05820c9b7e8089a"
 
 [[artifacts]]
-name = "opencl-adapter-lib"
-path = "crates/atlas-gpu-opencl-adapter/src/lib.rs"
-digest = "tracked-by-git"
-
-[[artifacts]]
-name = "opencl-adapter-bin"
-path = "crates/atlas-gpu-opencl-adapter/src/main.rs"
-digest = "tracked-by-git"
-
-[[artifacts]]
-name = "cuda-kernel-fixture"
-path = "gpu/cuda/atlas_search.cu"
-digest = "tracked-by-git"
-
-[[artifacts]]
-name = "hip-kernel-fixture"
-path = "gpu/hip/atlas_search.hip"
-digest = "tracked-by-git"
-
-[[artifacts]]
-name = "opencl-kernel-fixture"
-path = "gpu/opencl/atlas_search.cl"
-digest = "tracked-by-git"
-
-[[artifacts]]
-name = "vulkan-kernel-fixture"
-path = "gpu/vulkan/atlas_search.comp"
-digest = "tracked-by-git"
-
-[[artifacts]]
-name = "native-math-kernel"
+name = "lib"
 path = "crates/atlas-math/src/lib.rs"
-digest = "tracked-by-git"
+digest = "36c3003e739ca6d38d5275a33b41e112d9494bb5ae9683fd8b6bb5dc5f2e9721"
 
 [[artifacts]]
-name = "native-math-backend"
+name = "atlas_native_math_backend"
 path = "backends/native-math/atlas_native_math_backend.py"
-digest = "tracked-by-git"
+digest = "7001d9253c9d5a4ac77f28211ffd88e4c18ae96cdccb409a129835c75dfc71de"
 
 [[artifacts]]
-name = "hardware-acceleration-guide"
+name = "lib"
+path = "crates/atlas-gpu-opencl-adapter/src/lib.rs"
+digest = "7fb1aa0f002a4e536ab408341d7432bd6fe1dab4e3b943c688510c04fe530145"
+
+[[artifacts]]
+name = "main"
+path = "crates/atlas-gpu-opencl-adapter/src/main.rs"
+digest = "0b953b7ad1d2ac9c23018c45a1ca62d93dcdf8b010c65423f2c837b2d429f937"
+
+[[artifacts]]
+name = "lib"
+path = "crates/atlas-gpu-cuda-adapter/src/lib.rs"
+digest = "f81b90ef6777c2b915069c9f4760c6ba9679e7448fc76d94ec9ebef6b72ea1b6"
+
+[[artifacts]]
+name = "main"
+path = "crates/atlas-gpu-cuda-adapter/src/main.rs"
+digest = "58b8fddbced506c61267e8e04f135b4503c1c74031949d917ca45bfcd33eb5fa"
+
+[[artifacts]]
+name = "lib"
+path = "crates/atlas-gpu-hip-adapter/src/lib.rs"
+digest = "15a6661cca72d3e4f4e1dd8ccecd2222c4b7255e9bc18f9a777b6206da944935"
+
+[[artifacts]]
+name = "main"
+path = "crates/atlas-gpu-hip-adapter/src/main.rs"
+digest = "3dcfe497c54195b34371b54c7cf8e3863a4615fb6a9be5f9a3f2db909eb8192b"
+
+[[artifacts]]
+name = "lib"
+path = "crates/atlas-gpu-vulkan-adapter/src/lib.rs"
+digest = "80c416430fe2b3fcb1882b47bbb980681e4764e3b88ee0168f629794a2538019"
+
+[[artifacts]]
+name = "main"
+path = "crates/atlas-gpu-vulkan-adapter/src/main.rs"
+digest = "4a5f9c3434a693ded5befa9f359c6a4eb6f615cf281fb12b5d70085c33719fe5"
+
+[[artifacts]]
+name = "atlas_search"
+path = "gpu/cuda/atlas_search.cu"
+digest = "7e9cb61fc50f0e2e7e76ae7b25862945903fee13bdbf0a251ae31163f6bc44f7"
+
+[[artifacts]]
+name = "atlas_search"
+path = "gpu/hip/atlas_search.hip"
+digest = "7e9cb61fc50f0e2e7e76ae7b25862945903fee13bdbf0a251ae31163f6bc44f7"
+
+[[artifacts]]
+name = "atlas_search"
+path = "gpu/opencl/atlas_search.cl"
+digest = "f640e0edadbb17f11035ab9d2a003cf37375de18fc9c5498112dae52b9db882b"
+
+[[artifacts]]
+name = "atlas_search"
+path = "gpu/vulkan/atlas_search.comp"
+digest = "f1862ac33eac661bddcd5eae9c4d3351e6fc36ee7e94613dc74b59c5d064cfda"
+
+[[artifacts]]
+name = "hardware-acceleration"
 path = "docs/hardware-acceleration.md"
-digest = "tracked-by-git"
+digest = "8553c5d86c36fcabaf4318c833d9430126cb29c47c2a7faa2704dba37670077e"
 
 [[benchmarks]]
 name = "track2-strategy-baseline"
 path = "benchmarks/track2/manifest.toml"
 hardware = "sample-corpus-cpu"
 sample_metadata = "bounded authorized fixtures"
-digest = "tracked-by-git"
+digest = "493505280fda5265921e83ee11afdba3c3b1a80d32691a11d41b3d4d66cc7ce0"
 
 [[benchmarks]]
 name = "track3-placement-calibration"
 path = "benchmarks/track3/calibration.toml"
 hardware = "cpu-simd-gpu-threshold-model"
 sample_metadata = "deterministic synthetic search shapes"
-digest = "tracked-by-git"
+digest = "53440133e5afea6d32401b1c658d969fa1de845e792ae7620cd17a87d47894c0"

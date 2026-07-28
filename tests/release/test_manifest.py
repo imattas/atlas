@@ -34,9 +34,12 @@ class ReleaseManifestTest(unittest.TestCase):
 
     def test_rejects_unsigned_artifacts_and_missing_architecture_evidence(self) -> None:
         text = MANIFEST.read_text(encoding="utf-8")
-        unsigned = write_manifest_variant(text.replace('signature = "', 'signature = "', 1).replace(
-            "development-attestation-sha256-release-evidence-v1", "short", 1
-        ))
+        unsigned = write_manifest_variant(
+            "\n".join(
+                'signature = "short"' if line.startswith("signature = ") else line
+                for line in text.splitlines()
+            )
+        )
         missing_architecture = write_manifest_variant(
             text.replace('path = "tests/fixtures/architectures/wasm.toml"', 'path = "tests/fixtures/architectures/missing.toml"', 1)
         )
@@ -53,6 +56,27 @@ class ReleaseManifestTest(unittest.TestCase):
 
         self.assertTrue(any("hardware metadata missing" in error for error in validate_manifest(no_hardware)))
         self.assertTrue(any("sample metadata missing" in error for error in validate_manifest(no_sample)))
+
+    def test_manifest_requires_all_gpu_adapter_artifacts(self) -> None:
+        text = MANIFEST.read_text(encoding="utf-8")
+        required_paths = {
+            "crates/atlas-gpu-opencl-adapter/src/lib.rs",
+            "crates/atlas-gpu-opencl-adapter/src/main.rs",
+            "crates/atlas-gpu-cuda-adapter/src/lib.rs",
+            "crates/atlas-gpu-cuda-adapter/src/main.rs",
+            "crates/atlas-gpu-hip-adapter/src/lib.rs",
+            "crates/atlas-gpu-hip-adapter/src/main.rs",
+            "crates/atlas-gpu-vulkan-adapter/src/lib.rs",
+            "crates/atlas-gpu-vulkan-adapter/src/main.rs",
+        }
+
+        for path in required_paths:
+            self.assertIn(f'path = "{path}"', text)
+
+        missing_cuda = write_manifest_variant(
+            text.replace('path = "crates/atlas-gpu-cuda-adapter/src/lib.rs"', 'path = "missing/cuda.rs"', 1)
+        )
+        self.assertIn("GPU adapter evidence is incomplete", validate_manifest(missing_cuda))
 
 
 if __name__ == "__main__":
