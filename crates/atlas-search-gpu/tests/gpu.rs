@@ -693,6 +693,27 @@ fn opencl_and_vulkan_codegen_are_hardware_independent_and_encode_shape() {
 }
 
 #[test]
+fn vulkan_driver_plan_shader_local_size_matches_launch_local_size() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let launch = AcceleratorRuntime::plan_launch(SearchDomain::new(0, 1_000), 64, 1024);
+    let plan = DriverCommandPlan::for_launch(
+        &GpuSdk::Vulkan {
+            sdk: "Vulkan runtime".to_owned(),
+        },
+        &program,
+        SearchDomain::new(0, 1_000),
+        launch,
+        "target/atlas-gpu",
+    );
+
+    assert!(plan.kernel_source.contains("layout(local_size_x = 64) in;"));
+    assert!(plan
+        .launch_command
+        .windows(2)
+        .any(|args| args == ["--local-size".to_owned(), "64".to_owned(),]));
+}
+
+#[test]
 fn vulkan_32_bit_codegen_does_not_require_shader_int64() {
     let program = SearchProgram::try_from_fixture("xor").unwrap();
     let vulkan = GpuSearcher::compile_vulkan_glsl(&program);

@@ -336,7 +336,7 @@ impl DriverCommandPlan {
                     "atlas_search.spv",
                     "atlas-gpu-vulkan-run",
                     "--compile-check",
-                    GpuSearcher::compile_vulkan_glsl(program),
+                    GpuSearcher::compile_vulkan_glsl_for_local_size(program, launch.local_size),
                 ),
                 GpuSdk::Cuda { .. } => (
                     "gpu/cuda/atlas_search.cu",
@@ -2535,6 +2535,13 @@ __kernel void atlas_search(ulong start, ulong end, __global ulong* out, __global
     /// Generates Vulkan-compatible GLSL compute shader source for the restricted IR.
     #[must_use]
     pub fn compile_vulkan_glsl(program: &SearchProgram) -> String {
+        Self::compile_vulkan_glsl_for_local_size(program, DEFAULT_GPU_LOCAL_SIZE)
+    }
+
+    /// Generates Vulkan-compatible GLSL compute shader source for one launch shape.
+    #[must_use]
+    pub fn compile_vulkan_glsl_for_local_size(program: &SearchProgram, local_size: u64) -> String {
+        let local_size = local_size.max(1);
         let mask = width_mask(program.width);
         if program.width <= 32 {
             let predicates = program
@@ -2546,7 +2553,7 @@ __kernel void atlas_search(ulong start, ulong end, __global ulong* out, __global
             return format!(
                 r"#version 450
 
-layout(local_size_x = 256) in;
+layout(local_size_x = {local_size}) in;
 
 layout(push_constant) uniform SearchParams {{
   uint start_lo;
@@ -2591,7 +2598,8 @@ void main() {{
 }}
 ",
                 program.width,
-                program.ops.len()
+                program.ops.len(),
+                local_size = local_size
             );
         }
         let predicates = program
@@ -2604,7 +2612,7 @@ void main() {{
             r"#version 450
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
-layout(local_size_x = 256) in;
+layout(local_size_x = {local_size}) in;
 
 layout(push_constant) uniform SearchParams {{
   uint64_t start;
@@ -2642,7 +2650,8 @@ void main() {{
 }}
 ",
             program.width,
-            program.ops.len()
+            program.ops.len(),
+            local_size = local_size
         )
     }
 
