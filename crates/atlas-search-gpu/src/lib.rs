@@ -843,9 +843,12 @@ impl GpuSdkDetector {
         paths.extend(
             [
                 "CUDA_PATH",
+                "CUDA_HOME",
                 "HIP_PATH",
                 "ROCM_PATH",
+                "ROCM_HOME",
                 "VULKAN_SDK",
+                "VK_SDK_PATH",
                 "OPENCL_SDK",
             ]
             .into_iter()

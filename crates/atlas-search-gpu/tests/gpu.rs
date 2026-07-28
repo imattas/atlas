@@ -477,6 +477,49 @@ fn detects_gpu_sdks_from_standard_sdk_root_directories() {
 }
 
 #[test]
+fn detects_gpu_sdks_from_common_sdk_root_alias_env_vars() {
+    let root = std::env::temp_dir().join(format!("atlas-gpu-sdk-aliases-{}", std::process::id()));
+    let cuda = root.join("cuda-toolkit");
+    let rocm = root.join("rocm-runtime");
+    let vulkan = root.join("vulkan-sdk");
+    for sdk_root in [&cuda, &rocm, &vulkan] {
+        fs::create_dir_all(sdk_root).unwrap();
+    }
+    let original_path = std::env::var_os("PATH");
+    let original_cuda_home = std::env::var_os("CUDA_HOME");
+    let original_rocm_home = std::env::var_os("ROCM_HOME");
+    let original_vk_sdk_path = std::env::var_os("VK_SDK_PATH");
+    std::env::set_var("PATH", "");
+    std::env::set_var("CUDA_HOME", &cuda);
+    std::env::set_var("ROCM_HOME", &rocm);
+    std::env::set_var("VK_SDK_PATH", &vulkan);
+
+    let detected = GpuSdkDetector::detect_from_host_path();
+
+    restore_env("PATH", original_path);
+    restore_env("CUDA_HOME", original_cuda_home);
+    restore_env("ROCM_HOME", original_rocm_home);
+    restore_env("VK_SDK_PATH", original_vk_sdk_path);
+    let _ = fs::remove_dir_all(root);
+    assert!(
+        detected
+            .iter()
+            .any(|sdk| matches!(sdk, GpuSdk::Cuda { .. })),
+        "expected CUDA detection from CUDA_HOME, got {detected:?}"
+    );
+    assert!(
+        detected.iter().any(|sdk| matches!(sdk, GpuSdk::Hip { .. })),
+        "expected HIP detection from ROCM_HOME, got {detected:?}"
+    );
+    assert!(
+        detected
+            .iter()
+            .any(|sdk| matches!(sdk, GpuSdk::Vulkan { .. })),
+        "expected Vulkan detection from VK_SDK_PATH, got {detected:?}"
+    );
+}
+
+#[test]
 fn launch_config_bounds_workgroups_and_output_transfer_capacity() {
     let config = AcceleratorRuntime::plan_launch(SearchDomain::new(0, 1_000_000), 256, 1024);
 
