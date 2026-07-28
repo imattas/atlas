@@ -94,6 +94,9 @@ impl LaunchArgs {
                 "Vulkan shader local-size must be {VULKAN_LOCAL_SIZE}"
             ));
         }
+        if global_size.div_ceil(VULKAN_LOCAL_SIZE) > u32::MAX as usize {
+            return Err("dispatch group count exceeds Vulkan uint".to_owned());
+        }
         if u64::try_from(global_size).unwrap_or(u64::MAX) < end.saturating_sub(start) {
             return Err("global-size must cover launch domain".to_owned());
         }

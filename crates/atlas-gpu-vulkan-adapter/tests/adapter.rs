@@ -205,6 +205,26 @@ fn rejects_max_matches_that_exceeds_kernel_uint() {
 }
 
 #[test]
+fn rejects_dispatch_group_count_that_exceeds_vulkan_uint() {
+    let error = LaunchArgs::parse(&[
+        "target/atlas-gpu/atlas_search.spv".to_owned(),
+        "--start".to_owned(),
+        "0".to_owned(),
+        "--end".to_owned(),
+        "1".to_owned(),
+        "--max-matches".to_owned(),
+        "1".to_owned(),
+        "--global-size".to_owned(),
+        "1099511627776".to_owned(),
+        "--local-size".to_owned(),
+        "256".to_owned(),
+    ])
+    .unwrap_err();
+
+    assert!(error.contains("dispatch group count exceeds Vulkan uint"));
+}
+
+#[test]
 fn cli_emits_match_lines_from_launcher() {
     let output = run_cli(
         &[
