@@ -525,18 +525,77 @@ pub fn hip_runtime_library_candidates_from_roots(
 }
 
 fn find_hip_root_runtime_library() -> Option<String> {
-    hip_runtime_library_candidates_from_roots(hip_root_dirs())
+    hip_runtime_library_candidates_from_host_roots()
         .into_iter()
         .find(|path| path.is_file())
         .map(|path| path.to_string_lossy().into_owned())
 }
 
-fn hip_root_dirs() -> Vec<PathBuf> {
+/// Returns HIP runtime dynamic-library candidates from host environment and
+/// standard ROCm install roots.
+#[must_use]
+pub fn hip_runtime_library_candidates_from_host_roots() -> Vec<PathBuf> {
+    hip_runtime_library_candidates_from_roots(hip_root_dirs_from_host())
+}
+
+fn hip_root_dirs_from_host() -> Vec<PathBuf> {
+    let mut roots = hip_root_dirs_from_env();
+    roots.extend(hip_standard_root_dirs());
+    dedup_paths(roots)
+}
+
+fn hip_root_dirs_from_env() -> Vec<PathBuf> {
     ["HIP_PATH", "ROCM_PATH", "ROCM_HOME"]
         .into_iter()
         .filter_map(std::env::var_os)
         .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
         .collect()
+}
+
+fn hip_standard_root_dirs() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    #[cfg(windows)]
+    {
+        for base in ["ProgramFiles", "ProgramFiles(x86)"]
+            .into_iter()
+            .filter_map(std::env::var_os)
+            .map(PathBuf::from)
+        {
+            let rocm_base = base.join("AMD").join("ROCm");
+            push_existing_dir(&mut roots, rocm_base.clone());
+            if let Ok(entries) = fs::read_dir(&rocm_base) {
+                for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
+                    if path.is_dir() {
+                        roots.push(path.clone());
+                        push_existing_dir(&mut roots, path.join("hip"));
+                        push_existing_dir(&mut roots, path.join("bin"));
+                    }
+                }
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        roots.push(PathBuf::from("/opt/rocm"));
+        roots.push(PathBuf::from("/opt/rocm/hip"));
+    }
+    roots
+}
+
+fn push_existing_dir(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if path.is_dir() {
+        paths.push(path);
+    }
+}
+
+fn dedup_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut deduped = Vec::new();
+    for path in paths {
+        if !deduped.iter().any(|existing| existing == &path) {
+            deduped.push(path);
+        }
+    }
+    deduped
 }
 
 fn hip_runtime_library_dirs(root: &Path) -> Vec<PathBuf> {

@@ -1,14 +1,22 @@
 //! HIP adapter CLI tests.
 
 use atlas_gpu_hip_adapter::{
-    hip_runtime_library_candidates_from_roots, run_cli, AdapterCommand, HipModuleLauncher,
-    LaunchArgs, Launcher,
+    hip_runtime_library_candidates_from_host_roots, hip_runtime_library_candidates_from_roots,
+    run_cli, AdapterCommand, HipModuleLauncher, LaunchArgs, Launcher,
 };
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::SearchProgram;
 use std::cell::RefCell;
 use std::fs;
 use std::process::Command;
+
+fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
+    if let Some(value) = original {
+        std::env::set_var(name, value);
+    } else {
+        std::env::remove_var(name);
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct FixtureLauncher;
@@ -184,6 +192,30 @@ fn hip_runtime_library_candidates_include_sdk_root_library_directories() {
     assert!(candidates
         .iter()
         .any(|path| path.starts_with(hip_root.join("lib64"))));
+}
+
+#[cfg(windows)]
+#[test]
+fn hip_runtime_library_candidates_include_standard_rocm_layout() {
+    let root = std::env::temp_dir().join(format!("atlas-hip-standard-{}", std::process::id()));
+    let rocm_root = root.join("AMD").join("ROCm").join("6.1");
+    fs::create_dir_all(rocm_root.join("bin")).unwrap();
+    let runtime = rocm_root.join("bin").join("amdhip64.dll");
+    fs::write(&runtime, []).unwrap();
+    let original_program_files = std::env::var_os("ProgramFiles");
+    let original_program_files_x86 = std::env::var_os("ProgramFiles(x86)");
+    std::env::set_var("ProgramFiles", &root);
+    std::env::remove_var("ProgramFiles(x86)");
+
+    let candidates = hip_runtime_library_candidates_from_host_roots();
+
+    restore_env("ProgramFiles", original_program_files);
+    restore_env("ProgramFiles(x86)", original_program_files_x86);
+    let _ = fs::remove_dir_all(root);
+    assert!(
+        candidates.contains(&runtime),
+        "expected candidates to include standard ROCm HIP runtime, got {candidates:?}"
+    );
 }
 
 #[test]
