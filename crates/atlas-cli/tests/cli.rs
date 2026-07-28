@@ -128,9 +128,9 @@ fn solve_force_gpu_launches_adapter_for_tiny_domain() {
     fs::write(
         &adapter_path,
         if cfg!(windows) {
-            "@echo off\r\necho match=85\r\nexit /b 0\r\n"
+            "@echo off\r\nif \"%1\"==\"--features\" (\r\n  echo hardware=Fixture OpenCL Accelerator via OpenCL\r\n  echo feature=int64\r\n  echo feature=launchAbiU32\r\n  echo feature=launchAbiU64\r\n  exit /b 0\r\n)\r\necho match=85\r\nexit /b 0\r\n"
         } else {
-            "#!/bin/sh\necho match=85\nexit 0\n"
+            "#!/bin/sh\nif [ \"$1\" = \"--features\" ]; then\n  echo hardware=Fixture OpenCL Accelerator via OpenCL\n  echo feature=int64\n  echo feature=launchAbiU32\n  echo feature=launchAbiU64\n  exit 0\nfi\necho match=85\nexit 0\n"
         },
     )
     .unwrap();
@@ -188,9 +188,9 @@ fn solve_explicit_gpu_sdk_launches_adapter_for_tiny_domain_without_force_flag() 
     fs::write(
         &adapter_path,
         if cfg!(windows) {
-            "@echo off\r\necho match=85\r\nexit /b 0\r\n"
+            "@echo off\r\nif \"%1\"==\"--features\" (\r\n  echo hardware=Fixture OpenCL Accelerator via OpenCL\r\n  echo feature=int64\r\n  echo feature=launchAbiU32\r\n  echo feature=launchAbiU64\r\n  exit /b 0\r\n)\r\necho match=85\r\nexit /b 0\r\n"
         } else {
-            "#!/bin/sh\necho match=85\nexit 0\n"
+            "#!/bin/sh\nif [ \"$1\" = \"--features\" ]; then\n  echo hardware=Fixture OpenCL Accelerator via OpenCL\n  echo feature=int64\n  echo feature=launchAbiU32\n  echo feature=launchAbiU64\n  exit 0\nfi\necho match=85\nexit 0\n"
         },
     )
     .unwrap();
@@ -426,7 +426,17 @@ fn benchmark_reports_native_and_forced_gpu_runtime() {
     assert!(output.contains("\"accelerator\""));
     assert!(output.contains("\"requested_gpu_sdk\":\"opencl\""));
     assert!(output.contains("\"actual_gpu_sdk\":\"OpenCL\""));
-    assert!(output.contains("\"hardware\":\"OpenCL runtime/device"));
+    assert!(output.contains("\"hardware\":\""), "{output}");
+    assert!(output.contains("via OpenCL"), "{output}");
+    assert!(
+        !output.contains("\"hardware\":\"OpenCL runtime/device"),
+        "{output}"
+    );
+    assert!(
+        !output.contains("\"hardware\":\"OpenCL adapter runtime"),
+        "{output}"
+    );
+    assert!(!output.contains(" via OpenCL int64\""), "{output}");
     assert!(output.contains("\"speedup_ratio\""));
     assert!(output.contains("\"mode\":\"DeviceValidated\""));
     assert!(output.contains("\"matches\":[85]"));

@@ -3565,6 +3565,36 @@ fn runtime_selects_detected_sdk_and_executes_driver_runner() {
 }
 
 #[test]
+fn runtime_identity_excludes_adapter_feature_tokens() {
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    let sdks = [GpuSdk::OpenCl {
+        sdk: "gfx1100 via OpenCL int64".to_owned(),
+    }];
+    let runner = FixtureDriverRunner {
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![3],
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_detected_driver(
+        &program,
+        SearchDomain::new(0, 1_000_000),
+        &sdks,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(
+        report.telemetry.selected_gpu_runtime.as_deref(),
+        Some("gfx1100 via OpenCL")
+    );
+}
+
+#[test]
 fn runtime_tries_next_compatible_gpu_sdk_when_selected_driver_fails() {
     let program = SearchProgram::try_from_fixture("add").unwrap();
     let token = CancellationToken::new();

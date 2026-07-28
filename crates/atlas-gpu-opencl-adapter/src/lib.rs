@@ -152,7 +152,7 @@ pub trait Launcher {
     /// # Errors
     ///
     /// Returns an error when no OpenCL runtime/device can be selected.
-    fn features(&self) -> Result<Vec<String>, String>;
+    fn features(&self) -> Result<FeatureReport, String>;
 
     /// Build-checks generated OpenCL source.
     ///
@@ -169,18 +169,31 @@ pub trait Launcher {
     fn launch(&self, args: &LaunchArgs) -> Result<LaunchOutput, String>;
 }
 
+/// Runtime/device feature report emitted by `--features`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FeatureReport {
+    /// Concrete hardware/runtime identity selected by the adapter.
+    pub hardware: String,
+    /// Kernel capabilities available for generated OpenCL code.
+    pub features: Vec<String>,
+}
+
 /// OpenCL device-backed launcher.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OpenClLauncher;
 
 impl Launcher for OpenClLauncher {
-    fn features(&self) -> Result<Vec<String>, String> {
+    fn features(&self) -> Result<FeatureReport, String> {
         let device = Device::new(select_device()?);
+        let hardware = opencl_device_identity(&device);
         let context = Context::from_device(&device).map_err(|error| error.to_string())?;
         let int64_probe =
             Program::create_and_build_from_source(&context, opencl_int64_probe_source(), "")
                 .map(|_| ());
-        Ok(features_from_int64_probe(int64_probe))
+        Ok(FeatureReport {
+            hardware,
+            features: features_from_int64_probe(int64_probe),
+        })
     }
 
     fn compile_check(&self, source: &str, output: Option<&str>) -> Result<(), String> {
@@ -205,8 +218,8 @@ impl Launcher for OpenClLauncher {
 pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, String> {
     match AdapterCommand::parse(args)? {
         AdapterCommand::Features => {
-            let features = launcher.features()?;
-            Ok(format_features(&features))
+            let report = launcher.features()?;
+            Ok(format_features(&report))
         }
         AdapterCommand::CompileCheck { source, output } => {
             launcher.compile_check(&source, output.as_deref())?;
@@ -219,16 +232,27 @@ pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, Strin
     }
 }
 
-fn format_features(features: &[String]) -> String {
-    let mut text = "hardware=OpenCL runtime/device\n".to_owned();
+fn format_features(report: &FeatureReport) -> String {
+    let mut text = format!("hardware={}\n", report.hardware);
     text.push_str(
-        &features
+        &report
+            .features
             .iter()
             .map(|feature| format!("feature={feature}\n"))
             .collect::<String>(),
     );
     text.push_str("feature=launchAbiU32\nfeature=launchAbiU64\n");
     text
+}
+
+fn opencl_device_identity(device: &Device) -> String {
+    let name = device
+        .name()
+        .ok()
+        .map(|name| name.trim().to_owned())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "OpenCL device".to_owned());
+    format!("{name} via OpenCL")
 }
 
 fn format_launch_output(output: &LaunchOutput) -> String {

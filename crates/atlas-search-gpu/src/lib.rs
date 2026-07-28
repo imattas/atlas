@@ -103,14 +103,26 @@ impl GpuSdk {
     }
 
     fn runtime_identity(&self) -> &str {
-        match self {
+        let identity = match self {
             Self::OpenCl { sdk }
             | Self::Vulkan { sdk }
             | Self::Wgpu { sdk }
             | Self::Cuda { sdk }
             | Self::Hip { sdk } => sdk,
-        }
+        };
+        sdk_identity_without_adapter_feature_tokens(identity)
     }
+}
+
+fn sdk_identity_without_adapter_feature_tokens(identity: &str) -> &str {
+    let mut identity = identity.trim_end();
+    while let Some(stripped) = ["int64", "shaderInt64", "launchAbiU32"]
+        .iter()
+        .find_map(|feature| identity.strip_suffix(&format!(" {feature}")))
+    {
+        identity = stripped.trim_end();
+    }
+    identity
 }
 
 fn sdk_supports_program(sdk: &GpuSdk, program: &SearchProgram) -> bool {

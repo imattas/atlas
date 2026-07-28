@@ -2,7 +2,7 @@
 
 use atlas_gpu_opencl_adapter::{
     opencl_loader_candidates_from_host_roots, opencl_loader_candidates_from_roots, run_cli,
-    AdapterCommand, LaunchArgs, LaunchOutput, Launcher, OpenClLaunchAbi,
+    AdapterCommand, FeatureReport, LaunchArgs, LaunchOutput, Launcher, OpenClLaunchAbi,
 };
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::{SearchOp, SearchProgram};
@@ -21,8 +21,11 @@ fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
 struct FixtureLauncher;
 
 impl Launcher for FixtureLauncher {
-    fn features(&self) -> Result<Vec<String>, String> {
-        Ok(vec!["int64".to_owned()])
+    fn features(&self) -> Result<FeatureReport, String> {
+        Ok(FeatureReport {
+            hardware: "Intel Arc A770 via OpenCL".to_owned(),
+            features: vec!["int64".to_owned()],
+        })
     }
 
     fn compile_check(&self, _source: &str, _output: Option<&str>) -> Result<(), String> {
@@ -57,8 +60,11 @@ impl RecordingLauncher {
 }
 
 impl Launcher for RecordingLauncher {
-    fn features(&self) -> Result<Vec<String>, String> {
-        Ok(Vec::new())
+    fn features(&self) -> Result<FeatureReport, String> {
+        Ok(FeatureReport {
+            hardware: "Fixture OpenCL device".to_owned(),
+            features: Vec::new(),
+        })
     }
 
     fn compile_check(&self, source: &str, output: Option<&str>) -> Result<(), String> {
@@ -150,7 +156,7 @@ fn cli_features_emits_launcher_capabilities() {
 
     assert_eq!(
         output,
-        "hardware=OpenCL runtime/device\nfeature=int64\nfeature=launchAbiU32\nfeature=launchAbiU64\n"
+        "hardware=Intel Arc A770 via OpenCL\nfeature=int64\nfeature=launchAbiU32\nfeature=launchAbiU64\n"
     );
 }
 
