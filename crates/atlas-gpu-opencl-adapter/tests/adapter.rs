@@ -204,6 +204,26 @@ fn rejects_global_size_smaller_than_launch_domain() {
 }
 
 #[test]
+fn rejects_global_size_that_is_not_multiple_of_local_size() {
+    let error = LaunchArgs::parse(&[
+        "target/atlas-gpu/atlas_search.cl".to_owned(),
+        "--start".to_owned(),
+        "10".to_owned(),
+        "--end".to_owned(),
+        "20".to_owned(),
+        "--max-matches".to_owned(),
+        "3".to_owned(),
+        "--global-size".to_owned(),
+        "130".to_owned(),
+        "--local-size".to_owned(),
+        "64".to_owned(),
+    ])
+    .unwrap_err();
+
+    assert!(error.contains("global-size must be a multiple of local-size"));
+}
+
+#[test]
 fn cli_emits_match_lines_from_launcher() {
     let output = run_cli(
         &[

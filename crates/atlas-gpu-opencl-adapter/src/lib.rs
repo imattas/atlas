@@ -87,6 +87,9 @@ impl LaunchArgs {
         if global_size == 0 || local_size == 0 {
             return Err("global-size and local-size must be nonzero".to_owned());
         }
+        if global_size % local_size != 0 {
+            return Err("global-size must be a multiple of local-size".to_owned());
+        }
         if u64::try_from(global_size).unwrap_or(u64::MAX) < end.saturating_sub(start) {
             return Err("global-size must cover launch domain".to_owned());
         }
