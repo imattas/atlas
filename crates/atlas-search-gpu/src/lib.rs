@@ -916,6 +916,17 @@ impl AcceleratorRuntime {
                 max_matches,
             );
         }
+        if let Some(inconsistency) = execution.inconsistent_device_match_count {
+            return inconsistent_match_count_report(
+                program,
+                domain,
+                cancellation,
+                launch,
+                sdk,
+                &base_rationale,
+                inconsistency,
+            );
+        }
         if reported_matches.is_empty() {
             return AcceleratorReport {
                 mode: RuntimeMode::CpuFallback,
@@ -1069,6 +1080,17 @@ fn output_omits_match_count_for_full_buffer(
         && DriverRunOutput::parse_reported_match_count(&output.stdout).is_none()
 }
 
+fn inconsistent_device_match_count(
+    output: &DriverRunOutput,
+) -> Option<DeviceMatchCountInconsistency> {
+    let device_match_count = DriverRunOutput::parse_reported_match_count(&output.stdout)?;
+    let retained_matches = output.reported_matches.len();
+    (device_match_count < retained_matches).then_some(DeviceMatchCountInconsistency {
+        device_match_count,
+        retained_matches,
+    })
+}
+
 fn driver_failure_report(
     program: &SearchProgram,
     domain: SearchDomain,
@@ -1102,6 +1124,30 @@ fn device_match_count_overflow_report(
             format!(
                 "{base_rationale}; device match count {} exceeds buffer {}",
                 overflow.device_match_count, overflow.max_matches
+            ),
+            0,
+        ),
+    }
+}
+
+fn inconsistent_match_count_report(
+    program: &SearchProgram,
+    domain: SearchDomain,
+    cancellation: &CancellationToken,
+    launch: LaunchConfig,
+    sdk: &GpuSdk,
+    base_rationale: &str,
+    inconsistency: DeviceMatchCountInconsistency,
+) -> AcceleratorReport {
+    AcceleratorReport {
+        mode: RuntimeMode::CpuFallback,
+        matches: NativeSearcher::search(program, domain, cancellation),
+        telemetry: sdk_runtime_telemetry(
+            launch,
+            sdk,
+            format!(
+                "{base_rationale}; match_count {} is less than retained matches {}",
+                inconsistency.device_match_count, inconsistency.retained_matches
             ),
             0,
         ),
@@ -1156,6 +1202,7 @@ struct DriverExecution {
     reported_matches: Vec<u64>,
     overflowed_device_match_count: Option<DeviceMatchCountOverflow>,
     missing_full_buffer_match_count: Option<usize>,
+    inconsistent_device_match_count: Option<DeviceMatchCountInconsistency>,
 }
 
 impl DriverExecution {
@@ -1166,12 +1213,16 @@ impl DriverExecution {
             reported_matches: Vec::new(),
             overflowed_device_match_count: None,
             missing_full_buffer_match_count: None,
+            inconsistent_device_match_count: None,
         }
     }
 
     fn record_output(&mut self, output: DriverRunOutput, launch: LaunchConfig) {
         if let Some(overflow) = device_match_count_overflow(&output, launch) {
             self.overflowed_device_match_count = Some(overflow);
+        }
+        if let Some(inconsistency) = inconsistent_device_match_count(&output) {
+            self.inconsistent_device_match_count = Some(inconsistency);
         }
         if output_omits_match_count_for_full_buffer(&output, launch) {
             self.missing_full_buffer_match_count = Some(launch.max_matches);
@@ -1184,6 +1235,12 @@ impl DriverExecution {
 struct DeviceMatchCountOverflow {
     device_match_count: usize,
     max_matches: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DeviceMatchCountInconsistency {
+    device_match_count: usize,
+    retained_matches: usize,
 }
 
 fn driver_failure_rationale(sdk: &GpuSdk, output: &DriverRunOutput) -> String {

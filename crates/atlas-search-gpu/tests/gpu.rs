@@ -3090,6 +3090,41 @@ fn runtime_falls_back_when_full_device_buffer_omits_match_count() {
 }
 
 #[test]
+fn runtime_falls_back_when_match_count_is_less_than_retained_matches() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let token = CancellationToken::new();
+    let sdk = GpuSdk::Vulkan {
+        sdk: "test Vulkan".to_owned(),
+    };
+    let runner = FixtureDriverRunner {
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![0x55, 0x155],
+            stdout: "match_count=1\n".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_driver(
+        &program,
+        SearchDomain::new(0x50, 0x160),
+        &sdk,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert_eq!(
+        report.matches,
+        NativeSearcher::search(&program, SearchDomain::new(0x50, 0x160), &token)
+    );
+    assert!(report
+        .telemetry
+        .rationale
+        .contains("match_count 1 is less than retained matches 2"));
+}
+
+#[test]
 fn driver_output_parses_decimal_and_hex_device_matches_from_stdout() {
     assert_eq!(
         DriverRunOutput::parse_reported_matches("match=3\n0x04\nignored\n5\n"),
