@@ -315,7 +315,12 @@ struct NvrtcCompiler {
 
 impl NvrtcCompiler {
     fn load() -> Result<Self, String> {
-        let library = DynamicLibrary::open_nvrtc()?;
+        let library = DynamicLibrary::open_nvrtc().map_err(|error| {
+            format!(
+                "{error}; searched NVRTC candidates: {}",
+                format_nvrtc_search_candidates_from_roots(cuda_root_dirs())
+            )
+        })?;
         let api = unsafe { NvrtcApi::load(&library)? };
         Ok(Self {
             _library: library,
@@ -444,7 +449,12 @@ impl NvccCompiler {
     fn load() -> Result<Self, String> {
         find_nvcc_command()
             .map(|command| Self { command })
-            .ok_or_else(|| "failed to find nvcc CUDA compiler command".to_owned())
+            .ok_or_else(|| {
+                format!(
+                    "failed to find nvcc CUDA compiler command; searched nvcc candidates: {}",
+                    format_nvcc_search_candidates_from_roots(cuda_root_dirs())
+                )
+            })
     }
 
     fn compile_source_file_to_ptx(&self, source_path: &str) -> Result<String, String> {
@@ -965,6 +975,25 @@ fn find_cuda_root_nvrtc_library() -> Option<String> {
         .map(|path| path.to_string_lossy().into_owned())
 }
 
+fn format_nvrtc_search_candidates_from_roots(roots: impl IntoIterator<Item = PathBuf>) -> String {
+    format_path_candidates(nvrtc_library_candidates_from_roots(roots))
+}
+
+fn format_nvcc_search_candidates_from_roots(roots: impl IntoIterator<Item = PathBuf>) -> String {
+    format_path_candidates(nvcc_command_candidates_from_roots(roots))
+}
+
+fn format_path_candidates(candidates: Vec<PathBuf>) -> String {
+    if candidates.is_empty() {
+        return "<none>".to_owned();
+    }
+    candidates
+        .into_iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn cuda_root_dirs() -> Vec<PathBuf> {
     let mut roots = ["CUDA_PATH", "CUDA_HOME", "CUDA_ROOT"]
         .into_iter()
@@ -1149,4 +1178,22 @@ unsafe fn platform_close(handle: *mut c_void) {
         fn dlclose(handle: *mut c_void) -> c_int;
     }
     let _ = dlclose(handle);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cuda_compiler_diagnostics_report_injected_sdk_candidates() {
+        let cuda_root = PathBuf::from("C:/atlas-test/cuda");
+
+        let nvrtc = format_nvrtc_search_candidates_from_roots([cuda_root.clone()]);
+        let nvcc = format_nvcc_search_candidates_from_roots([cuda_root.clone()]);
+
+        assert!(nvrtc.contains("atlas-test"));
+        assert!(nvrtc.contains("nvrtc"));
+        assert!(nvcc.contains("atlas-test"));
+        assert!(nvcc.contains("nvcc"));
+    }
 }
