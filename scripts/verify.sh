@@ -164,6 +164,42 @@ PY
   ' _ "$sdk" "$expected_actual_gpu_sdk" "$cargo_cmd" "$fixture" "$start" "$end" "$benchmark_samples" "$min_retained_matches"
 }
 
+run_placement_selected_gpu_benchmark() {
+  local name="$1"
+  run_hardware_step "$name" bash -c '
+    set -euo pipefail
+    output=$("$1" run -q -p atlas-cli -- benchmark --fixture xor --start 0 --end 1000000 --samples "$2")
+    printf "%s\n" "$output"
+    BENCHMARK_JSON="$output" BENCHMARK_SAMPLES="$2" python - <<'"'"'PY'"'"'
+import json
+import os
+
+benchmark_samples = int(os.environ["BENCHMARK_SAMPLES"])
+document = json.loads(os.environ["BENCHMARK_JSON"])
+accelerator = document["accelerator"]
+if accelerator.get("requested_gpu_sdk") is not None:
+    raise SystemExit(
+        f"expected placement-selected benchmark to omit requested_gpu_sdk, got {accelerator.get('requested_gpu_sdk')}"
+    )
+if accelerator["mode"] != "DeviceValidated":
+    raise SystemExit(f"expected DeviceValidated placement-selected GPU benchmark, got {accelerator['mode']}")
+if document.get("sample_count") != benchmark_samples:
+    raise SystemExit(f"expected sample_count {benchmark_samples}, got {document.get('sample_count')}")
+if not accelerator.get("actual_gpu_sdk"):
+    raise SystemExit("expected placement-selected benchmark to report actual_gpu_sdk")
+launch = accelerator["launch"]
+if launch["global_size"] < 1000000:
+    raise SystemExit(
+        f"expected placement-selected benchmark global_size to cover 1000000 candidates, got {launch['global_size']}"
+    )
+telemetry = accelerator.get("telemetry") or ""
+for required in ["driver exit 0", "driver launches", "launch abi"]:
+    if required not in telemetry:
+        raise SystemExit(f"expected placement-selected benchmark telemetry to include {required!r}, got {telemetry!r}")
+PY
+  ' _ "$cargo_cmd" "$benchmark_samples"
+}
+
 "$cargo_cmd" fmt --all -- --check
 "$cargo_cmd" clippy --workspace --all-targets -- -D warnings
 "$cargo_cmd" test --workspace --all-targets
@@ -265,6 +301,7 @@ if [[ "$profile" == "hardware" ]]; then
     printf "%s\n" "$hardware_doctor_json"
     printf "%s\n" "$hardware_doctor_json" | python scripts/verify_hardware_doctor.py --require-launch-abi
   fi
+  run_placement_selected_gpu_benchmark "Placement-selected GPU benchmark"
   run_forced_gpu_benchmark "Forced-GPU benchmark" "" ""
   run_forced_gpu_benchmark "Forced-GPU dense benchmark" "" "" dense 0 1500 1500
   if gpu_any_feature_probe_has_int64 "$hardware_doctor_json"; then

@@ -107,6 +107,37 @@ class VerifyScriptTests(unittest.TestCase):
                 self.assertLess(doctor_index, benchmark_index)
                 self.assertLess(benchmark_index, first_hardware_test_index)
 
+    def test_hardware_profile_records_placement_selected_gpu_benchmark_before_forced_gpu(self):
+        expectations = {
+            "verify.ps1": [
+                "Invoke-PlacementSelectedGpuBenchmark",
+                "Placement-selected GPU benchmark",
+                '"--end", "1000000"',
+                "requested_gpu_sdk",
+                "actual_gpu_sdk",
+                "DeviceValidated",
+            ],
+            "verify.sh": [
+                "run_placement_selected_gpu_benchmark",
+                "Placement-selected GPU benchmark",
+                "--end 1000000",
+                "requested_gpu_sdk",
+                "actual_gpu_sdk",
+                "DeviceValidated",
+            ],
+        }
+
+        for script_name, required_tokens in expectations.items():
+            with self.subTest(script=script_name):
+                text = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+                for token in required_tokens:
+                    self.assertIn(token, text)
+                placement_index = text.find("Placement-selected GPU benchmark")
+                forced_index = text.find("Forced-GPU benchmark")
+                self.assertNotEqual(-1, placement_index)
+                self.assertNotEqual(-1, forced_index)
+                self.assertLess(placement_index, forced_index)
+
     def test_unix_verify_script_falls_back_to_windows_cargo_exe(self):
         text = (ROOT / "scripts" / "verify.sh").read_text(encoding="utf-8")
         for token in [

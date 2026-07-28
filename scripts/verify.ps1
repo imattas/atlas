@@ -163,6 +163,43 @@ function Invoke-ForcedGpuBenchmark {
     }
 }
 
+function Invoke-PlacementSelectedGpuBenchmark {
+    param([string]$Name)
+    Invoke-HardwareStep $Name {
+        $BenchmarkArgs = @("run", "-q", "-p", "atlas-cli", "--", "benchmark", "--fixture", "xor", "--start", "0", "--end", "1000000", "--samples", $BenchmarkSamples)
+        $Output = cargo @BenchmarkArgs
+        $Status = $LASTEXITCODE
+        if ($Status -ne 0) {
+            $global:LASTEXITCODE = $Status
+            return
+        }
+        Write-Host $Output
+        $Benchmark = $Output | ConvertFrom-Json
+        if ($Benchmark.accelerator.requested_gpu_sdk -ne $null) {
+            throw "expected placement-selected benchmark to omit requested_gpu_sdk, got $($Benchmark.accelerator.requested_gpu_sdk)"
+        }
+        if ($Benchmark.accelerator.mode -ne "DeviceValidated") {
+            throw "expected DeviceValidated placement-selected GPU benchmark, got $($Benchmark.accelerator.mode)"
+        }
+        if ($Benchmark.sample_count -ne $BenchmarkSamples) {
+            throw "expected sample_count $BenchmarkSamples, got $($Benchmark.sample_count)"
+        }
+        if ([string]::IsNullOrEmpty([string]$Benchmark.accelerator.actual_gpu_sdk)) {
+            throw "expected placement-selected benchmark to report actual_gpu_sdk"
+        }
+        if ($Benchmark.accelerator.launch.global_size -lt 1000000) {
+            throw "expected placement-selected benchmark global_size to cover 1000000 candidates, got $($Benchmark.accelerator.launch.global_size)"
+        }
+        $Telemetry = [string]$Benchmark.accelerator.telemetry
+        foreach ($RequiredTelemetry in @("driver exit 0", "driver launches", "launch abi")) {
+            if (!$Telemetry.Contains($RequiredTelemetry)) {
+                throw "expected placement-selected benchmark telemetry to include '$RequiredTelemetry', got '$Telemetry'"
+            }
+        }
+        $global:LASTEXITCODE = 0
+    }
+}
+
 if ($Profile -in @("distributed", "advanced", "full")) {
     foreach ($RequiredPath in @(
         "tests/e2e/track3/manifest.toml",
@@ -253,6 +290,7 @@ if ($Profile -eq "hardware") {
         }
         $global:LASTEXITCODE = 0
     }
+    Invoke-PlacementSelectedGpuBenchmark "Placement-selected GPU benchmark"
     Invoke-ForcedGpuBenchmark "Forced-GPU benchmark" $null $null
     Invoke-ForcedGpuBenchmark "Forced-GPU dense benchmark" $null $null "dense" "0" "1500" 1500
     if (Get-AnyGpuFeatureProbeHasInt64 $HardwareDoctor) {
