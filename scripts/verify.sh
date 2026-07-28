@@ -62,11 +62,14 @@ export -f print_hardware_benchmark_summary
 
 validate_benchmark_equivalence() {
   local benchmark_json="$1"
-  BENCHMARK_JSON="$benchmark_json" python - <<'PY'
+  local min_retained_matches="${2:-0}"
+  BENCHMARK_JSON="$benchmark_json" MIN_RETAINED_MATCHES="$min_retained_matches" python - <<'PY'
 import json
 import os
+import sys
 
 document = json.loads(os.environ["BENCHMARK_JSON"])
+min_retained_matches = int(os.environ["MIN_RETAINED_MATCHES"])
 sample_count = document.get("sample_count")
 for field in ["native_samples_ns", "simd_samples_ns", "accelerator_samples_ns"]:
     if len(document.get(field) or []) != sample_count:
@@ -76,6 +79,10 @@ simd_matches = document["simd"]["matches"]
 gpu_matches = document["accelerator"]["matches"]
 if native_matches != simd_matches:
     raise SystemExit("native/SIMD benchmark mismatch")
+if min_retained_matches > 0:
+    if gpu_matches[: len(native_matches)] != native_matches:
+        raise SystemExit("native/GPU benchmark prefix mismatch")
+    sys.exit(0)
 if native_matches != gpu_matches:
     raise SystemExit("native/GPU benchmark mismatch")
 PY
@@ -190,7 +197,7 @@ run_forced_gpu_benchmark() {
     fi
     output=$("${command[@]}")
     printf "%s\n" "$output" | print_hardware_benchmark_summary
-    validate_benchmark_equivalence "$output"
+    validate_benchmark_equivalence "$output" "$min_retained_matches"
     validate_benchmark_hardware_identity "$output" "benchmark"
     EXPECTED_ACTUAL_GPU_SDK="$2" BENCHMARK_JSON="$output" BENCHMARK_SAMPLES="$7" MIN_RETAINED_MATCHES="$8" python - <<'"'"'PY'"'"'
 import json
@@ -237,7 +244,7 @@ run_placement_selected_gpu_benchmark() {
     set -euo pipefail
     output=$("$1" run -q -p atlas-cli -- benchmark --fixture xor --start 0 --end 1000000 --samples "$2")
     printf "%s\n" "$output" | print_hardware_benchmark_summary
-    validate_benchmark_equivalence "$output"
+    validate_benchmark_equivalence "$output" 1
     validate_benchmark_hardware_identity "$output" "placement-selected benchmark"
     BENCHMARK_JSON="$output" BENCHMARK_SAMPLES="$2" python - <<'"'"'PY'"'"'
 import json

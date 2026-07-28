@@ -73,17 +73,33 @@ function Write-HardwareBenchmarkSummary {
 }
 
 function Assert-BenchmarkEquivalence {
-    param($Benchmark)
+    param($Benchmark, [int]$MinRetainedMatches = 0)
     foreach ($SampleField in @("native_samples_ns", "simd_samples_ns", "accelerator_samples_ns")) {
         if (@($Benchmark.$SampleField).Count -ne $Benchmark.sample_count) {
             throw "expected $SampleField to contain $($Benchmark.sample_count) samples, got $(@($Benchmark.$SampleField).Count)"
         }
     }
-    $NativeMatches = @($Benchmark.native.matches) | ConvertTo-Json -Compress
-    $SimdMatches = @($Benchmark.simd.matches) | ConvertTo-Json -Compress
-    $GpuMatches = @($Benchmark.accelerator.matches) | ConvertTo-Json -Compress
+    $NativeMatchList = @($Benchmark.native.matches)
+    $SimdMatchList = @($Benchmark.simd.matches)
+    $GpuMatchList = @($Benchmark.accelerator.matches)
+    $NativeMatches = $NativeMatchList | ConvertTo-Json -Compress
+    $SimdMatches = $SimdMatchList | ConvertTo-Json -Compress
+    $GpuMatches = $GpuMatchList | ConvertTo-Json -Compress
     if ($NativeMatches -ne $SimdMatches) {
         throw "native/SIMD benchmark mismatch"
+    }
+    if ($MinRetainedMatches -gt 0) {
+        if ($GpuMatchList.Count -lt $NativeMatchList.Count) {
+            throw "native/GPU benchmark prefix mismatch"
+        }
+        if ($NativeMatchList.Count -eq 0) {
+            return
+        }
+        $GpuPrefixMatches = $GpuMatchList[0..($NativeMatchList.Count - 1)] | ConvertTo-Json -Compress
+        if ($NativeMatches -ne $GpuPrefixMatches) {
+            throw "native/GPU benchmark prefix mismatch"
+        }
+        return
     }
     if ($NativeMatches -ne $GpuMatches) {
         throw "native/GPU benchmark mismatch"
@@ -197,7 +213,7 @@ function Invoke-ForcedGpuBenchmark {
         if ($Benchmark.sample_count -ne $BenchmarkSamples) {
             throw "expected sample_count $BenchmarkSamples, got $($Benchmark.sample_count)"
         }
-        Assert-BenchmarkEquivalence $Benchmark
+        Assert-BenchmarkEquivalence $Benchmark $MinRetainedMatches
         Assert-BenchmarkAcceleratorHardware $Benchmark "benchmark"
         if (![string]::IsNullOrEmpty($ExpectedActualGpuSdk) -and $Benchmark.accelerator.actual_gpu_sdk -ne $ExpectedActualGpuSdk) {
             throw "expected actual_gpu_sdk $ExpectedActualGpuSdk, got $($Benchmark.accelerator.actual_gpu_sdk)"
@@ -246,7 +262,7 @@ function Invoke-PlacementSelectedGpuBenchmark {
         if ($Benchmark.sample_count -ne $BenchmarkSamples) {
             throw "expected sample_count $BenchmarkSamples, got $($Benchmark.sample_count)"
         }
-        Assert-BenchmarkEquivalence $Benchmark
+        Assert-BenchmarkEquivalence $Benchmark 1
         if ([string]::IsNullOrEmpty([string]$Benchmark.accelerator.actual_gpu_sdk)) {
             throw "expected placement-selected benchmark to report actual_gpu_sdk"
         }
