@@ -57,6 +57,21 @@ function Skip-HardwareStep {
     Write-Host "skipped: $Reason"
 }
 
+function Write-HardwareBenchmarkSummary {
+    param([string]$Output)
+    $BenchmarkJsonFile = New-TemporaryFile
+    try {
+        Set-Content -LiteralPath $BenchmarkJsonFile -Value $Output -NoNewline -Encoding utf8
+        $Summary = python scripts/summarize_hardware_benchmark.py --input $BenchmarkJsonFile
+        if ($LASTEXITCODE -ne 0) {
+            throw "failed to summarize hardware benchmark output"
+        }
+        Write-Host $Summary
+    } finally {
+        Remove-Item -LiteralPath $BenchmarkJsonFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Get-GpuFeatureProbeOk {
     param($Doctor, [string]$Name)
     if ($null -eq $Doctor -or $null -eq $Doctor.gpu_feature_probes) {
@@ -129,7 +144,7 @@ function Invoke-ForcedGpuBenchmark {
             $global:LASTEXITCODE = $Status
             return
         }
-        Write-Host $Output
+        Write-HardwareBenchmarkSummary $Output
         $Benchmark = $Output | ConvertFrom-Json
         if ($Benchmark.accelerator.mode -ne "DeviceValidated") {
             throw "expected DeviceValidated, got $($Benchmark.accelerator.mode)"
@@ -173,7 +188,7 @@ function Invoke-PlacementSelectedGpuBenchmark {
             $global:LASTEXITCODE = $Status
             return
         }
-        Write-Host $Output
+        Write-HardwareBenchmarkSummary $Output
         $Benchmark = $Output | ConvertFrom-Json
         if ($Benchmark.accelerator.requested_gpu_sdk -ne $null) {
             throw "expected placement-selected benchmark to omit requested_gpu_sdk, got $($Benchmark.accelerator.requested_gpu_sdk)"
@@ -210,7 +225,7 @@ function Invoke-WarmCachePlacementGpuBenchmark {
             $global:LASTEXITCODE = $Status
             return
         }
-        Write-Host $Output
+        Write-HardwareBenchmarkSummary $Output
         $Benchmark = $Output | ConvertFrom-Json
         if ($Benchmark.accelerator.mode -ne "DeviceValidated") {
             throw "expected DeviceValidated warm-cache GPU benchmark, got $($Benchmark.accelerator.mode)"
@@ -237,7 +252,7 @@ function Invoke-WarmCachePlacementGpuBenchmark {
             $global:LASTEXITCODE = $Status
             return
         }
-        Write-Host $Output
+        Write-HardwareBenchmarkSummary $Output
         $Benchmark = $Output | ConvertFrom-Json
         if ($Benchmark.accelerator.requested_gpu_sdk -ne $null) {
             throw "expected warm-cache auto-placement benchmark to omit requested_gpu_sdk, got $($Benchmark.accelerator.requested_gpu_sdk)"

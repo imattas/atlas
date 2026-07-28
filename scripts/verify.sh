@@ -49,6 +49,17 @@ skip_hardware_step() {
   echo "skipped: $reason"
 }
 
+print_hardware_benchmark_summary() {
+  local benchmark_json_file
+  benchmark_json_file=$(mktemp)
+  cat >"$benchmark_json_file"
+  python scripts/summarize_hardware_benchmark.py --input "$benchmark_json_file"
+  local status=$?
+  rm -f "$benchmark_json_file"
+  return "$status"
+}
+export -f print_hardware_benchmark_summary
+
 gpu_feature_probe_ok() {
   local doctor_json="$1"
   local name="$2"
@@ -124,7 +135,7 @@ run_forced_gpu_benchmark() {
       command+=(--gpu-sdk "$1")
     fi
     output=$("${command[@]}")
-    printf "%s\n" "$output"
+    printf "%s\n" "$output" | print_hardware_benchmark_summary
     EXPECTED_ACTUAL_GPU_SDK="$2" BENCHMARK_JSON="$output" BENCHMARK_SAMPLES="$7" MIN_RETAINED_MATCHES="$8" python - <<'"'"'PY'"'"'
 import json
 import os
@@ -169,7 +180,7 @@ run_placement_selected_gpu_benchmark() {
   run_hardware_step "$name" bash -c '
     set -euo pipefail
     output=$("$1" run -q -p atlas-cli -- benchmark --fixture xor --start 0 --end 1000000 --samples "$2")
-    printf "%s\n" "$output"
+    printf "%s\n" "$output" | print_hardware_benchmark_summary
     BENCHMARK_JSON="$output" BENCHMARK_SAMPLES="$2" python - <<'"'"'PY'"'"'
 import json
 import os
@@ -206,7 +217,7 @@ run_warm_cache_placement_gpu_benchmark() {
   run_hardware_step "$warm_name" bash -c '
     set -euo pipefail
     output=$("$1" run -q -p atlas-cli -- benchmark --fixture xor --start 0 --end 100000 --force-gpu --samples "$2")
-    printf "%s\n" "$output"
+    printf "%s\n" "$output" | print_hardware_benchmark_summary
     BENCHMARK_JSON="$output" BENCHMARK_SAMPLES="$2" python - <<'"'"'PY'"'"'
 import json
 import os
@@ -229,7 +240,7 @@ PY
   run_hardware_step "$auto_name" bash -c '
     set -euo pipefail
     output=$("$1" run -q -p atlas-cli -- benchmark --fixture xor --start 0 --end 100000 --samples "$2")
-    printf "%s\n" "$output"
+    printf "%s\n" "$output" | print_hardware_benchmark_summary
     BENCHMARK_JSON="$output" BENCHMARK_SAMPLES="$2" python - <<'"'"'PY'"'"'
 import json
 import os
