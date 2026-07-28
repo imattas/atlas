@@ -3340,6 +3340,41 @@ fn runtime_falls_back_when_driver_reports_conflicting_match_counts() {
 }
 
 #[test]
+fn runtime_falls_back_when_driver_reports_malformed_match_count() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let token = CancellationToken::new();
+    let sdk = GpuSdk::Cuda {
+        sdk: "test CUDA".to_owned(),
+    };
+    let runner = FixtureDriverRunner {
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![0x55],
+            stdout: "match_count=not-a-number\n".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_driver(
+        &program,
+        SearchDomain::new(0x50, 0x160),
+        &sdk,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert_eq!(
+        report.matches,
+        NativeSearcher::search(&program, SearchDomain::new(0x50, 0x160), &token)
+    );
+    assert!(report
+        .telemetry
+        .rationale
+        .contains("malformed match_count value not-a-number"));
+}
+
+#[test]
 fn driver_output_parses_decimal_and_hex_device_matches_from_stdout() {
     assert_eq!(
         DriverRunOutput::parse_reported_matches("match=3\n0x04\nignored\n5\n"),

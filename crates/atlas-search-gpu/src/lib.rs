@@ -1068,6 +1068,18 @@ fn inconsistent_device_match_count(
     })
 }
 
+fn malformed_device_match_count(output: &DriverRunOutput) -> Option<DeviceMatchCountMalformed> {
+    output.stdout.lines().find_map(|line| {
+        let value = line.trim().strip_prefix("match_count=")?;
+        value
+            .parse::<usize>()
+            .is_err()
+            .then(|| DeviceMatchCountMalformed {
+                value: value.to_owned(),
+            })
+    })
+}
+
 fn conflicting_device_match_count(output: &DriverRunOutput) -> Option<DeviceMatchCountConflict> {
     let mut counts = output.stdout.lines().filter_map(|line| {
         line.trim()
@@ -1134,6 +1146,17 @@ fn driver_protocol_fallback_report(
             sdk,
             base_rationale,
             inconsistency,
+        ));
+    }
+    if let Some(malformed) = &execution.malformed_device_match_count {
+        return Some(malformed_match_count_report(
+            program,
+            domain,
+            cancellation,
+            execution.launch,
+            sdk,
+            base_rationale,
+            malformed,
         ));
     }
     if let Some(conflict) = execution.conflicting_device_match_count {
@@ -1232,6 +1255,30 @@ fn conflicting_match_count_report(
     }
 }
 
+fn malformed_match_count_report(
+    program: &SearchProgram,
+    domain: SearchDomain,
+    cancellation: &CancellationToken,
+    launch: LaunchConfig,
+    sdk: &GpuSdk,
+    base_rationale: &str,
+    malformed: &DeviceMatchCountMalformed,
+) -> AcceleratorReport {
+    AcceleratorReport {
+        mode: RuntimeMode::CpuFallback,
+        matches: NativeSearcher::search(program, domain, cancellation),
+        telemetry: sdk_runtime_telemetry(
+            launch,
+            sdk,
+            format!(
+                "{base_rationale}; malformed match_count value {}",
+                malformed.value
+            ),
+            0,
+        ),
+    }
+}
+
 fn inconsistent_match_count_report(
     program: &SearchProgram,
     domain: SearchDomain,
@@ -1306,6 +1353,7 @@ struct DriverExecution {
     overflowed_aggregate_match_count: Option<AggregateMatchCountOverflow>,
     missing_full_buffer_match_count: Option<usize>,
     inconsistent_device_match_count: Option<DeviceMatchCountInconsistency>,
+    malformed_device_match_count: Option<DeviceMatchCountMalformed>,
     conflicting_device_match_count: Option<DeviceMatchCountConflict>,
     aggregate_device_match_count: usize,
 }
@@ -1320,6 +1368,7 @@ impl DriverExecution {
             overflowed_aggregate_match_count: None,
             missing_full_buffer_match_count: None,
             inconsistent_device_match_count: None,
+            malformed_device_match_count: None,
             conflicting_device_match_count: None,
             aggregate_device_match_count: 0,
         }
@@ -1331,6 +1380,9 @@ impl DriverExecution {
         }
         if let Some(inconsistency) = inconsistent_device_match_count(&output) {
             self.inconsistent_device_match_count = Some(inconsistency);
+        }
+        if let Some(malformed) = malformed_device_match_count(&output) {
+            self.malformed_device_match_count = Some(malformed);
         }
         if let Some(conflict) = conflicting_device_match_count(&output) {
             self.conflicting_device_match_count = Some(conflict);
@@ -1370,6 +1422,11 @@ struct AggregateMatchCountOverflow {
 struct DeviceMatchCountInconsistency {
     device_match_count: usize,
     retained_matches: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DeviceMatchCountMalformed {
+    value: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
