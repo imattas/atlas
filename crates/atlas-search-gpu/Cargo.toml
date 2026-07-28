@@ -1,0 +1,19 @@
+[package]
+name = "atlas-search-gpu"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+atlas-search-ir = { path = "../atlas-search-ir" }
+atlas-search-native = { path = "../atlas-search-native" }
+atlas-scheduler = { path = "../atlas-scheduler" }
+
+[lib]
+name = "atlas_search_gpu"
+path = "src/lib.rs"
+
+[lints]
+workspace = true

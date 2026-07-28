@@ -16,6 +16,8 @@ members = [
     "crates/atlas-strategies",
     "crates/atlas-search-ir",
     "crates/atlas-search-native",
+    "crates/atlas-search-simd",
+    "crates/atlas-search-gpu",
 ]
 resolver = "2"
 
