@@ -638,6 +638,36 @@ fn runtime_executes_driver_output_and_cpu_validates_matches() {
 }
 
 #[test]
+fn runtime_selects_detected_sdk_and_executes_driver_runner() {
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    let sdks = [GpuSdk::OpenCl {
+        sdk: "test OpenCL".to_owned(),
+    }];
+    let runner = FixtureDriverRunner {
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![3, 4],
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_detected_driver(
+        &program,
+        SearchDomain::new(0, 64),
+        &sdks,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    assert_eq!(report.matches, vec![3]);
+    assert!(report.telemetry.rationale.contains("OpenCL"));
+    assert!(report.telemetry.rationale.contains("driver exit 0"));
+}
+
+#[test]
 fn runtime_falls_back_when_driver_execution_fails() {
     let program = SearchProgram::try_from_fixture("add").unwrap();
     let token = CancellationToken::new();

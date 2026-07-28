@@ -409,7 +409,28 @@ impl AcceleratorRuntime {
     ) -> AcceleratorReport {
         let launch = Self::plan_launch(domain, 256, 1024);
         let plan = GpuSdkPlan::choose(detected_sdks, true);
-        if plan.selected.is_none() || reported_device_matches.is_empty() {
+        if reported_device_matches.is_empty() {
+            let Some(selected) = plan.selected else {
+                return AcceleratorReport {
+                    mode: RuntimeMode::CpuFallback,
+                    matches: NativeSearcher::search(program, domain, cancellation),
+                    telemetry: RuntimeTelemetry {
+                        launch,
+                        rationale: plan.rationale,
+                        cpu_validated: true,
+                        rejected_device_matches: 0,
+                    },
+                };
+            };
+            return Self::execute_with_driver(
+                program,
+                domain,
+                &selected,
+                cancellation,
+                &ProcessDriverRunner,
+            );
+        }
+        if plan.selected.is_none() {
             return AcceleratorReport {
                 mode: RuntimeMode::CpuFallback,
                 matches: NativeSearcher::search(program, domain, cancellation),
@@ -434,6 +455,33 @@ impl AcceleratorRuntime {
             },
             matches,
         }
+    }
+
+    /// Selects the best detected SDK, executes through the supplied GPU driver
+    /// runner, and validates device-reported matches.
+    #[must_use]
+    pub fn execute_with_detected_driver(
+        program: &SearchProgram,
+        domain: SearchDomain,
+        detected_sdks: &[GpuSdk],
+        cancellation: &CancellationToken,
+        runner: &dyn DriverRunner,
+    ) -> AcceleratorReport {
+        let plan = GpuSdkPlan::choose(detected_sdks, true);
+        let Some(selected) = plan.selected else {
+            let launch = Self::plan_launch(domain, 256, 1024);
+            return AcceleratorReport {
+                mode: RuntimeMode::CpuFallback,
+                matches: NativeSearcher::search(program, domain, cancellation),
+                telemetry: RuntimeTelemetry {
+                    launch,
+                    rationale: plan.rationale,
+                    cpu_validated: true,
+                    rejected_device_matches: 0,
+                },
+            };
+        };
+        Self::execute_with_driver(program, domain, &selected, cancellation, runner)
     }
 
     /// Executes through a GPU driver runner and validates device-reported matches.
