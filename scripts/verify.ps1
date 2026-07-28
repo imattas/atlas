@@ -18,6 +18,23 @@ Invoke-Step "cargo fmt" { cargo fmt --all -- --check }
 Invoke-Step "cargo clippy" { cargo clippy --workspace --all-targets -- -D warnings }
 Invoke-Step "cargo test" { cargo test --workspace --all-targets }
 
+if ($Profile -in @("analysis", "distributed", "advanced", "full")) {
+    foreach ($RequiredPath in @(
+        "tests/e2e/track2/manifest.toml",
+        "benchmarks/track2/manifest.toml",
+        "docs/guides/reversing.md",
+        "plugins/strategies/gf2/manifest.toml",
+        "plugins/strategies/modular-matrix/manifest.toml",
+        "plugins/strategies/lattice/manifest.toml",
+        "plugins/strategies/crypto-recognizers/manifest.toml"
+    )) {
+        if (!(Test-Path $RequiredPath)) {
+            Write-Error "missing analysis release artifact: $RequiredPath"
+            exit 1
+        }
+    }
+}
+
 if (Test-Path "python/tests") {
     $pytestAvailable = $false
     try {

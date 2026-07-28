@@ -1,0 +1,38 @@
+name = "atlas-track2-e2e"
+schema_major = 1
+
+[[challenge]]
+id = "bit-vector-verifier"
+frontend = "source"
+strategies = ["bitvector-smt"]
+expected = "MODEL_ONLY"
+
+[[challenge]]
+id = "symbolic-path"
+frontend = "source"
+strategies = ["concolic-execution"]
+expected = "PARTIAL"
+
+[[challenge]]
+id = "xor-linear"
+frontend = "equations"
+strategies = ["gf2"]
+expected = "VALIDATED_SAT"
+
+[[challenge]]
+id = "modular-algebra"
+frontend = "equations"
+strategies = ["modular-matrix"]
+expected = "VALIDATED_SAT"
+
+[[challenge]]
+id = "rsa-weakness"
+frontend = "recognizer"
+strategies = ["crypto-recognizers"]
+expected = "PARTIAL"
+
+[[challenge]]
+id = "lattice-small-root"
+frontend = "equations"
+strategies = ["lattice"]
+expected = "PARTIAL"

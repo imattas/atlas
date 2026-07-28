@@ -10,6 +10,23 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-targets
 
+if [[ "$profile" == "analysis" || "$profile" == "distributed" || "$profile" == "advanced" || "$profile" == "full" ]]; then
+  for required_path in \
+    tests/e2e/track2/manifest.toml \
+    benchmarks/track2/manifest.toml \
+    docs/guides/reversing.md \
+    plugins/strategies/gf2/manifest.toml \
+    plugins/strategies/modular-matrix/manifest.toml \
+    plugins/strategies/lattice/manifest.toml \
+    plugins/strategies/crypto-recognizers/manifest.toml
+  do
+    if [[ ! -e "$required_path" ]]; then
+      echo "missing analysis release artifact: $required_path" >&2
+      exit 1
+    fi
+  done
+fi
+
 if [[ -d python/tests ]]; then
   if python -m pytest --version >/dev/null 2>&1; then
     python -m pytest python/tests
