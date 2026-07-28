@@ -902,6 +902,7 @@ impl GpuSdkDetector {
             .filter_map(std::env::var_os)
             .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>()),
         );
+        paths.extend(standard_sdk_root_dirs());
         Self::detect_from_path_dirs(paths)
     }
 
@@ -981,6 +982,45 @@ impl GpuSdkDetector {
         }
         detected
     }
+}
+
+fn standard_sdk_root_dirs() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    #[cfg(windows)]
+    {
+        for base in ["ProgramFiles", "ProgramFiles(x86)"]
+            .into_iter()
+            .filter_map(std::env::var_os)
+            .map(PathBuf::from)
+        {
+            let cuda_base = base.join("NVIDIA GPU Computing Toolkit").join("CUDA");
+            roots.push(cuda_base.clone());
+            if let Ok(entries) = fs::read_dir(&cuda_base) {
+                roots.extend(
+                    entries
+                        .filter_map(Result::ok)
+                        .map(|entry| entry.path())
+                        .filter(|path| path.is_dir())
+                        .filter(|path| {
+                            path.file_name()
+                                .and_then(|name| name.to_str())
+                                .is_some_and(|name| name.starts_with('v'))
+                        }),
+                );
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        roots.push(PathBuf::from("/usr/local/cuda"));
+    }
+    let mut deduped = Vec::new();
+    for root in roots {
+        if !deduped.iter().any(|existing| existing == &root) {
+            deduped.push(root);
+        }
+    }
+    deduped
 }
 
 fn normalize_tool_name(name: &str) -> String {

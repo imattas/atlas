@@ -564,6 +564,33 @@ fn detects_gpu_sdks_from_cuda_root_and_opencl_root_alias_env_vars() {
 }
 
 #[test]
+fn detects_cuda_from_standard_program_files_toolkit_layout() {
+    let _env_guard = env_lock();
+    let root = std::env::temp_dir().join(format!("atlas-gpu-program-files-{}", std::process::id()));
+    let cuda = root
+        .join("NVIDIA GPU Computing Toolkit")
+        .join("CUDA")
+        .join("v12.4");
+    fs::create_dir_all(&cuda).unwrap();
+    let original_path = std::env::var_os("PATH");
+    let original_program_files = std::env::var_os("ProgramFiles");
+    std::env::set_var("PATH", "");
+    std::env::set_var("ProgramFiles", &root);
+
+    let detected = GpuSdkDetector::detect_from_host_path();
+
+    restore_env("PATH", original_path);
+    restore_env("ProgramFiles", original_program_files);
+    let _ = fs::remove_dir_all(root);
+    assert!(
+        detected
+            .iter()
+            .any(|sdk| matches!(sdk, GpuSdk::Cuda { .. })),
+        "expected CUDA detection from standard Toolkit layout, got {detected:?}"
+    );
+}
+
+#[test]
 fn launch_config_bounds_workgroups_and_output_transfer_capacity() {
     let config = AcceleratorRuntime::plan_launch(SearchDomain::new(0, 1_000_000), 256, 1024);
 
