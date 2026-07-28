@@ -622,6 +622,36 @@ fn detects_hip_from_standard_program_files_rocm_layout() {
 }
 
 #[test]
+fn detects_vulkan_from_standard_sdk_layout() {
+    let _env_guard = env_lock();
+    let root = std::env::temp_dir().join(format!("atlas-gpu-khr-files-{}", std::process::id()));
+    let vulkan = root.join("VulkanSDK").join("1.3.290.0");
+    fs::create_dir_all(&vulkan).unwrap();
+    let original_path = std::env::var_os("PATH");
+    let original_vulkan_sdk = std::env::var_os("VULKAN_SDK");
+    let original_vk_sdk_path = std::env::var_os("VK_SDK_PATH");
+    let original_system_drive = std::env::var_os("SystemDrive");
+    std::env::set_var("PATH", "");
+    std::env::remove_var("VULKAN_SDK");
+    std::env::remove_var("VK_SDK_PATH");
+    std::env::set_var("SystemDrive", &root);
+
+    let detected = GpuSdkDetector::detect_from_host_path();
+
+    restore_env("PATH", original_path);
+    restore_env("VULKAN_SDK", original_vulkan_sdk);
+    restore_env("VK_SDK_PATH", original_vk_sdk_path);
+    restore_env("SystemDrive", original_system_drive);
+    let _ = fs::remove_dir_all(root);
+    assert!(
+        detected
+            .iter()
+            .any(|sdk| matches!(sdk, GpuSdk::Vulkan { .. })),
+        "expected Vulkan detection from standard SDK layout, got {detected:?}"
+    );
+}
+
+#[test]
 fn launch_config_bounds_workgroups_and_output_transfer_capacity() {
     let config = AcceleratorRuntime::plan_launch(SearchDomain::new(0, 1_000_000), 256, 1024);
 

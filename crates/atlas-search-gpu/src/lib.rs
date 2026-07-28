@@ -1020,6 +1020,18 @@ fn standard_sdk_root_dirs() -> Vec<PathBuf> {
                 }
             }
         }
+        if let Some(drive) = std::env::var_os("SystemDrive").map(PathBuf::from) {
+            let vulkan_base = drive.join("VulkanSDK");
+            roots.push(vulkan_base.clone());
+            if let Ok(entries) = fs::read_dir(&vulkan_base) {
+                roots.extend(
+                    entries
+                        .filter_map(Result::ok)
+                        .map(|entry| entry.path())
+                        .filter(|path| path.is_dir()),
+                );
+            }
+        }
     }
     #[cfg(not(windows))]
     {
