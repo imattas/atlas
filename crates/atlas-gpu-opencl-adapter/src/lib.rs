@@ -274,7 +274,7 @@ fn configure_opencl_dylib_path_from_sdk_roots() {
     if std::env::var_os("OPENCL_DYLIB_PATH").is_some() {
         return;
     }
-    let candidates = opencl_loader_candidates_from_roots(opencl_loader_roots_from_env())
+    let candidates = opencl_loader_candidates_from_host_roots()
         .into_iter()
         .filter(|candidate| candidate.is_file())
         .map(|candidate| candidate.to_string_lossy().into_owned())
@@ -282,6 +282,19 @@ fn configure_opencl_dylib_path_from_sdk_roots() {
     if !candidates.is_empty() {
         std::env::set_var("OPENCL_DYLIB_PATH", candidates.join(";"));
     }
+}
+
+/// Returns OpenCL loader library candidates from host environment and standard
+/// SDK install roots.
+#[must_use]
+pub fn opencl_loader_candidates_from_host_roots() -> Vec<PathBuf> {
+    opencl_loader_candidates_from_roots(opencl_loader_roots_from_host())
+}
+
+fn opencl_loader_roots_from_host() -> Vec<PathBuf> {
+    let mut roots = opencl_loader_roots_from_env();
+    roots.extend(opencl_standard_loader_roots());
+    dedup_paths(roots)
 }
 
 fn opencl_loader_roots_from_env() -> Vec<PathBuf> {
@@ -296,6 +309,49 @@ fn opencl_loader_roots_from_env() -> Vec<PathBuf> {
     .filter_map(std::env::var_os)
     .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
     .collect()
+}
+
+fn opencl_standard_loader_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    #[cfg(windows)]
+    {
+        for base in ["ProgramFiles", "ProgramFiles(x86)"]
+            .into_iter()
+            .filter_map(std::env::var_os)
+            .map(PathBuf::from)
+        {
+            push_existing_dir(&mut roots, base.join("Khronos").join("OpenCL-SDK"));
+            push_existing_dir(
+                &mut roots,
+                base.join("Intel")
+                    .join("oneAPI")
+                    .join("compiler")
+                    .join("latest"),
+            );
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        roots.push(PathBuf::from("/usr"));
+        roots.push(PathBuf::from("/usr/local"));
+    }
+    roots
+}
+
+fn push_existing_dir(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if path.is_dir() {
+        paths.push(path);
+    }
+}
+
+fn dedup_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut deduped = Vec::new();
+    for path in paths {
+        if !deduped.iter().any(|existing| existing == &path) {
+            deduped.push(path);
+        }
+    }
+    deduped
 }
 
 fn opencl_loader_dirs(root: &Path) -> Vec<PathBuf> {

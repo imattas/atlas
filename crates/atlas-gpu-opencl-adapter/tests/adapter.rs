@@ -1,12 +1,21 @@
 //! OpenCL adapter CLI tests.
 
 use atlas_gpu_opencl_adapter::{
-    opencl_loader_candidates_from_roots, run_cli, AdapterCommand, LaunchArgs, Launcher,
+    opencl_loader_candidates_from_host_roots, opencl_loader_candidates_from_roots, run_cli,
+    AdapterCommand, LaunchArgs, Launcher,
 };
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::SearchProgram;
 use std::cell::RefCell;
 use std::fs;
+
+fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
+    if let Some(value) = original {
+        std::env::set_var(name, value);
+    } else {
+        std::env::remove_var(name);
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct FixtureLauncher;
@@ -177,6 +186,30 @@ fn opencl_loader_candidates_include_sdk_root_loader_directories() {
             .iter()
             .any(|candidate| candidate.starts_with(root.join("lib64"))),
         "expected candidates to include OpenCL SDK lib64 directory, got {candidates:?}"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn opencl_loader_candidates_include_standard_khronos_sdk_layout() {
+    let root = std::env::temp_dir().join(format!("atlas-opencl-standard-{}", std::process::id()));
+    let opencl_sdk = root.join("Khronos").join("OpenCL-SDK");
+    fs::create_dir_all(opencl_sdk.join("bin")).unwrap();
+    let loader = opencl_sdk.join("bin").join("OpenCL.dll");
+    fs::write(&loader, []).unwrap();
+    let original_program_files = std::env::var_os("ProgramFiles");
+    let original_program_files_x86 = std::env::var_os("ProgramFiles(x86)");
+    std::env::set_var("ProgramFiles", &root);
+    std::env::remove_var("ProgramFiles(x86)");
+
+    let candidates = opencl_loader_candidates_from_host_roots();
+
+    restore_env("ProgramFiles", original_program_files);
+    restore_env("ProgramFiles(x86)", original_program_files_x86);
+    let _ = fs::remove_dir_all(root);
+    assert!(
+        candidates.contains(&loader),
+        "expected candidates to include standard OpenCL SDK loader, got {candidates:?}"
     );
 }
 
