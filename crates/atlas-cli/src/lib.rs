@@ -3,7 +3,7 @@
 use atlas_report::SolveReportV1;
 use atlas_scheduler::CancellationToken;
 use atlas_search_gpu::{
-    AcceleratorRuntime, GpuSdkDetector, ProcessDriverRunner, RuntimeMode, RuntimePolicy,
+    AcceleratorRuntime, GpuSdk, GpuSdkDetector, ProcessDriverRunner, RuntimeMode, RuntimePolicy,
 };
 use atlas_search_ir::{SearchDomain, SearchProgram};
 use atlas_search_native::NativeSearcher;
@@ -20,13 +20,24 @@ pub fn run(args: &[String]) -> Result<String, String> {
         return Err("missing command".to_owned());
     };
     match command {
-        "doctor" => Ok("AtlasCTF doctor: ok\n".to_owned()),
+        "doctor" => Ok(doctor()),
         "inspect" => Ok("{\"schema_major\":1,\"kind\":\"inspect\"}\n".to_owned()),
         "benchmark" => benchmark(&args[1..]),
         "worker" => Ok("{\"schema_major\":1,\"kind\":\"worker\"}\n".to_owned()),
         "solve" => solve(&args[1..]),
         other => Err(format!("unknown command '{other}'")),
     }
+}
+
+fn doctor() -> String {
+    let detected_sdks = GpuSdkDetector::detect_from_host_path();
+    let sdk_names = detected_sdks
+        .iter()
+        .map(gpu_sdk_name)
+        .map(|name| format!("\"{}\"", json_escape(name)))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("{{\"schema_major\":1,\"kind\":\"doctor\",\"gpu_sdks\":[{sdk_names}]}}\n")
 }
 
 fn solve(args: &[String]) -> Result<String, String> {
@@ -138,6 +149,15 @@ fn mode_name(mode: RuntimeMode) -> &'static str {
     match mode {
         RuntimeMode::CpuFallback => "CpuFallback",
         RuntimeMode::DeviceValidated => "DeviceValidated",
+    }
+}
+
+fn gpu_sdk_name(sdk: &GpuSdk) -> &'static str {
+    match sdk {
+        GpuSdk::OpenCl { .. } => "OpenCL",
+        GpuSdk::Vulkan { .. } => "Vulkan",
+        GpuSdk::Cuda { .. } => "CUDA",
+        GpuSdk::Hip { .. } => "HIP",
     }
 }
 

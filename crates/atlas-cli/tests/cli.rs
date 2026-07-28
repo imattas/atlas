@@ -155,3 +155,30 @@ fn benchmark_reports_native_and_forced_gpu_runtime() {
     assert!(output.contains("\"matches\":[85]"));
     assert!(!output.contains("\"kind\":\"benchmark\"}\n"));
 }
+
+#[test]
+fn doctor_reports_detected_gpu_sdk_families() {
+    let _env_guard = env_lock();
+    let tool_dir =
+        std::env::temp_dir().join(format!("atlas-cli-doctor-gpu-tools-{}", std::process::id()));
+    fs::create_dir_all(&tool_dir).unwrap();
+    fs::write(tool_dir.join("clinfo.exe"), "").unwrap();
+    fs::write(tool_dir.join("vulkaninfo.exe"), "").unwrap();
+    fs::write(tool_dir.join("hipcc.exe"), "").unwrap();
+    let original_path = std::env::var_os("PATH").unwrap_or_default();
+    let joined_path = std::env::join_paths(
+        std::iter::once(tool_dir.clone()).chain(std::env::split_paths(&original_path)),
+    )
+    .unwrap();
+    std::env::set_var("PATH", &joined_path);
+
+    let output = run(&["doctor".to_owned()]).unwrap();
+
+    std::env::set_var("PATH", original_path);
+    let _ = fs::remove_dir_all(tool_dir);
+    assert!(output.contains("\"kind\":\"doctor\""));
+    assert!(output.contains("\"gpu_sdks\""));
+    assert!(output.contains("\"OpenCL\""));
+    assert!(output.contains("\"Vulkan\""));
+    assert!(output.contains("\"HIP\""));
+}
