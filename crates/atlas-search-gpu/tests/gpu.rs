@@ -1826,6 +1826,49 @@ fn runtime_force_gpu_policy_launches_driver_for_tiny_workloads() {
 }
 
 #[test]
+fn runtime_skips_plain_vulkan_for_64_bit_programs() {
+    let program = SearchProgram::new(
+        64,
+        vec![SearchOp::ChecksumEq {
+            modulus: 1,
+            target: 0,
+        }],
+    )
+    .unwrap();
+    let token = CancellationToken::new();
+    let sdks = [
+        GpuSdk::Vulkan {
+            sdk: "plain Vulkan runtime".to_owned(),
+        },
+        GpuSdk::Cuda {
+            sdk: "CUDA runtime".to_owned(),
+        },
+    ];
+    let runner = FixtureDriverRunner {
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![0],
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_detected_driver_and_policy(
+        &program,
+        SearchDomain::new(0, 64),
+        &sdks,
+        &token,
+        RuntimePolicy { force_gpu: true },
+        &[],
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    assert!(report.telemetry.rationale.contains("CUDA"));
+    assert!(!report.telemetry.rationale.contains("Vulkan"));
+}
+
+#[test]
 fn runtime_uses_gpu_cache_hit_threshold_for_warmed_kernel() {
     let program = SearchProgram::try_from_fixture("add").unwrap();
     let token = CancellationToken::new();

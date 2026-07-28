@@ -104,6 +104,18 @@ impl GpuSdk {
     }
 }
 
+fn sdk_supports_program(sdk: &GpuSdk, program: &SearchProgram) -> bool {
+    match sdk {
+        GpuSdk::Vulkan { sdk } if program.width > 32 => {
+            sdk.to_ascii_lowercase().contains("shaderint64")
+        }
+        GpuSdk::OpenCl { .. }
+        | GpuSdk::Vulkan { .. }
+        | GpuSdk::Cuda { .. }
+        | GpuSdk::Hip { .. } => true,
+    }
+}
+
 /// GPU SDK selection result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GpuSdkPlan {
@@ -136,6 +148,27 @@ impl GpuSdkPlan {
             rationale: format!("{portability} GPU SDK selected: {}", selected.name()),
             selected: Some(selected),
         }
+    }
+
+    /// Chooses an SDK that can execute the supplied search program.
+    #[must_use]
+    pub fn choose_for_program(
+        detected: &[GpuSdk],
+        prefer_portable: bool,
+        program: &SearchProgram,
+    ) -> Self {
+        let compatible = detected
+            .iter()
+            .filter(|sdk| sdk_supports_program(sdk, program))
+            .cloned()
+            .collect::<Vec<_>>();
+        if compatible.is_empty() && !detected.is_empty() {
+            return Self {
+                selected: None,
+                rationale: "no compatible GPU SDK detected for search program".to_owned(),
+            };
+        }
+        Self::choose(&compatible, prefer_portable)
     }
 }
 
@@ -454,7 +487,7 @@ impl AcceleratorRuntime {
             return Self::cancelled_report(program, domain, cancellation);
         }
         let launch = Self::plan_launch(domain, 256, 1024);
-        let plan = GpuSdkPlan::choose(detected_sdks, true);
+        let plan = GpuSdkPlan::choose_for_program(detected_sdks, true, program);
         if reported_device_matches.is_empty() {
             let cached_kernel_keys =
                 persisted_kernel_cache_keys(program, domain, detected_sdks, "target/atlas-gpu");
@@ -586,7 +619,7 @@ impl AcceleratorRuntime {
         if cancellation.is_cancelled() {
             return Self::cancelled_report(program, domain, cancellation);
         }
-        let plan = GpuSdkPlan::choose(detected_sdks, true);
+        let plan = GpuSdkPlan::choose_for_program(detected_sdks, true, program);
         let Some(selected) = plan.selected else {
             let launch = Self::plan_launch(domain, 256, 1024);
             return AcceleratorReport {
