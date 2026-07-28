@@ -66,3 +66,50 @@ fn discrete_log_prime_uses_baby_step_giant_step_from_scratch() {
     assert_eq!(atlas_math::discrete_log_prime(5, 1, 23), Some(0));
     assert_eq!(atlas_math::discrete_log_prime(4, 3, 17), None);
 }
+
+#[test]
+fn berlekamp_massey_recovers_ctf_lfsr_recurrence_from_scratch() {
+    let stream = lfsr_bits(&[true, false, true], &[true, false, false], 21);
+    let observed = &stream[..16];
+
+    let recurrence = atlas_math::berlekamp_massey_gf2(observed).unwrap();
+
+    assert_eq!(recurrence.linear_complexity(), 3);
+    assert_eq!(recurrence.coefficients(), &[true, false, true]);
+    assert_eq!(
+        (0..5)
+            .scan(observed.to_vec(), |state, _| {
+                let next = recurrence.predict_next(state).unwrap();
+                state.push(next);
+                Some(next)
+            })
+            .collect::<Vec<_>>(),
+        stream[16..21]
+    );
+}
+
+#[test]
+fn berlekamp_massey_handles_constant_and_empty_streams() {
+    let zero = atlas_math::berlekamp_massey_gf2(&[false, false, false]).unwrap();
+    assert_eq!(zero.linear_complexity(), 0);
+    assert_eq!(zero.coefficients(), &[]);
+    assert_eq!(zero.predict_next(&[false, false, false]), Some(false));
+
+    assert!(atlas_math::berlekamp_massey_gf2(&[]).is_none());
+}
+
+fn lfsr_bits(coefficients: &[bool], seed: &[bool], count: usize) -> Vec<bool> {
+    let mut stream = seed.to_vec();
+    while stream.len() < count {
+        let offset = stream.len() - coefficients.len();
+        let next =
+            coefficients
+                .iter()
+                .enumerate()
+                .fold(false, |accumulator, (index, coefficient)| {
+                    accumulator ^ (*coefficient && stream[offset + index])
+                });
+        stream.push(next);
+    }
+    stream
+}

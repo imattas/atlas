@@ -217,6 +217,92 @@ impl Polynomial {
     }
 }
 
+/// Minimal GF(2) linear recurrence recovered from a bit stream.
+///
+/// Coefficients are ordered from oldest to newest history bit. For coefficients
+/// `[c0, c1, ...]`, prediction is `xor(c_i & history[history.len() - L + i])`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Gf2LinearRecurrence {
+    coefficients: Vec<bool>,
+}
+
+impl Gf2LinearRecurrence {
+    /// Returns the linear complexity, equal to the number of previous bits
+    /// needed to predict the next bit.
+    #[must_use]
+    pub fn linear_complexity(&self) -> usize {
+        self.coefficients.len()
+    }
+
+    /// Returns recurrence coefficients ordered from oldest to newest bit.
+    #[must_use]
+    pub fn coefficients(&self) -> &[bool] {
+        &self.coefficients
+    }
+
+    /// Predicts the next bit from a history prefix.
+    #[must_use]
+    pub fn predict_next(&self, history: &[bool]) -> Option<bool> {
+        let complexity = self.linear_complexity();
+        if history.len() < complexity {
+            return None;
+        }
+        let start = history.len() - complexity;
+        Some(self.coefficients.iter().enumerate().fold(
+            false,
+            |accumulator, (index, coefficient)| {
+                accumulator ^ (*coefficient && history[start + index])
+            },
+        ))
+    }
+}
+
+/// Recovers the shortest GF(2) linear recurrence for a bit stream with the
+/// Berlekamp-Massey algorithm.
+#[must_use]
+pub fn berlekamp_massey_gf2(stream: &[bool]) -> Option<Gf2LinearRecurrence> {
+    if stream.is_empty() {
+        return None;
+    }
+
+    let mut connection = vec![false; stream.len() + 1];
+    let mut previous = vec![false; stream.len() + 1];
+    connection[0] = true;
+    previous[0] = true;
+    let mut complexity = 0_usize;
+    let mut shift = 1_usize;
+
+    for index in 0..stream.len() {
+        let discrepancy = (1..=complexity).fold(stream[index], |accumulator, offset| {
+            accumulator ^ (connection[offset] && stream[index - offset])
+        });
+        if !discrepancy {
+            shift += 1;
+            continue;
+        }
+
+        let before_update = connection.clone();
+        for previous_index in 0..(stream.len() + 1 - shift) {
+            if previous[previous_index] {
+                connection[previous_index + shift] ^= true;
+            }
+        }
+        if 2 * complexity <= index {
+            complexity = index + 1 - complexity;
+            previous = before_update;
+            shift = 1;
+        } else {
+            shift += 1;
+        }
+    }
+
+    let coefficients = (1..=complexity)
+        .rev()
+        .map(|offset| connection[offset])
+        .collect();
+    Some(Gf2LinearRecurrence { coefficients })
+}
+
 /// Solves an 8-bit XOR equality from scratch.
 #[must_use]
 pub fn solve_u8_xor_eq(mask: u8, target: u8) -> Vec<u8> {

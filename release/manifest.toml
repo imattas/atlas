@@ -122,7 +122,7 @@ digest = "b5eb4df13dab1204f64f6e76a9818df30d5cd103a0578303e05820c9b7e8089a"
 [[artifacts]]
 name = "lib"
 path = "crates/atlas-math/src/lib.rs"
-digest = "2389e4adf2221250fde89268098e726a4223b9579499199c88cb154b355eadad"
+digest = "a00c1270a68e2dc52fea0971a94383e5679f9b6d358124f648af920d80bb4f60"
 
 [[artifacts]]
 name = "atlas_native_math_backend"
