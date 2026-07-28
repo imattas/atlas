@@ -1153,8 +1153,16 @@ impl GpuSdkDetector {
             .iter()
             .any(|tool| tool == "glslc" || tool == "vulkaninfo" || tool.contains("vulkan"))
         {
+            let shader_int64 = normalized
+                .iter()
+                .any(|tool| tool.contains("shaderint64") || tool.contains("shader_int64"));
+            let sdk = if shader_int64 {
+                "Vulkan compute toolchain shaderInt64"
+            } else {
+                "Vulkan compute toolchain"
+            };
             detected.push(GpuSdk::Vulkan {
-                sdk: "Vulkan compute toolchain".to_owned(),
+                sdk: sdk.to_owned(),
             });
         }
         if normalized.iter().any(|tool| {

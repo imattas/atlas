@@ -462,6 +462,22 @@ fn detects_gpu_sdks_from_tool_names_without_touching_host_environment() {
 }
 
 #[test]
+fn detects_vulkan_shader_int64_capability_from_tool_inventory() {
+    let detected =
+        GpuSdkDetector::detect_from_tools(&["vulkaninfo.exe".to_owned(), "shaderInt64".to_owned()]);
+
+    assert!(detected.iter().any(|sdk| matches!(
+        sdk,
+        GpuSdk::Vulkan { sdk } if sdk.contains("shaderInt64")
+    )));
+
+    let program = SearchProgram::new(64, vec![SearchOp::XorEq { mask: 0, target: 0 }]).unwrap();
+    let plan = GpuSdkPlan::choose_for_program(&detected, false, &program);
+
+    assert!(matches!(plan.selected, Some(GpuSdk::Vulkan { .. })));
+}
+
+#[test]
 fn detects_cuda_from_runtime_and_driver_tools_without_nvcc() {
     let detected = GpuSdkDetector::detect_from_tools(&[
         "nvidia-smi.exe".to_owned(),
