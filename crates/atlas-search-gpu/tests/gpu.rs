@@ -618,10 +618,14 @@ fn runtime_rejects_device_matches_outside_launch_domain() {
     let report =
         AcceleratorRuntime::execute(&program, SearchDomain::new(4, 64), &[sdk], &token, &[3]);
 
-    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
     assert!(report.matches.is_empty());
     assert!(report.telemetry.cpu_validated);
     assert_eq!(report.telemetry.rejected_device_matches, 1);
+    assert!(report
+        .telemetry
+        .rationale
+        .contains("no valid device matches"));
 }
 
 #[test]
@@ -1016,6 +1020,42 @@ fn runtime_executes_driver_output_and_cpu_validates_matches() {
     assert_eq!(report.matches, vec![3]);
     assert!(report.telemetry.rationale.contains("driver exit 0"));
     assert_eq!(report.telemetry.rejected_device_matches, 1);
+}
+
+#[test]
+fn runtime_falls_back_when_driver_reports_only_invalid_matches() {
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "test OpenCL".to_owned(),
+    };
+    let runner = FixtureDriverRunner {
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![4],
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_driver(
+        &program,
+        SearchDomain::new(0, 64),
+        &sdk,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert_eq!(
+        report.matches,
+        NativeSearcher::search(&program, SearchDomain::new(0, 64), &token)
+    );
+    assert_eq!(report.telemetry.rejected_device_matches, 1);
+    assert!(report
+        .telemetry
+        .rationale
+        .contains("no valid device matches"));
 }
 
 #[test]

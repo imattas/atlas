@@ -461,6 +461,21 @@ impl AcceleratorRuntime {
             };
         }
         let matches = validate_device_matches(program, domain, reported_device_matches);
+        if matches.is_empty() {
+            return AcceleratorReport {
+                mode: RuntimeMode::CpuFallback,
+                matches: NativeSearcher::search(program, domain, cancellation),
+                telemetry: RuntimeTelemetry {
+                    launch,
+                    rationale: format!(
+                        "{}; no valid device matches after CPU validation",
+                        plan.rationale
+                    ),
+                    cpu_validated: true,
+                    rejected_device_matches: reported_device_matches.len(),
+                },
+            };
+        }
         AcceleratorReport {
             mode: RuntimeMode::DeviceValidated,
             telemetry: RuntimeTelemetry {
@@ -623,6 +638,18 @@ impl AcceleratorRuntime {
             };
         }
         let matches = validate_device_matches(program, domain, &output.reported_matches);
+        if matches.is_empty() {
+            return AcceleratorReport {
+                mode: RuntimeMode::CpuFallback,
+                matches: NativeSearcher::search(program, domain, cancellation),
+                telemetry: RuntimeTelemetry {
+                    launch,
+                    rationale: format!("{base_rationale}; no valid device matches"),
+                    cpu_validated: true,
+                    rejected_device_matches: output.reported_matches.len(),
+                },
+            };
+        }
         AcceleratorReport {
             mode: RuntimeMode::DeviceValidated,
             telemetry: RuntimeTelemetry {
