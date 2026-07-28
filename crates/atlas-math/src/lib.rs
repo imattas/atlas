@@ -221,6 +221,56 @@ pub fn solve_u8_xor_eq(mask: u8, target: u8) -> Vec<u8> {
     vec![mask ^ target]
 }
 
+/// Computes `(base ^ exponent) mod modulus` by square-and-multiply.
+#[must_use]
+pub fn mod_pow(base: u64, mut exponent: u64, modulus: u64) -> Option<u64> {
+    if modulus == 0 {
+        return None;
+    }
+    let modulus_wide = u128::from(modulus);
+    let mut result = 1_u128 % modulus_wide;
+    let mut base = u128::from(base) % modulus_wide;
+    while exponent > 0 {
+        if exponent & 1 == 1 {
+            result = (result * base) % modulus_wide;
+        }
+        base = (base * base) % modulus_wide;
+        exponent >>= 1;
+    }
+    u64::try_from(result).ok()
+}
+
+/// Combines pairwise-coprime congruences with the Chinese Remainder Theorem.
+///
+/// Each input pair is `(residue, modulus)`. The return value is the normalized
+/// `(residue, modulus)` for the combined congruence.
+#[must_use]
+pub fn chinese_remainder(congruences: &[(u64, u64)]) -> Option<(u64, u64)> {
+    let (&(first_residue, first_modulus), rest) = congruences.split_first()?;
+    if first_modulus == 0 {
+        return None;
+    }
+    let mut residue = u128::from(first_residue % first_modulus);
+    let mut modulus = u128::from(first_modulus);
+    for &(next_residue, next_modulus) in rest {
+        if next_modulus == 0 {
+            return None;
+        }
+        let next_modulus = u128::from(next_modulus);
+        let next_residue = u128::from(next_residue) % next_modulus;
+        if gcd_u128(modulus, next_modulus) != 1 {
+            return None;
+        }
+        let inverse = mod_inverse_u128(modulus % next_modulus, next_modulus)?;
+        let delta = (next_residue + next_modulus - (residue % next_modulus)) % next_modulus;
+        let step = (delta * inverse) % next_modulus;
+        residue += modulus * step;
+        modulus *= next_modulus;
+        residue %= modulus;
+    }
+    Some((u64::try_from(residue).ok()?, u64::try_from(modulus).ok()?))
+}
+
 fn gcd_i64(left: i64, right: i64) -> i64 {
     let mut left = left.unsigned_abs();
     let mut right = right.unsigned_abs();
@@ -230,6 +280,15 @@ fn gcd_i64(left: i64, right: i64) -> i64 {
         right = next;
     }
     i64::try_from(left.max(1)).unwrap_or(i64::MAX)
+}
+
+fn gcd_u128(mut left: u128, mut right: u128) -> u128 {
+    while right != 0 {
+        let next = left % right;
+        left = right;
+        right = next;
+    }
+    left
 }
 
 fn is_prime(value: u64) -> bool {
@@ -265,4 +324,18 @@ fn mod_inverse(value: u64, modulus: u64) -> Option<u64> {
     }
     let normalized = old_s.rem_euclid(i128::from(modulus));
     u64::try_from(normalized).ok()
+}
+
+fn mod_inverse_u128(value: u128, modulus: u128) -> Option<u128> {
+    let (mut old_r, mut r) = (i128::try_from(modulus).ok()?, i128::try_from(value).ok()?);
+    let (mut old_s, mut s) = (0_i128, 1_i128);
+    while r != 0 {
+        let quotient = old_r / r;
+        (old_r, r) = (r, old_r - quotient * r);
+        (old_s, s) = (s, old_s - quotient * s);
+    }
+    if old_r != 1 {
+        return None;
+    }
+    u128::try_from(old_s.rem_euclid(i128::try_from(modulus).ok()?)).ok()
 }

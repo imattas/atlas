@@ -42,3 +42,13 @@ fn bitvector_expression_solver_does_not_require_external_smt() {
 
     assert_eq!(matches, vec![0x55]);
 }
+
+#[test]
+fn crt_and_modular_exponentiation_support_ctf_crypto_from_scratch() {
+    let combined = atlas_math::chinese_remainder(&[(2, 3), (3, 5), (2, 7)]).unwrap();
+
+    assert_eq!(combined, (23, 105));
+    assert_eq!(atlas_math::mod_pow(4, 13, 497), Some(445));
+    assert_eq!(atlas_math::chinese_remainder(&[(1, 4), (2, 6)]), None);
+    assert_eq!(atlas_math::mod_pow(4, 13, 0), None);
+}
