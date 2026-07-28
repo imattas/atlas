@@ -425,6 +425,29 @@ fn kernel_cache_key_changes_across_compiler_device_and_options() {
 }
 
 #[test]
+fn driver_cache_key_includes_generated_kernel_source() {
+    let program = SearchProgram::try_from_fixture("xor").unwrap();
+    let plan = DriverCommandPlan::for_sdk(
+        &GpuSdk::Vulkan {
+            sdk: "Vulkan runtime".to_owned(),
+        },
+        &program,
+        "target/atlas-gpu",
+    );
+
+    assert_ne!(plan.cache_key.program, format!("{program:?}"));
+    assert_ne!(
+        plan.cache_key,
+        KernelCacheKey::new(
+            format!("{program:?}"),
+            "atlas-gpu-vulkan-run",
+            "Vulkan runtime",
+            "--compile-check"
+        )
+    );
+}
+
+#[test]
 fn driver_cache_key_changes_across_detected_device_identity() {
     let program = SearchProgram::try_from_fixture("xor").unwrap();
     let first_runtime = DriverCommandPlan::for_sdk(

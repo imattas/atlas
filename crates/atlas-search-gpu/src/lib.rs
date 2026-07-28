@@ -293,7 +293,10 @@ impl DriverCommandPlan {
                 ),
             };
         let cache_key = KernelCacheKey::new(
-            format!("{program:?}"),
+            format!(
+                "{program:?};kernel_source={:016x}",
+                stable_text_hash(&kernel_source)
+            ),
             compiler,
             sdk.runtime_identity(),
             options,
@@ -930,6 +933,15 @@ fn kernel_cache_id(key: &KernelCacheKey) -> String {
         }
     }
     format!("{hash:016x}")
+}
+
+fn stable_text_hash(text: &str) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for byte in text.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    hash
 }
 
 fn write_generated_source(plan: &DriverCommandPlan) -> Result<(), String> {
