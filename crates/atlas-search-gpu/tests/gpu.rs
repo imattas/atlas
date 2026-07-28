@@ -1481,6 +1481,48 @@ fn detects_gpu_sdks_from_cuda_root_and_opencl_root_alias_env_vars() {
 }
 
 #[test]
+fn detects_cuda_from_versioned_cuda_path_env_vars() {
+    let _env_guard = env_lock();
+    let root = std::env::temp_dir().join(format!(
+        "atlas-gpu-versioned-cuda-env-{}",
+        std::process::id()
+    ));
+    let cuda = root.join("cuda-v12-4");
+    fs::create_dir_all(&cuda).unwrap();
+    let original_path = std::env::var_os("PATH");
+    let original_cuda_path = std::env::var_os("CUDA_PATH");
+    let original_cuda_home = std::env::var_os("CUDA_HOME");
+    let original_cuda_root = std::env::var_os("CUDA_ROOT");
+    let original_cuda_path_v12_4 = std::env::var_os("CUDA_PATH_V12_4");
+    let original_program_files = std::env::var_os("ProgramFiles");
+    let original_program_files_x86 = std::env::var_os("ProgramFiles(x86)");
+    std::env::set_var("PATH", "");
+    std::env::remove_var("CUDA_PATH");
+    std::env::remove_var("CUDA_HOME");
+    std::env::remove_var("CUDA_ROOT");
+    std::env::set_var("CUDA_PATH_V12_4", &cuda);
+    std::env::set_var("ProgramFiles", root.join("empty-program-files"));
+    std::env::remove_var("ProgramFiles(x86)");
+
+    let detected = GpuSdkDetector::detect_from_host_path();
+
+    restore_env("PATH", original_path);
+    restore_env("CUDA_PATH", original_cuda_path);
+    restore_env("CUDA_HOME", original_cuda_home);
+    restore_env("CUDA_ROOT", original_cuda_root);
+    restore_env("CUDA_PATH_V12_4", original_cuda_path_v12_4);
+    restore_env("ProgramFiles", original_program_files);
+    restore_env("ProgramFiles(x86)", original_program_files_x86);
+    let _ = fs::remove_dir_all(root);
+    assert!(
+        detected
+            .iter()
+            .any(|sdk| matches!(sdk, GpuSdk::Cuda { .. })),
+        "expected CUDA detection from CUDA_PATH_V12_4, got {detected:?}"
+    );
+}
+
+#[test]
 fn detects_cuda_from_standard_program_files_toolkit_layout() {
     let _env_guard = env_lock();
     let root = std::env::temp_dir().join(format!("atlas-gpu-program-files-{}", std::process::id()));

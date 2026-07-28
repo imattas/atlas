@@ -2108,8 +2108,25 @@ fn sdk_root_dirs() -> Vec<PathBuf> {
     .filter_map(std::env::var_os)
     .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
     .collect::<Vec<_>>();
+    roots.extend(versioned_cuda_path_env_dirs());
     roots.extend(standard_sdk_root_dirs());
     roots
+}
+
+fn versioned_cuda_path_env_dirs() -> Vec<PathBuf> {
+    let mut values = std::env::vars_os()
+        .filter_map(|(name, value)| {
+            let name = name.to_string_lossy().to_ascii_uppercase();
+            name.starts_with("CUDA_PATH_V")
+                .then_some((name, value))
+                .filter(|(_, value)| !value.is_empty())
+        })
+        .collect::<Vec<_>>();
+    values.sort_by(|left, right| left.0.cmp(&right.0));
+    values
+        .into_iter()
+        .flat_map(|(_, value)| std::env::split_paths(&value).collect::<Vec<_>>())
+        .collect()
 }
 
 fn sdk_tool_candidates(dir: &Path, plain_name: &str) -> Vec<PathBuf> {
@@ -2161,6 +2178,7 @@ impl GpuSdkDetector {
             .filter_map(std::env::var_os)
             .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>()),
         );
+        paths.extend(versioned_cuda_path_env_dirs());
         paths.extend(standard_sdk_root_dirs());
         Self::detect_from_path_dirs(paths)
     }
