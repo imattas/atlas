@@ -2012,7 +2012,7 @@ fn runtime_skips_plain_vulkan_for_64_bit_programs() {
 }
 
 #[test]
-fn runtime_force_gpu_attempts_plain_vulkan_for_64_bit_programs() {
+fn runtime_force_gpu_rejects_plain_vulkan_for_64_bit_programs() {
     let program = SearchProgram::new(64, vec![SearchOp::XorEq { mask: 0, target: 0 }]).unwrap();
     let token = CancellationToken::new();
     let sdks = [GpuSdk::Vulkan {
@@ -2038,9 +2038,48 @@ fn runtime_force_gpu_attempts_plain_vulkan_for_64_bit_programs() {
         &runner,
     );
 
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert_eq!(*runner.calls.borrow(), 0);
+    assert!(report
+        .telemetry
+        .rationale
+        .contains("no compatible GPU SDK detected for search program"));
+}
+
+#[test]
+fn runtime_force_gpu_uses_compatible_backend_for_64_bit_programs() {
+    let program = SearchProgram::new(64, vec![SearchOp::XorEq { mask: 0, target: 0 }]).unwrap();
+    let token = CancellationToken::new();
+    let sdks = [
+        GpuSdk::Vulkan {
+            sdk: "plain Vulkan runtime".to_owned(),
+        },
+        GpuSdk::Cuda {
+            sdk: "CUDA runtime".to_owned(),
+        },
+    ];
+    let runner = FixtureDriverRunner {
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![0],
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_detected_driver_and_policy(
+        &program,
+        SearchDomain::new(0, 64),
+        &sdks,
+        &token,
+        RuntimePolicy { force_gpu: true },
+        &[],
+        &runner,
+    );
+
     assert_eq!(report.mode, RuntimeMode::DeviceValidated);
-    assert_eq!(*runner.calls.borrow(), 1);
-    assert!(report.telemetry.rationale.contains("Vulkan"));
+    assert!(report.telemetry.rationale.contains("CUDA"));
+    assert!(!report.telemetry.rationale.contains("Vulkan"));
 }
 
 #[test]

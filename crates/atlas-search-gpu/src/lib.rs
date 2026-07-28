@@ -619,11 +619,7 @@ impl AcceleratorRuntime {
         if cancellation.is_cancelled() {
             return Self::cancelled_report(program, domain, cancellation);
         }
-        let plan = if policy.force_gpu {
-            GpuSdkPlan::choose(detected_sdks, true)
-        } else {
-            GpuSdkPlan::choose_for_program(detected_sdks, true, program)
-        };
+        let plan = GpuSdkPlan::choose_for_program(detected_sdks, true, program);
         let Some(selected) = plan.selected else {
             let launch = Self::plan_launch(domain, 256, 1024);
             return AcceleratorReport {
