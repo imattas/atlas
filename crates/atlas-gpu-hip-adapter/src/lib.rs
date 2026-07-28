@@ -33,6 +33,24 @@ pub struct LaunchArgs {
     pub local_size: usize,
 }
 
+/// Device launch output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaunchOutput {
+    /// Retained device-reported matches.
+    pub matches: Vec<u64>,
+    /// Total match count reported by the device-side atomic counter.
+    pub match_count: usize,
+}
+
+impl LaunchOutput {
+    fn new(matches: Vec<u64>, match_count: usize) -> Self {
+        Self {
+            matches,
+            match_count,
+        }
+    }
+}
+
 /// Adapter CLI command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdapterCommand {
@@ -143,7 +161,7 @@ pub trait Launcher {
     ///
     /// Returns an error when HIP runtime loading, module loading, kernel launch,
     /// or device transfer fails.
-    fn launch(&self, args: &LaunchArgs) -> Result<Vec<u64>, String>;
+    fn launch(&self, args: &LaunchArgs) -> Result<LaunchOutput, String>;
 }
 
 /// HIP runtime backed code-object launcher.
@@ -173,7 +191,7 @@ impl Launcher for HipModuleLauncher {
         Ok(())
     }
 
-    fn launch(&self, args: &LaunchArgs) -> Result<Vec<u64>, String> {
+    fn launch(&self, args: &LaunchArgs) -> Result<LaunchOutput, String> {
         ensure_artifact_readable(&args.artifact)?;
         let uses_u32_abi = artifact_path_uses_u32_launch_abi(&args.artifact)?;
         let runtime = HipRuntime::load()?;
@@ -205,8 +223,8 @@ pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, Strin
             Ok(String::new())
         }
         AdapterCommand::Launch(launch_args) => {
-            let matches = launcher.launch(&launch_args)?;
-            Ok(format_matches(&matches))
+            let output = launcher.launch(&launch_args)?;
+            Ok(format_launch_output(&output))
         }
     }
 }
@@ -216,6 +234,12 @@ fn format_features(features: &[String]) -> String {
         .iter()
         .map(|feature| format!("feature={feature}\n"))
         .collect()
+}
+
+fn format_launch_output(output: &LaunchOutput) -> String {
+    let mut text = format!("match_count={}\n", output.match_count);
+    text.push_str(&format_matches(&output.matches));
+    text
 }
 
 fn format_matches(matches: &[u64]) -> String {
@@ -333,7 +357,7 @@ fn launch_hip(
     runtime: &HipRuntime,
     function: HipFunction,
     args: &LaunchArgs,
-) -> Result<Vec<u64>, String> {
+) -> Result<LaunchOutput, String> {
     let out_len = runtime.malloc(std::mem::size_of::<u32>())?;
     let out_bytes = args
         .max_matches
@@ -373,21 +397,20 @@ fn launch_hip(
         out_len,
         std::mem::size_of::<u32>(),
     )?;
-    let retained = usize::try_from(retained)
-        .unwrap_or(args.max_matches)
-        .min(args.max_matches);
+    let match_count = usize::try_from(retained).unwrap_or(usize::MAX);
+    let retained = match_count.min(args.max_matches);
     let mut matches = vec![0_u64; args.max_matches];
     runtime.memcpy_device_to_host(matches.as_mut_ptr().cast::<c_void>(), out, out_bytes)?;
     matches.truncate(retained);
     matches.sort_unstable();
-    Ok(matches)
+    Ok(LaunchOutput::new(matches, match_count))
 }
 
 fn launch_hip_u32(
     runtime: &HipRuntime,
     function: HipFunction,
     args: &LaunchArgs,
-) -> Result<Vec<u64>, String> {
+) -> Result<LaunchOutput, String> {
     let out_len = runtime.malloc(std::mem::size_of::<u32>())?;
     let out_words_len = args
         .max_matches
@@ -437,9 +460,8 @@ fn launch_hip_u32(
         out_len,
         std::mem::size_of::<u32>(),
     )?;
-    let retained = usize::try_from(retained)
-        .unwrap_or(args.max_matches)
-        .min(args.max_matches);
+    let match_count = usize::try_from(retained).unwrap_or(usize::MAX);
+    let retained = match_count.min(args.max_matches);
     let mut out_words_host = vec![0_u32; out_words_len];
     runtime.memcpy_device_to_host(
         out_words_host.as_mut_ptr().cast::<c_void>(),
@@ -452,7 +474,7 @@ fn launch_hip_u32(
         .map(|words| u64::from(words[0]) | (u64::from(words[1]) << 32))
         .collect::<Vec<_>>();
     matches.sort_unstable();
-    Ok(matches)
+    Ok(LaunchOutput::new(matches, match_count))
 }
 
 fn low_u32(value: u64) -> u32 {

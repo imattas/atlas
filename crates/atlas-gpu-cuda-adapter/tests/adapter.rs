@@ -4,7 +4,7 @@ use atlas_gpu_cuda_adapter::{
     cuda_driver_library_candidates_from_roots, cuda_sdk_root_candidates_from_bases,
     nvcc_command_candidates_from_roots, nvcc_ptx_output_path_for_source,
     nvrtc_library_candidates_from_roots, run_cli, AdapterCommand, CudaPtxLauncher, LaunchArgs,
-    Launcher,
+    LaunchOutput, Launcher,
 };
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::SearchProgram;
@@ -40,14 +40,17 @@ impl Launcher for FixtureLauncher {
         Ok(())
     }
 
-    fn launch(&self, args: &LaunchArgs) -> Result<Vec<u64>, String> {
+    fn launch(&self, args: &LaunchArgs) -> Result<LaunchOutput, String> {
         assert_eq!(args.artifact, "target/atlas-gpu/atlas_search.ptx");
         assert_eq!(args.start, 10);
         assert_eq!(args.end, 20);
         assert_eq!(args.max_matches, 3);
         assert_eq!(args.global_size, 256);
         assert_eq!(args.local_size, 64);
-        Ok(vec![11, 13, 17])
+        Ok(LaunchOutput {
+            matches: vec![11, 13, 17],
+            match_count: 5,
+        })
     }
 }
 
@@ -76,8 +79,11 @@ impl Launcher for RecordingLauncher {
         Ok(())
     }
 
-    fn launch(&self, _args: &LaunchArgs) -> Result<Vec<u64>, String> {
-        Ok(Vec::new())
+    fn launch(&self, _args: &LaunchArgs) -> Result<LaunchOutput, String> {
+        Ok(LaunchOutput {
+            matches: Vec::new(),
+            match_count: 0,
+        })
     }
 }
 
@@ -277,7 +283,7 @@ fn cli_emits_match_lines_from_launcher() {
     )
     .unwrap();
 
-    assert_eq!(output, "match=11\nmatch=13\nmatch=17\n");
+    assert_eq!(output, "match_count=5\nmatch=11\nmatch=13\nmatch=17\n");
 }
 
 #[test]
@@ -538,11 +544,12 @@ fn generated_cuda_kernel_runs_on_device_and_preserves_full_candidates() {
         local_size: 64,
     };
 
-    let matches = CudaPtxLauncher.launch(&args).unwrap_or_else(|error| {
+    let output = CudaPtxLauncher.launch(&args).unwrap_or_else(|error| {
         panic!("CUDA NVRTC/driver/device e2e prerequisites failed: {error}")
     });
 
-    assert_eq!(matches, vec![0x55, 0x155]);
+    assert_eq!(output.matches, vec![0x55, 0x155]);
+    assert_eq!(output.match_count, 2);
     let _ = fs::remove_dir_all(output_dir);
 }
 

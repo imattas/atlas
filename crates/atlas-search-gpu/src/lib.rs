@@ -403,6 +403,15 @@ impl DriverRunOutput {
             .filter_map(|line| parse_match_token(line.trim()))
             .collect()
     }
+
+    /// Parses the device-reported total match counter from launcher output.
+    #[must_use]
+    pub fn parse_reported_match_count(stdout: &str) -> Option<usize> {
+        stdout
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("match_count="))
+            .find_map(|value| value.parse().ok())
+    }
 }
 
 /// Driver runner abstraction for SDK command execution.
@@ -880,6 +889,7 @@ impl AcceleratorRuntime {
         let launch = Self::plan_launch(domain, DEFAULT_GPU_LOCAL_SIZE, 1024);
         let launch_domains = driver_launch_domains(domain);
         let mut reported_matches = Vec::new();
+        let mut overflowed_device_match_count = None;
         for launch_domain in launch_domains.iter().copied() {
             if cancellation.is_cancelled() {
                 return Self::cancelled_report(program, domain, cancellation);
@@ -901,6 +911,9 @@ impl AcceleratorRuntime {
                     telemetry: sdk_runtime_telemetry(launch, sdk, base_rationale, 0),
                 };
             }
+            if let Some(overflow) = device_match_count_overflow(&output, chunk_launch) {
+                overflowed_device_match_count = Some(overflow);
+            }
             reported_matches.extend(output.reported_matches);
         }
         let base_rationale = format!(
@@ -908,6 +921,17 @@ impl AcceleratorRuntime {
             sdk.name(),
             launch_domains.len()
         );
+        if let Some(overflow) = overflowed_device_match_count {
+            return device_match_count_overflow_report(
+                program,
+                domain,
+                cancellation,
+                launch,
+                sdk,
+                &base_rationale,
+                overflow,
+            );
+        }
         if reported_matches.is_empty() {
             return AcceleratorReport {
                 mode: RuntimeMode::CpuFallback,
@@ -993,6 +1017,41 @@ fn sdk_runtime_telemetry(
     }
 }
 
+fn device_match_count_overflow(
+    output: &DriverRunOutput,
+    launch: LaunchConfig,
+) -> Option<DeviceMatchCountOverflow> {
+    let device_match_count = DriverRunOutput::parse_reported_match_count(&output.stdout)?;
+    (device_match_count > launch.max_matches).then_some(DeviceMatchCountOverflow {
+        device_match_count,
+        max_matches: launch.max_matches,
+    })
+}
+
+fn device_match_count_overflow_report(
+    program: &SearchProgram,
+    domain: SearchDomain,
+    cancellation: &CancellationToken,
+    launch: LaunchConfig,
+    sdk: &GpuSdk,
+    base_rationale: &str,
+    overflow: DeviceMatchCountOverflow,
+) -> AcceleratorReport {
+    AcceleratorReport {
+        mode: RuntimeMode::CpuFallback,
+        matches: NativeSearcher::search(program, domain, cancellation),
+        telemetry: sdk_runtime_telemetry(
+            launch,
+            sdk,
+            format!(
+                "{base_rationale}; device match count {} exceeds buffer {}",
+                overflow.device_match_count, overflow.max_matches
+            ),
+            0,
+        ),
+    }
+}
+
 fn compile_command_for(
     compiler: &str,
     options: &str,
@@ -1011,6 +1070,12 @@ fn compile_command_for(
 struct DeviceValidation {
     matches: Vec<u64>,
     rejected: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DeviceMatchCountOverflow {
+    device_match_count: usize,
+    max_matches: usize,
 }
 
 fn driver_failure_rationale(sdk: &GpuSdk, output: &DriverRunOutput) -> String {

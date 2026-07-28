@@ -28,6 +28,24 @@ pub struct LaunchArgs {
     pub local_size: usize,
 }
 
+/// Device launch output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaunchOutput {
+    /// Retained device-reported matches.
+    pub matches: Vec<u64>,
+    /// Total match count reported by the device-side atomic counter.
+    pub match_count: usize,
+}
+
+impl LaunchOutput {
+    fn new(matches: Vec<u64>, match_count: usize) -> Self {
+        Self {
+            matches,
+            match_count,
+        }
+    }
+}
+
 /// Adapter CLI command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdapterCommand {
@@ -133,7 +151,7 @@ pub trait Launcher {
     /// # Errors
     ///
     /// Returns an error when the device launch fails.
-    fn launch(&self, args: &LaunchArgs) -> Result<Vec<u64>, String>;
+    fn launch(&self, args: &LaunchArgs) -> Result<LaunchOutput, String>;
 }
 
 /// OpenCL device-backed launcher.
@@ -155,7 +173,7 @@ impl Launcher for OpenClLauncher {
         Ok(())
     }
 
-    fn launch(&self, args: &LaunchArgs) -> Result<Vec<u64>, String> {
+    fn launch(&self, args: &LaunchArgs) -> Result<LaunchOutput, String> {
         launch_opencl(args)
     }
 }
@@ -176,8 +194,8 @@ pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, Strin
             Ok(String::new())
         }
         AdapterCommand::Launch(launch_args) => {
-            let matches = launcher.launch(&launch_args)?;
-            Ok(format_matches(&matches))
+            let output = launcher.launch(&launch_args)?;
+            Ok(format_launch_output(&output))
         }
     }
 }
@@ -187,6 +205,12 @@ fn format_features(features: &[String]) -> String {
         .iter()
         .map(|feature| format!("feature={feature}\n"))
         .collect()
+}
+
+fn format_launch_output(output: &LaunchOutput) -> String {
+    let mut text = format!("match_count={}\n", output.match_count);
+    text.push_str(&format_matches(&output.matches));
+    text
 }
 
 fn format_matches(matches: &[u64]) -> String {
@@ -234,7 +258,7 @@ fn write_opencl_source(path: &str, source: &str) -> Result<(), String> {
     fs::write(path, source).map_err(|error| format!("cannot write OpenCL artifact {path}: {error}"))
 }
 
-fn launch_opencl(args: &LaunchArgs) -> Result<Vec<u64>, String> {
+fn launch_opencl(args: &LaunchArgs) -> Result<LaunchOutput, String> {
     let source = fs::read_to_string(&args.artifact).map_err(|error| error.to_string())?;
     let (context, queue, program) = build_opencl_program(&source)?;
     if uses_u32_launch_abi(&source) {
@@ -281,9 +305,8 @@ fn launch_opencl(args: &LaunchArgs) -> Result<Vec<u64>, String> {
             .enqueue_read_buffer(&out_len_buffer, CL_BLOCKING, 0, &mut zero, &[])
             .map_err(|error| error.to_string())?;
     }
-    let retained = usize::try_from(zero[0])
-        .unwrap_or(args.max_matches)
-        .min(args.max_matches);
+    let match_count = usize::try_from(zero[0]).unwrap_or(usize::MAX);
+    let retained = match_count.min(args.max_matches);
     let mut matches = vec![0_u64; args.max_matches];
     unsafe {
         queue
@@ -292,7 +315,7 @@ fn launch_opencl(args: &LaunchArgs) -> Result<Vec<u64>, String> {
     }
     matches.truncate(retained);
     matches.sort_unstable();
-    Ok(matches)
+    Ok(LaunchOutput::new(matches, match_count))
 }
 
 fn uses_u32_launch_abi(source: &str) -> bool {
@@ -304,7 +327,7 @@ fn launch_opencl_u32(
     context: &Context,
     queue: &CommandQueue,
     program: &Program,
-) -> Result<Vec<u64>, String> {
+) -> Result<LaunchOutput, String> {
     let out_words_len = args
         .max_matches
         .checked_mul(2)
@@ -349,9 +372,8 @@ fn launch_opencl_u32(
             .enqueue_read_buffer(&out_len_buffer, CL_BLOCKING, 0, &mut zero, &[])
             .map_err(|error| error.to_string())?;
     }
-    let retained = usize::try_from(zero[0])
-        .unwrap_or(args.max_matches)
-        .min(args.max_matches);
+    let match_count = usize::try_from(zero[0]).unwrap_or(usize::MAX);
+    let retained = match_count.min(args.max_matches);
     let mut out_words = vec![0_u32; out_words_len];
     unsafe {
         queue
@@ -364,7 +386,7 @@ fn launch_opencl_u32(
         .map(|words| u64::from(words[0]) | (u64::from(words[1]) << 32))
         .collect::<Vec<_>>();
     matches.sort_unstable();
-    Ok(matches)
+    Ok(LaunchOutput::new(matches, match_count))
 }
 
 fn build_opencl_program(source: &str) -> Result<(Context, CommandQueue, Program), String> {

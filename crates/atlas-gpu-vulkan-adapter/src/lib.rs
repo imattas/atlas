@@ -27,6 +27,24 @@ pub struct LaunchArgs {
     pub local_size: usize,
 }
 
+/// Device launch output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaunchOutput {
+    /// Retained device-reported matches.
+    pub matches: Vec<u64>,
+    /// Total match count reported by the device-side atomic counter.
+    pub match_count: usize,
+}
+
+impl LaunchOutput {
+    fn new(matches: Vec<u64>, match_count: usize) -> Self {
+        Self {
+            matches,
+            match_count,
+        }
+    }
+}
+
 /// Adapter CLI command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdapterCommand {
@@ -140,7 +158,7 @@ pub trait Launcher {
     ///
     /// Returns an error when Vulkan runtime loading, pipeline creation, dispatch,
     /// or memory transfer fails.
-    fn launch(&self, args: &LaunchArgs) -> Result<Vec<u64>, String>;
+    fn launch(&self, args: &LaunchArgs) -> Result<LaunchOutput, String>;
 }
 
 /// Vulkan runtime backed SPIR-V launcher.
@@ -164,7 +182,7 @@ impl Launcher for VulkanSpirvLauncher {
         Ok(())
     }
 
-    fn launch(&self, args: &LaunchArgs) -> Result<Vec<u64>, String> {
+    fn launch(&self, args: &LaunchArgs) -> Result<LaunchOutput, String> {
         if args.local_size != VULKAN_LOCAL_SIZE {
             return Err(format!(
                 "Vulkan shader local-size must be {VULKAN_LOCAL_SIZE}"
@@ -192,8 +210,8 @@ pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, Strin
             Ok(String::new())
         }
         AdapterCommand::Launch(launch_args) => {
-            let matches = launcher.launch(&launch_args)?;
-            Ok(format_matches(&matches))
+            let output = launcher.launch(&launch_args)?;
+            Ok(format_launch_output(&output))
         }
     }
 }
@@ -203,6 +221,12 @@ fn format_features(features: &[String]) -> String {
         .iter()
         .map(|feature| format!("feature={feature}\n"))
         .collect()
+}
+
+fn format_launch_output(output: &LaunchOutput) -> String {
+    let mut text = format!("match_count={}\n", output.match_count);
+    text.push_str(&format_matches(&output.matches));
+    text
 }
 
 fn format_matches(matches: &[u64]) -> String {
@@ -521,7 +545,7 @@ impl VulkanRuntime {
         })
     }
 
-    fn launch(&self, code: &[u32], args: &LaunchArgs) -> Result<Vec<u64>, String> {
+    fn launch(&self, code: &[u32], args: &LaunchArgs) -> Result<LaunchOutput, String> {
         let shader = self.create_shader_module(code)?;
         let buffer_bytes = OUT_VALUES_OFFSET
             .checked_add(
@@ -916,13 +940,12 @@ impl HostBuffer<'_> {
         Ok(())
     }
 
-    fn read_matches(&self, max_matches: usize) -> Result<Vec<u64>, String> {
+    fn read_matches(&self, max_matches: usize) -> Result<LaunchOutput, String> {
         unsafe {
             let ptr = self.map()?.cast::<u8>();
-            let retained = ptr.cast::<u32>().read_unaligned();
-            let retained = usize::try_from(retained)
-                .unwrap_or(max_matches)
-                .min(max_matches);
+            let match_count =
+                usize::try_from(ptr.cast::<u32>().read_unaligned()).unwrap_or(usize::MAX);
+            let retained = match_count.min(max_matches);
             let mut matches = Vec::with_capacity(retained);
             for index in 0..retained {
                 let offset = OUT_VALUES_OFFSET + index * std::mem::size_of::<u64>();
@@ -930,7 +953,7 @@ impl HostBuffer<'_> {
             }
             self.device.unmap_memory(self.memory);
             matches.sort_unstable();
-            Ok(matches)
+            Ok(LaunchOutput::new(matches, match_count))
         }
     }
 

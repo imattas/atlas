@@ -2,7 +2,7 @@
 
 use atlas_gpu_opencl_adapter::{
     opencl_loader_candidates_from_host_roots, opencl_loader_candidates_from_roots, run_cli,
-    AdapterCommand, LaunchArgs, Launcher,
+    AdapterCommand, LaunchArgs, LaunchOutput, Launcher,
 };
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::SearchProgram;
@@ -29,14 +29,17 @@ impl Launcher for FixtureLauncher {
         Ok(())
     }
 
-    fn launch(&self, args: &LaunchArgs) -> Result<Vec<u64>, String> {
+    fn launch(&self, args: &LaunchArgs) -> Result<LaunchOutput, String> {
         assert_eq!(args.artifact, "target/atlas-gpu/atlas_search.cl");
         assert_eq!(args.start, 10);
         assert_eq!(args.end, 20);
         assert_eq!(args.max_matches, 3);
         assert_eq!(args.global_size, 256);
         assert_eq!(args.local_size, 64);
-        Ok(vec![11, 13, 17])
+        Ok(LaunchOutput {
+            matches: vec![11, 13, 17],
+            match_count: 5,
+        })
     }
 }
 
@@ -65,8 +68,11 @@ impl Launcher for RecordingLauncher {
         Ok(())
     }
 
-    fn launch(&self, _args: &LaunchArgs) -> Result<Vec<u64>, String> {
-        Ok(Vec::new())
+    fn launch(&self, _args: &LaunchArgs) -> Result<LaunchOutput, String> {
+        Ok(LaunchOutput {
+            matches: Vec::new(),
+            match_count: 0,
+        })
     }
 }
 
@@ -285,7 +291,7 @@ fn cli_emits_match_lines_from_launcher() {
     )
     .unwrap();
 
-    assert_eq!(output, "match=11\nmatch=13\nmatch=17\n");
+    assert_eq!(output, "match_count=5\nmatch=11\nmatch=13\nmatch=17\n");
 }
 
 #[test]
@@ -355,10 +361,11 @@ fn generated_opencl_kernel_runs_on_device_and_preserves_full_candidates() {
         local_size: 1,
     };
 
-    let matches = atlas_gpu_opencl_adapter::OpenClLauncher
+    let output = atlas_gpu_opencl_adapter::OpenClLauncher
         .launch(&args)
         .unwrap();
 
-    assert_eq!(matches, vec![0x55, 0x155]);
+    assert_eq!(output.matches, vec![0x55, 0x155]);
+    assert_eq!(output.match_count, 2);
     let _ = fs::remove_dir_all(output_dir);
 }

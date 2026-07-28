@@ -3002,9 +3002,55 @@ fn runtime_falls_back_when_driver_execution_fails() {
 }
 
 #[test]
+fn runtime_falls_back_to_canonical_cpu_results_when_device_match_count_overflows_buffer() {
+    let program = SearchProgram::new(
+        16,
+        vec![SearchOp::ChecksumEq {
+            modulus: 1,
+            target: 0,
+        }],
+    )
+    .unwrap();
+    let token = CancellationToken::new();
+    let sdk = GpuSdk::OpenCl {
+        sdk: "test OpenCL".to_owned(),
+    };
+    let runner = FixtureDriverRunner {
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: (0..1024).rev().collect(),
+            stdout: "match_count=1500\n".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_driver(
+        &program,
+        SearchDomain::new(0, 1_500),
+        &sdk,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert_eq!(
+        report.matches,
+        NativeSearcher::search(&program, SearchDomain::new(0, 1_500), &token)
+    );
+    assert!(report
+        .telemetry
+        .rationale
+        .contains("device match count 1500 exceeds buffer 1024"));
+}
+
+#[test]
 fn driver_output_parses_decimal_and_hex_device_matches_from_stdout() {
     assert_eq!(
         DriverRunOutput::parse_reported_matches("match=3\n0x04\nignored\n5\n"),
         vec![3, 4, 5]
+    );
+    assert_eq!(
+        DriverRunOutput::parse_reported_match_count("match=3\nmatch_count=1500\n"),
+        Some(1500)
     );
 }
