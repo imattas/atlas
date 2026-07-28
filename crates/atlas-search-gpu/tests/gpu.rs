@@ -1245,6 +1245,47 @@ fn process_driver_runner_resolves_hipcc_from_rocm_home_when_not_on_path() {
     assert!(output.stdout.contains("rocm-home-hipcc-ok"));
 }
 
+#[cfg(windows)]
+#[test]
+fn process_driver_runner_prefers_newest_standard_rocm_hipcc() {
+    let _env_guard = env_lock();
+    let root = std::env::temp_dir().join(format!(
+        "atlas-rocm-standard-toolkit-order-{}",
+        std::process::id()
+    ));
+    let rocm_base = root.join("AMD").join("ROCm");
+    let base_hipcc_path = write_sdk_tool(&rocm_base, "hipcc", "base-hipcc", 7);
+    let old_hipcc_path = write_sdk_tool(&rocm_base.join("5.0"), "hipcc", "old-hipcc", 8);
+    let new_hipcc_path = write_sdk_tool(&rocm_base.join("6.1"), "hipcc", "new-hipcc", 9);
+    let original_path = std::env::var_os("PATH");
+    let original_hip_path = std::env::var_os("HIP_PATH");
+    let original_rocm_path = std::env::var_os("ROCM_PATH");
+    let original_rocm_home = std::env::var_os("ROCM_HOME");
+    let original_program_files = std::env::var_os("ProgramFiles");
+    let original_program_files_x86 = std::env::var_os("ProgramFiles(x86)");
+    std::env::set_var("PATH", "");
+    std::env::remove_var("HIP_PATH");
+    std::env::remove_var("ROCM_PATH");
+    std::env::remove_var("ROCM_HOME");
+    std::env::set_var("ProgramFiles", &root);
+    std::env::remove_var("ProgramFiles(x86)");
+
+    let output = ProcessDriverRunner.run_command(&["hipcc".to_owned()]);
+
+    restore_env("PATH", original_path);
+    restore_env("HIP_PATH", original_hip_path);
+    restore_env("ROCM_PATH", original_rocm_path);
+    restore_env("ROCM_HOME", original_rocm_home);
+    restore_env("ProgramFiles", original_program_files);
+    restore_env("ProgramFiles(x86)", original_program_files_x86);
+    let _ = fs::remove_file(base_hipcc_path);
+    let _ = fs::remove_file(old_hipcc_path);
+    let _ = fs::remove_file(new_hipcc_path);
+    let _ = fs::remove_dir_all(root);
+    assert_eq!(output.exit_code, 9);
+    assert!(output.stdout.contains("new-hipcc"));
+}
+
 #[test]
 fn driver_launch_plan_carries_domain_and_output_capacity() {
     let program = SearchProgram::try_from_fixture("xor").unwrap();

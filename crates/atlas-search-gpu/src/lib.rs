@@ -1031,16 +1031,25 @@ fn standard_sdk_root_dirs() -> Vec<PathBuf> {
             roots.extend(cuda_versioned_roots);
             push_existing_dir(&mut roots, cuda_base.clone());
             let rocm_base = base.join("AMD").join("ROCm");
-            push_existing_dir(&mut roots, rocm_base.clone());
+            let mut rocm_versioned_roots = Vec::new();
             if let Ok(entries) = fs::read_dir(&rocm_base) {
                 for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
                     if path.is_dir() {
-                        roots.push(path.clone());
-                        push_existing_dir(&mut roots, path.join("hip"));
-                        push_existing_dir(&mut roots, path.join("bin"));
+                        rocm_versioned_roots.push(path);
                     }
                 }
             }
+            rocm_versioned_roots.sort_by(|left, right| {
+                sdk_version_key(right)
+                    .cmp(&sdk_version_key(left))
+                    .then_with(|| right.cmp(left))
+            });
+            for path in rocm_versioned_roots {
+                roots.push(path.clone());
+                push_existing_dir(&mut roots, path.join("hip"));
+                push_existing_dir(&mut roots, path.join("bin"));
+            }
+            push_existing_dir(&mut roots, rocm_base.clone());
             push_existing_dir(&mut roots, base.join("Khronos").join("OpenCL-SDK"));
         }
         if let Some(drive) = std::env::var_os("SystemDrive").map(PathBuf::from) {
