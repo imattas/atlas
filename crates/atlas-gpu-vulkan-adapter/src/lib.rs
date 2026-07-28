@@ -449,7 +449,7 @@ impl VulkanRuntime {
         let queue_info = [vk::DeviceQueueCreateInfo::default()
             .queue_family_index(queue_family_index)
             .queue_priorities(&priorities)];
-        let features = vk::PhysicalDeviceFeatures::default();
+        let features = required_device_features();
         let device_info = vk::DeviceCreateInfo::default()
             .queue_create_infos(&queue_info)
             .enabled_features(&features);
@@ -794,6 +794,13 @@ impl Drop for VulkanRuntime {
     }
 }
 
+fn required_device_features() -> vk::PhysicalDeviceFeatures {
+    vk::PhysicalDeviceFeatures {
+        shader_int64: vk::TRUE,
+        ..Default::default()
+    }
+}
+
 fn select_compute_queue(instance: &ash::Instance) -> Result<(vk::PhysicalDevice, u32), String> {
     let devices = unsafe {
         instance
@@ -952,5 +959,17 @@ impl Drop for CommandPool<'_> {
         unsafe {
             self.device.destroy_command_pool(self.raw, None);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vulkan_device_features_enable_shader_int64_for_generated_kernels() {
+        let features = required_device_features();
+
+        assert_eq!(features.shader_int64, vk::TRUE);
     }
 }
