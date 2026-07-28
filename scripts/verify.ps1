@@ -36,6 +36,7 @@ if ($Profile -in @("analysis", "distributed", "advanced", "full")) {
 }
 
 $HardwareFailures = @()
+$BenchmarkSamples = 3
 function Invoke-HardwareStep {
     param([string]$Name, [scriptblock]$Command)
     Write-Host "==> $Name"
@@ -117,7 +118,7 @@ function Invoke-ForcedGpuBenchmark {
         [string]$End = "0x60"
     )
     Invoke-HardwareStep $Name {
-        $BenchmarkArgs = @("run", "-q", "-p", "atlas-cli", "--", "benchmark", "--fixture", $Fixture, "--start", $Start, "--end", $End, "--force-gpu")
+        $BenchmarkArgs = @("run", "-q", "-p", "atlas-cli", "--", "benchmark", "--fixture", $Fixture, "--start", $Start, "--end", $End, "--force-gpu", "--samples", $BenchmarkSamples)
         if (![string]::IsNullOrEmpty($Sdk)) {
             $BenchmarkArgs += @("--gpu-sdk", $Sdk)
         }
@@ -131,6 +132,9 @@ function Invoke-ForcedGpuBenchmark {
         $Benchmark = $Output | ConvertFrom-Json
         if ($Benchmark.accelerator.mode -ne "DeviceValidated") {
             throw "expected DeviceValidated, got $($Benchmark.accelerator.mode)"
+        }
+        if ($Benchmark.sample_count -ne $BenchmarkSamples) {
+            throw "expected sample_count $BenchmarkSamples, got $($Benchmark.sample_count)"
         }
         if (![string]::IsNullOrEmpty($ExpectedActualGpuSdk) -and $Benchmark.accelerator.actual_gpu_sdk -ne $ExpectedActualGpuSdk) {
             throw "expected actual_gpu_sdk $ExpectedActualGpuSdk, got $($Benchmark.accelerator.actual_gpu_sdk)"

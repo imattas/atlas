@@ -424,6 +424,67 @@ fn benchmark_reports_native_and_forced_gpu_runtime() {
 }
 
 #[test]
+fn benchmark_samples_forced_gpu_runtime_repeatedly() {
+    let _env_guard = env_lock();
+    let tool_dir = std::env::temp_dir().join(format!(
+        "atlas-cli-benchmark-gpu-samples-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&tool_dir).unwrap();
+    let adapter_path = tool_dir.join(if cfg!(windows) {
+        "atlas-gpu-opencl-run.bat"
+    } else {
+        "atlas-gpu-opencl-run"
+    });
+    fs::write(
+        &adapter_path,
+        if cfg!(windows) {
+            "@echo off\r\necho match=85\r\nexit /b 0\r\n"
+        } else {
+            "#!/bin/sh\necho match=85\nexit 0\n"
+        },
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(&adapter_path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&adapter_path, permissions).unwrap();
+    }
+    fs::write(tool_dir.join("clinfo.exe"), "").unwrap();
+    let original_path = std::env::var_os("PATH").unwrap_or_default();
+    let joined_path = std::env::join_paths(
+        std::iter::once(tool_dir.clone()).chain(std::env::split_paths(&original_path)),
+    )
+    .unwrap();
+    std::env::set_var("PATH", &joined_path);
+
+    let output = run(&[
+        "benchmark".to_owned(),
+        "--fixture".to_owned(),
+        "xor".to_owned(),
+        "--start".to_owned(),
+        "0x50".to_owned(),
+        "--end".to_owned(),
+        "0x60".to_owned(),
+        "--force-gpu".to_owned(),
+        "--gpu-sdk".to_owned(),
+        "opencl".to_owned(),
+        "--samples".to_owned(),
+        "3".to_owned(),
+    ])
+    .unwrap();
+
+    std::env::set_var("PATH", original_path);
+    let _ = fs::remove_dir_all(tool_dir);
+    assert!(output.contains("\"sample_count\":3"));
+    assert!(output.contains("\"native_samples_ns\""));
+    assert!(output.contains("\"accelerator_samples_ns\""));
+    assert!(output.contains("\"mode\":\"DeviceValidated\""));
+}
+
+#[test]
 fn benchmark_supports_64_bit_fixture_domains() {
     let output = run(&[
         "benchmark".to_owned(),

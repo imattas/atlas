@@ -141,26 +141,38 @@ fn solve(args: &[String]) -> Result<String, String> {
 fn benchmark(args: &[String]) -> Result<String, String> {
     let request = SolveRequest::parse(args)?;
     let token = CancellationToken::new();
-    let native_start = Instant::now();
-    let native_matches = NativeSearcher::search(&request.program, request.domain, &token);
-    let native_elapsed_ns = native_start.elapsed().as_nanos();
-    let accelerator_start = Instant::now();
-    let accelerator = execute_accelerator(
-        &request.program,
-        request.domain,
-        request.force_gpu,
-        request.gpu_sdk,
-        &token,
-    );
-    let accelerator_elapsed_ns = accelerator_start.elapsed().as_nanos();
+    let mut native_samples_ns = Vec::with_capacity(request.samples);
+    let mut accelerator_samples_ns = Vec::with_capacity(request.samples);
+    let mut native_matches = Vec::new();
+    let mut accelerator = None;
+    for _ in 0..request.samples {
+        let native_start = Instant::now();
+        native_matches = NativeSearcher::search(&request.program, request.domain, &token);
+        native_samples_ns.push(native_start.elapsed().as_nanos());
+        let accelerator_start = Instant::now();
+        accelerator = Some(execute_accelerator(
+            &request.program,
+            request.domain,
+            request.force_gpu,
+            request.gpu_sdk,
+            &token,
+        ));
+        accelerator_samples_ns.push(accelerator_start.elapsed().as_nanos());
+    }
+    let native_elapsed_ns = *native_samples_ns.iter().min().unwrap_or(&0);
+    let accelerator_elapsed_ns = *accelerator_samples_ns.iter().min().unwrap_or(&0);
+    let accelerator = accelerator.expect("benchmark samples must be nonzero");
     let speedup_ratio = format_speedup_ratio(native_elapsed_ns, accelerator_elapsed_ns);
     let requested_gpu_sdk = requested_gpu_sdk_json(request.gpu_sdk);
     let actual_gpu_sdk = optional_string_json(accelerator.telemetry.selected_gpu_sdk.as_deref());
     Ok(format!(
-        "{{\"schema_major\":1,\"kind\":\"benchmark\",\"fixture\":\"{}\",\"domain\":{{\"start\":{},\"end\":{}}},\"native\":{{\"elapsed_ns\":{},\"matches\":{}}},\"accelerator\":{{\"elapsed_ns\":{},\"requested_gpu_sdk\":{},\"actual_gpu_sdk\":{},\"speedup_ratio\":{},\"mode\":\"{}\",\"matches\":{},\"launch\":{{\"global_size\":{},\"local_size\":{},\"max_matches\":{},\"output_buffer_bytes\":{}}},\"telemetry\":\"{}\"}}}}\n",
+        "{{\"schema_major\":1,\"kind\":\"benchmark\",\"fixture\":\"{}\",\"domain\":{{\"start\":{},\"end\":{}}},\"sample_count\":{},\"native_samples_ns\":{},\"accelerator_samples_ns\":{},\"native\":{{\"elapsed_ns\":{},\"matches\":{}}},\"accelerator\":{{\"elapsed_ns\":{},\"requested_gpu_sdk\":{},\"actual_gpu_sdk\":{},\"speedup_ratio\":{},\"mode\":\"{}\",\"matches\":{},\"launch\":{{\"global_size\":{},\"local_size\":{},\"max_matches\":{},\"output_buffer_bytes\":{}}},\"telemetry\":\"{}\"}}}}\n",
         json_escape(&request.fixture),
         request.domain.start,
         request.domain.end,
+        request.samples,
+        format_duration_samples(&native_samples_ns),
+        format_duration_samples(&accelerator_samples_ns),
         native_elapsed_ns,
         format_matches(&native_matches),
         accelerator_elapsed_ns,
@@ -206,6 +218,7 @@ struct SolveRequest {
     domain: SearchDomain,
     force_gpu: bool,
     gpu_sdk: Option<GpuSdkChoice>,
+    samples: usize,
 }
 
 impl SolveRequest {
@@ -222,6 +235,10 @@ impl SolveRequest {
         if end <= start {
             return Err("--end must be greater than --start".to_owned());
         }
+        let samples = optional_flag(args, "--samples")
+            .map(parse_positive_usize)
+            .transpose()?
+            .unwrap_or(1);
         let program =
             SearchProgram::try_from_fixture(fixture).map_err(|error| format!("{error:?}"))?;
         Ok(Self {
@@ -232,6 +249,7 @@ impl SolveRequest {
             gpu_sdk: optional_flag(args, "--gpu-sdk")
                 .map(parse_gpu_sdk_choice)
                 .transpose()?,
+            samples,
         })
     }
 }
@@ -495,8 +513,23 @@ fn parse_u64(value: &str) -> Result<u64, String> {
     }
 }
 
+fn parse_positive_usize(value: &str) -> Result<usize, String> {
+    let samples = value
+        .parse()
+        .map_err(|_| format!("invalid sample count '{value}'"))?;
+    if samples == 0 {
+        return Err("--samples must be greater than zero".to_owned());
+    }
+    Ok(samples)
+}
+
 fn format_matches(matches: &[u64]) -> String {
     let values = matches.iter().map(u64::to_string).collect::<Vec<_>>();
+    format!("[{}]", values.join(","))
+}
+
+fn format_duration_samples(samples: &[u128]) -> String {
+    let values = samples.iter().map(u128::to_string).collect::<Vec<_>>();
     format!("[{}]", values.join(","))
 }
 

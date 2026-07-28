@@ -26,6 +26,7 @@ resolve_cargo_command() {
 }
 
 cargo_cmd=$(resolve_cargo_command)
+benchmark_samples=3
 
 hardware_failures=()
 run_hardware_step() {
@@ -117,21 +118,24 @@ run_forced_gpu_benchmark() {
   local end="${6:-0x60}"
   run_hardware_step "$name" bash -c '
     set -euo pipefail
-    command=("$3" run -q -p atlas-cli -- benchmark --fixture "$4" --start "$5" --end "$6" --force-gpu)
+    command=("$3" run -q -p atlas-cli -- benchmark --fixture "$4" --start "$5" --end "$6" --force-gpu --samples "$7")
     if [[ -n "$1" ]]; then
       command+=(--gpu-sdk "$1")
     fi
     output=$("${command[@]}")
     printf "%s\n" "$output"
-    EXPECTED_ACTUAL_GPU_SDK="$2" BENCHMARK_JSON="$output" python - <<'"'"'PY'"'"'
+    EXPECTED_ACTUAL_GPU_SDK="$2" BENCHMARK_JSON="$output" BENCHMARK_SAMPLES="$7" python - <<'"'"'PY'"'"'
 import json
 import os
 
 expected_actual_gpu_sdk = os.environ["EXPECTED_ACTUAL_GPU_SDK"]
+benchmark_samples = int(os.environ["BENCHMARK_SAMPLES"])
 document = json.loads(os.environ["BENCHMARK_JSON"])
 accelerator = document["accelerator"]
 if accelerator["mode"] != "DeviceValidated":
     raise SystemExit(f"expected DeviceValidated, got {accelerator['mode']}")
+if document.get("sample_count") != benchmark_samples:
+    raise SystemExit(f"expected sample_count {benchmark_samples}, got {document.get('sample_count')}")
 actual_gpu_sdk = accelerator.get("actual_gpu_sdk")
 if expected_actual_gpu_sdk and actual_gpu_sdk != expected_actual_gpu_sdk:
     raise SystemExit(f"expected actual_gpu_sdk {expected_actual_gpu_sdk}, got {actual_gpu_sdk}")
@@ -140,7 +144,7 @@ for required in ["driver exit 0", "driver launches", "launch abi"]:
     if required not in telemetry:
         raise SystemExit(f"expected benchmark telemetry to include {required!r}, got {telemetry!r}")
 PY
-  ' _ "$sdk" "$expected_actual_gpu_sdk" "$cargo_cmd" "$fixture" "$start" "$end"
+  ' _ "$sdk" "$expected_actual_gpu_sdk" "$cargo_cmd" "$fixture" "$start" "$end" "$benchmark_samples"
 }
 
 "$cargo_cmd" fmt --all -- --check

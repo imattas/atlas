@@ -286,6 +286,18 @@ class VerifyScriptTests(unittest.TestCase):
                 for token in required_tokens:
                     self.assertIn(token, text)
 
+    def test_hardware_profile_uses_repeated_benchmark_samples(self):
+        expectations = {
+            "verify.ps1": ["--samples", "$BenchmarkSamples", "sample_count"],
+            "verify.sh": ["--samples", "benchmark_samples", "sample_count"],
+        }
+
+        for script_name, required_tokens in expectations.items():
+            with self.subTest(script=script_name):
+                text = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+                for token in required_tokens:
+                    self.assertIn(token, text)
+
     def test_hardware_profile_attempts_every_backend_before_reporting_failure(self):
         expectations = {
             "verify.ps1": ["Invoke-HardwareStep", "$HardwareFailures", "$HardwareFailures.Count"],
