@@ -900,9 +900,10 @@ impl AcceleratorRuntime {
         };
         let launch = execution.launch;
         let base_rationale = format!(
-            "{}; driver exit 0; driver launches {}",
+            "{}; driver exit 0; driver launches {}; launch abi {}",
             sdk.name(),
-            execution.launch_count
+            execution.launch_count,
+            launch_abi_label(program)
         );
         if let Some(report) = driver_protocol_fallback_report(
             program,
@@ -997,6 +998,14 @@ fn sdk_runtime_telemetry(
         rationale,
         cpu_validated: true,
         rejected_device_matches,
+    }
+}
+
+fn launch_abi_label(program: &SearchProgram) -> &'static str {
+    if program.width <= 32 {
+        "u32"
+    } else {
+        "u64"
     }
 }
 

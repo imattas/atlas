@@ -2264,6 +2264,7 @@ fn runtime_executes_driver_output_and_cpu_validates_matches() {
     assert_eq!(report.mode, RuntimeMode::DeviceValidated);
     assert_eq!(report.matches, vec![3]);
     assert!(report.telemetry.rationale.contains("driver exit 0"));
+    assert!(report.telemetry.rationale.contains("launch abi u32"));
     assert_eq!(report.telemetry.rejected_device_matches, 1);
 }
 
