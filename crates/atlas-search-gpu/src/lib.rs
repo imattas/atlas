@@ -785,23 +785,49 @@ impl GpuSdkDetector {
     /// Detects SDKs by scanning executable names in the current host `PATH`.
     #[must_use]
     pub fn detect_from_host_path() -> Vec<GpuSdk> {
-        let Some(path) = std::env::var_os("PATH") else {
-            return Vec::new();
-        };
-        Self::detect_from_path_dirs(std::env::split_paths(&path))
+        let mut paths = std::env::var_os("PATH")
+            .map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
+            .unwrap_or_default();
+        paths.extend(
+            [
+                "CUDA_PATH",
+                "HIP_PATH",
+                "ROCM_PATH",
+                "VULKAN_SDK",
+                "OPENCL_SDK",
+            ]
+            .into_iter()
+            .filter_map(std::env::var_os)
+            .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>()),
+        );
+        Self::detect_from_path_dirs(paths)
     }
 
     /// Detects SDKs by scanning executable names in supplied path directories.
     ///
+    /// Directory path components are also considered so explicit SDK roots such
+    /// as `CUDA_PATH`, `HIP_PATH`, or `VULKAN_SDK` can advertise a runtime even
+    /// when the caller has not appended their `bin` directories to `PATH`.
     /// Unreadable directories are ignored so optional SDK absence produces an
     /// empty detection result rather than a hard failure.
     #[must_use]
     pub fn detect_from_path_dirs(paths: impl IntoIterator<Item = PathBuf>) -> Vec<GpuSdk> {
         let tools = paths
             .into_iter()
-            .filter_map(|path| fs::read_dir(path).ok())
-            .flat_map(|entries| entries.filter_map(Result::ok))
-            .filter_map(|entry| entry.file_name().into_string().ok())
+            .flat_map(|path| {
+                let mut names = path
+                    .components()
+                    .filter_map(|component| component.as_os_str().to_str().map(str::to_owned))
+                    .collect::<Vec<_>>();
+                if let Ok(entries) = fs::read_dir(&path) {
+                    names.extend(
+                        entries
+                            .filter_map(Result::ok)
+                            .filter_map(|entry| entry.file_name().into_string().ok()),
+                    );
+                }
+                names
+            })
             .map(|name| normalize_tool_name(&name))
             .collect::<Vec<_>>();
         Self::detect_from_tools(&tools)

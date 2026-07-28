@@ -443,6 +443,40 @@ fn detects_gpu_sdks_from_path_directories() {
 }
 
 #[test]
+fn detects_gpu_sdks_from_standard_sdk_root_directories() {
+    let root = std::env::temp_dir().join(format!("atlas-gpu-sdk-roots-{}", std::process::id()));
+    let cuda = root
+        .join("NVIDIA GPU Computing Toolkit")
+        .join("CUDA")
+        .join("v12.4");
+    let hip = root.join("AMD").join("ROCm").join("hip");
+    let vulkan = root.join("VulkanSDK").join("1.3.290.0");
+    let opencl = root.join("Khronos").join("OpenCL-SDK");
+    for sdk_root in [&cuda, &hip, &vulkan, &opencl] {
+        fs::create_dir_all(sdk_root).unwrap();
+    }
+
+    let detected = GpuSdkDetector::detect_from_path_dirs([
+        cuda.clone(),
+        hip.clone(),
+        vulkan.clone(),
+        opencl.clone(),
+    ]);
+
+    assert!(detected
+        .iter()
+        .any(|sdk| matches!(sdk, GpuSdk::OpenCl { .. })));
+    assert!(detected
+        .iter()
+        .any(|sdk| matches!(sdk, GpuSdk::Vulkan { .. })));
+    assert!(detected
+        .iter()
+        .any(|sdk| matches!(sdk, GpuSdk::Cuda { .. })));
+    assert!(detected.iter().any(|sdk| matches!(sdk, GpuSdk::Hip { .. })));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn launch_config_bounds_workgroups_and_output_transfer_capacity() {
     let config = AcceleratorRuntime::plan_launch(SearchDomain::new(0, 1_000_000), 256, 1024);
 
