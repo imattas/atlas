@@ -1,7 +1,7 @@
 //! Vulkan launch adapter.
 
 use ash::{vk, Entry};
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::ptr;
@@ -156,7 +156,7 @@ pub trait Launcher {
     /// # Errors
     ///
     /// Returns an error when runtime loading or device creation fails.
-    fn features(&self) -> Result<Vec<String>, String>;
+    fn features(&self) -> Result<FeatureReport, String>;
 
     /// Checks generated SPIR-V has valid magic and can be loaded as a shader
     /// module when a Vulkan runtime is present.
@@ -176,14 +176,26 @@ pub trait Launcher {
     fn launch(&self, args: &LaunchArgs) -> Result<LaunchOutput, String>;
 }
 
+/// Runtime/device feature report emitted by `--features`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FeatureReport {
+    /// Concrete hardware/runtime identity selected by the adapter.
+    pub hardware: String,
+    /// Kernel capabilities available for generated Vulkan code.
+    pub features: Vec<String>,
+}
+
 /// Vulkan runtime backed SPIR-V launcher.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct VulkanSpirvLauncher;
 
 impl Launcher for VulkanSpirvLauncher {
-    fn features(&self) -> Result<Vec<String>, String> {
+    fn features(&self) -> Result<FeatureReport, String> {
         let runtime = VulkanRuntime::new(vk::PhysicalDeviceFeatures::default())?;
-        Ok(runtime.features())
+        Ok(FeatureReport {
+            hardware: runtime.hardware_identity(),
+            features: runtime.features(),
+        })
     }
 
     fn compile_check(&self, shader: &str, output: Option<&str>) -> Result<(), String> {
@@ -217,8 +229,8 @@ impl Launcher for VulkanSpirvLauncher {
 pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, String> {
     match AdapterCommand::parse(args)? {
         AdapterCommand::Features => {
-            let features = launcher.features()?;
-            Ok(format_features(&features))
+            let report = launcher.features()?;
+            Ok(format_features(&report))
         }
         AdapterCommand::CompileCheck { input, output } => {
             launcher.compile_check(&input, output.as_deref())?;
@@ -231,10 +243,11 @@ pub fn run_cli(args: &[String], launcher: &dyn Launcher) -> Result<String, Strin
     }
 }
 
-fn format_features(features: &[String]) -> String {
-    let mut text = "hardware=Vulkan compute device\n".to_owned();
+fn format_features(report: &FeatureReport) -> String {
+    let mut text = format!("hardware={}\n", report.hardware);
     text.push_str(
-        &features
+        &report
+            .features
             .iter()
             .map(|feature| format!("feature={feature}\n"))
             .collect::<String>(),
@@ -568,6 +581,23 @@ impl VulkanRuntime {
             features.push("shaderInt64".to_owned());
         }
         features
+    }
+
+    fn hardware_identity(&self) -> String {
+        let properties = unsafe {
+            self.instance
+                .get_physical_device_properties(self.physical_device)
+        };
+        let name = unsafe { CStr::from_ptr(properties.device_name.as_ptr()) }
+            .to_string_lossy()
+            .trim()
+            .to_owned();
+        let name = if name.is_empty() {
+            "Vulkan compute device"
+        } else {
+            name.as_str()
+        };
+        format!("{name} via Vulkan")
     }
 
     fn create_shader_module(&self, code: &[u32]) -> Result<ShaderModule<'_>, String> {

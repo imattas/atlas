@@ -2,7 +2,8 @@
 
 use atlas_gpu_vulkan_adapter::{
     run_cli, vulkan_loader_candidates_from_host_roots, vulkan_loader_candidates_from_roots,
-    AdapterCommand, LaunchArgs, LaunchOutput, Launcher, VulkanLaunchAbi, VulkanSpirvLauncher,
+    AdapterCommand, FeatureReport, LaunchArgs, LaunchOutput, Launcher, VulkanLaunchAbi,
+    VulkanSpirvLauncher,
 };
 use atlas_search_gpu::GpuSearcher;
 use atlas_search_ir::{SearchOp, SearchProgram};
@@ -30,8 +31,11 @@ fn restore_env(name: &str, original: Option<std::ffi::OsString>) {
 struct FixtureLauncher;
 
 impl Launcher for FixtureLauncher {
-    fn features(&self) -> Result<Vec<String>, String> {
-        Ok(vec!["shaderInt64".to_owned()])
+    fn features(&self) -> Result<FeatureReport, String> {
+        Ok(FeatureReport {
+            hardware: "AMD Radeon RX 7900 XTX via Vulkan".to_owned(),
+            features: vec!["shaderInt64".to_owned()],
+        })
     }
 
     fn compile_check(&self, _input: &str, _output: Option<&str>) -> Result<(), String> {
@@ -66,8 +70,11 @@ impl RecordingLauncher {
 }
 
 impl Launcher for RecordingLauncher {
-    fn features(&self) -> Result<Vec<String>, String> {
-        Ok(Vec::new())
+    fn features(&self) -> Result<FeatureReport, String> {
+        Ok(FeatureReport {
+            hardware: "Fixture Vulkan device".to_owned(),
+            features: Vec::new(),
+        })
     }
 
     fn compile_check(&self, input: &str, output: Option<&str>) -> Result<(), String> {
@@ -140,7 +147,7 @@ fn cli_features_emits_launcher_capabilities() {
 
     assert_eq!(
         output,
-        "hardware=Vulkan compute device\nfeature=shaderInt64\nfeature=launchAbiU32\nfeature=launchAbiU64\n"
+        "hardware=AMD Radeon RX 7900 XTX via Vulkan\nfeature=shaderInt64\nfeature=launchAbiU32\nfeature=launchAbiU64\n"
     );
 }
 
