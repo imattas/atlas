@@ -10,6 +10,7 @@ members = [
     "crates/atlas-cache",
     "crates/atlas-report",
     "crates/atlas-cli",
+    "crates/atlas-program",
 ]
 resolver = "2"
 
