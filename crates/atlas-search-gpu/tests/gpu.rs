@@ -3442,6 +3442,38 @@ fn runtime_prefers_compatible_backend_with_warmed_kernel_cache() {
 }
 
 #[test]
+fn runtime_does_not_try_cold_backend_after_warmed_backend_only_gpu_placement_fails() {
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    let domain = SearchDomain::new(0, 100_000);
+    let opencl = GpuSdk::OpenCl {
+        sdk: "test OpenCL runtime".to_owned(),
+    };
+    let vulkan = GpuSdk::Vulkan {
+        sdk: "test Vulkan runtime".to_owned(),
+    };
+    let launch = AcceleratorRuntime::plan_launch(domain, 256, 1024);
+    let cached_plan =
+        DriverCommandPlan::for_launch(&opencl, &program, domain, launch, "target/atlas-gpu");
+    let sdks = [opencl, vulkan];
+    let runner = FailingThenSuccessfulSdkRunner::new();
+
+    let report = AcceleratorRuntime::execute_with_detected_driver_and_kernel_cache(
+        &program,
+        domain,
+        &sdks,
+        &token,
+        &[cached_plan.cache_key],
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::CpuFallback);
+    assert_eq!(runner.attempted_sdks.borrow().as_slice(), ["OpenCL"]);
+    assert!(report.telemetry.rationale.contains("OpenCL"));
+    assert!(!report.telemetry.rationale.contains("Vulkan"));
+}
+
+#[test]
 fn host_runtime_uses_persisted_kernel_cache_for_warmed_gpu_threshold() {
     struct Cleanup {
         tool_dir: PathBuf,

@@ -249,6 +249,29 @@ fn cache_prioritized_sdk_candidates(
         .collect::<Vec<_>>()
 }
 
+fn gpu_placement_for_sdk(
+    program: &SearchProgram,
+    domain: SearchDomain,
+    sdk: &GpuSdk,
+    cached_kernel_keys: &[KernelCacheKey],
+) -> atlas_placement::PlacementDecision {
+    let launch = AcceleratorRuntime::plan_launch(domain, 256, 1024);
+    let plan = DriverCommandPlan::for_launch(sdk, program, domain, launch, "target/atlas-gpu");
+    PlacementModel::choose_with_calibration(
+        SearchFeatures {
+            candidates: domain.end.saturating_sub(domain.start),
+            regular: true,
+            kernel_cache_hit: cached_kernel_keys.contains(&plan.cache_key),
+        },
+        PlacementCapabilities {
+            scalar: true,
+            simd: false,
+            gpu: true,
+        },
+        PlacementCalibration::default(),
+    )
+}
+
 /// SDK-specific driver command plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DriverCommandPlan {
@@ -792,6 +815,47 @@ impl AcceleratorRuntime {
         }
         let execution_sdks =
             cache_prioritized_sdk_candidates(&compatible_sdks, program, domain, cached_kernel_keys);
+        let execution_sdks = if policy.force_gpu {
+            execution_sdks
+        } else {
+            let placement_filtered = execution_sdks
+                .iter()
+                .filter(|sdk| {
+                    gpu_placement_for_sdk(program, domain, sdk, cached_kernel_keys).target
+                        == PlacementTarget::Gpu
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            if placement_filtered.is_empty() {
+                let launch = Self::plan_launch(domain, 256, 1024);
+                let selected = execution_sdks.first().cloned();
+                let rationale = selected.as_ref().map_or_else(
+                    || "no compatible GPU SDK detected for search program".to_owned(),
+                    |sdk| {
+                        let placement =
+                            gpu_placement_for_sdk(program, domain, sdk, cached_kernel_keys);
+                        format!(
+                            "{:?} placement selected: {}; {}",
+                            placement.target,
+                            placement.rationale,
+                            sdk.name()
+                        )
+                    },
+                );
+                return AcceleratorReport {
+                    mode: RuntimeMode::CpuFallback,
+                    matches: NativeSearcher::search(program, domain, cancellation),
+                    telemetry: RuntimeTelemetry {
+                        launch,
+                        selected_gpu_sdk: None,
+                        rationale,
+                        cpu_validated: true,
+                        rejected_device_matches: 0,
+                    },
+                };
+            }
+            placement_filtered
+        };
         let Some(selected) = execution_sdks.first().cloned() else {
             let launch = Self::plan_launch(domain, 256, 1024);
             return AcceleratorReport {
@@ -806,43 +870,6 @@ impl AcceleratorRuntime {
                 },
             };
         };
-        let launch = Self::plan_launch(domain, 256, 1024);
-        let driver_plan =
-            DriverCommandPlan::for_launch(&selected, program, domain, launch, "target/atlas-gpu");
-        let kernel_cache_hit = cached_kernel_keys.contains(&driver_plan.cache_key);
-        if !policy.force_gpu {
-            let placement = PlacementModel::choose_with_calibration(
-                SearchFeatures {
-                    candidates: domain.end.saturating_sub(domain.start),
-                    regular: true,
-                    kernel_cache_hit,
-                },
-                PlacementCapabilities {
-                    scalar: true,
-                    simd: false,
-                    gpu: true,
-                },
-                PlacementCalibration::default(),
-            );
-            if placement.target != PlacementTarget::Gpu {
-                return AcceleratorReport {
-                    mode: RuntimeMode::CpuFallback,
-                    matches: NativeSearcher::search(program, domain, cancellation),
-                    telemetry: RuntimeTelemetry {
-                        launch,
-                        selected_gpu_sdk: None,
-                        rationale: format!(
-                            "{:?} placement selected: {}; {}",
-                            placement.target,
-                            placement.rationale,
-                            selected.name()
-                        ),
-                        cpu_validated: true,
-                        rejected_device_matches: 0,
-                    },
-                };
-            }
-        }
         let mut failed_attempt_rationales = Vec::new();
         let mut fallback_report = None;
         for sdk in execution_sdks {
