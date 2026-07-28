@@ -38,7 +38,7 @@ resolver = "2"
 [workspace.package]
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://example.invalid/atlasctf"
+repository = "https://github.com/imattas/atlas"
 rust-version = "1.97"
 
 [workspace.lints.rust]

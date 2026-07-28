@@ -1,0 +1,59 @@
+name = "atlas-ctf-multi-family-benchmarks"
+schema_major = 1
+description = "Representative CTF workloads for bounded search and exact math."
+
+[[case]]
+id = "xor_width20"
+category = "xor"
+fixture = "xor"
+domain = "20-bit"
+relevance = "XOR masks and linear bit-vector checks common in crackmes and crypto warmups"
+
+[[case]]
+id = "add_width20"
+category = "modular-arithmetic"
+fixture = "add"
+domain = "20-bit"
+relevance = "modular integer equality used in keygen and checksum gates"
+
+[[case]]
+id = "checksum_width20"
+category = "checksum"
+fixture = "checksum"
+domain = "20-bit"
+relevance = "bounded checksum residue search for license and firmware puzzles"
+
+[[case]]
+id = "rotxor_width24"
+category = "rotate-xor"
+fixture = "rotxor"
+domain = "24-bit"
+relevance = "rotate/XOR mixing used in reversing and obfuscation challenges"
+
+[[case]]
+id = "muladd_width24"
+category = "modular-arithmetic"
+fixture = "muladd"
+domain = "24-bit"
+relevance = "LCG-style modular arithmetic used in PRNG and serial checks"
+
+[[case]]
+id = "serial_bytes_width32"
+category = "serial"
+fixture = "serial-bytes"
+domain = "32-bit"
+relevance = "byte-constrained serial-prefix search"
+
+[[case]]
+id = "mod_sqrt_prime_101"
+category = "crypto"
+fixture = "modular-square-root"
+domain = "prime field"
+relevance = "quadratic residue step used in CTF crypto"
+
+[[case]]
+id = "discrete_log_prime_29"
+category = "crypto"
+fixture = "discrete-log"
+domain = "prime field"
+relevance = "small finite-field discrete logarithm baseline"

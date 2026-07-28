@@ -17,6 +17,31 @@ ROOT = Path(__file__).resolve().parents[1]
 RESULT_DIR = ROOT / "benchmarks" / "results"
 JSON_RESULT = RESULT_DIR / "external-comparison.json"
 MD_RESULT = RESULT_DIR / "external-comparison.md"
+CTF_JSON_RESULT = RESULT_DIR / "ctf-benchmarks.json"
+CTF_MD_RESULT = RESULT_DIR / "ctf-benchmarks.md"
+
+CTF_RELEVANCE = {
+    "xor_width20": "XOR masks and linear bit-vector checks common in crackmes and crypto warmups",
+    "add_width20": "modular integer equality used in keygen and checksum gates",
+    "checksum_width20": "bounded checksum residue search for license and firmware puzzles",
+    "rotxor_width24": "rotate/XOR mixing used in reversing and obfuscation challenges",
+    "muladd_width24": "LCG-style modular arithmetic used in PRNG and serial checks",
+    "serial_bytes_width32": "byte-constrained serial-prefix search",
+    "mod_sqrt_prime_101": "quadratic residue step used in CTF crypto",
+    "discrete_log_prime_29": "small finite-field discrete logarithm baseline",
+}
+
+
+def with_ctf_relevance(row: dict[str, Any]) -> dict[str, Any]:
+    """Attach CTF relevance metadata for known benchmark cases."""
+
+    enriched = dict(row)
+    enriched["ctf_relevance"] = CTF_RELEVANCE.get(str(row.get("name")), "availability or comparison metadata")
+    if "iterations" not in enriched:
+        enriched["iterations"] = 0
+    if "mean_ns" not in enriched:
+        enriched["mean_ns"] = 0
+    return enriched
 
 
 def run_atlas() -> list[dict[str, Any]]:
@@ -223,6 +248,21 @@ def write_reports(results: list[dict[str, Any]]) -> None:
 
     RESULT_DIR.mkdir(parents=True, exist_ok=True)
     JSON_RESULT.write_text(json.dumps(results, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    ctf_results = [with_ctf_relevance(row) for row in results if row.get("name") in CTF_RELEVANCE]
+    CTF_JSON_RESULT.write_text(
+        json.dumps(
+            {
+                "schema_major": 1,
+                "kind": "ctf-benchmarks",
+                "source": "benchmarks/compare_external.py --write",
+                "cases": ctf_results,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     lines = [
         "# External solver comparison",
         "",
@@ -243,6 +283,19 @@ def write_reports(results: list[dict[str, Any]]) -> None:
             f"| {row.get('name')} | {row.get('engine')} | {row.get('mean_ns', 'n/a')} | {row.get('iterations', 'n/a')} | {row.get('matches', 'n/a')} | {'; '.join(notes)} |"
         )
     MD_RESULT.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    ctf_lines = [
+        "# CTF benchmark results",
+        "",
+        "Measured cases cover bounded-search kernels and exact math operations that show up in reversing, crypto, and serial/keygen CTF tasks.",
+        "",
+        "| case | engine | mean ns | iterations | matches | CTF relevance |",
+        "|---|---:|---:|---:|---:|---|",
+    ]
+    for row in ctf_results:
+        ctf_lines.append(
+            f"| {row.get('name')} | {row.get('engine')} | {row.get('mean_ns')} | {row.get('iterations')} | {row.get('matches', 'n/a')} | {row.get('ctf_relevance')} |"
+        )
+    CTF_MD_RESULT.write_text("\n".join(ctf_lines) + "\n", encoding="utf-8")
 
 
 def main() -> int:

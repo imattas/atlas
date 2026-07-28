@@ -395,10 +395,10 @@ if ($Profile -in @("advanced", "full")) {
 
 if ($Profile -eq "full") {
     foreach ($RequiredPath in @(
-        "release/manifest.schema.json",
-        "release/manifest.toml",
-        "release/write-manifest.sh",
-        "release/write_manifest.py",
+        "schemas/release-manifest.schema.json",
+        "RELEASE_MANIFEST.toml",
+        "scripts/write-release-manifest.sh",
+        "scripts/write_release_manifest.py",
         "scripts/verify_hardware_doctor.py",
         "crates/atlas-math/src/lib.rs",
         "backends/native-math/atlas_native_math_backend.py",
@@ -414,7 +414,7 @@ if ($Profile -eq "full") {
             exit 1
         }
     }
-    Invoke-Step "release manifest validation" { python release/write_manifest.py --validate release/manifest.toml }
+    Invoke-Step "release manifest validation" { python scripts/write_release_manifest.py --validate RELEASE_MANIFEST.toml }
     Invoke-Step "release manifest tests" { python -m unittest discover tests/release }
 }
 

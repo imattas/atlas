@@ -1,16 +1,15 @@
-import copy
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "release"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from write_manifest import validate_manifest
+from write_release_manifest import validate_manifest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MANIFEST = ROOT / "release" / "manifest.toml"
+MANIFEST = ROOT / "RELEASE_MANIFEST.toml"
 
 
 def write_manifest_variant(data: str) -> Path:
@@ -23,6 +22,46 @@ def write_manifest_variant(data: str) -> Path:
 class ReleaseManifestTest(unittest.TestCase):
     def test_checked_in_manifest_is_valid(self) -> None:
         self.assertEqual(validate_manifest(MANIFEST), [])
+
+    def test_release_metadata_uses_github_releases_not_release_directory(self) -> None:
+        tracked_release_paths = [
+            line
+            for line in __import__("subprocess").check_output(
+                ["git", "ls-files", "release"],
+                cwd=ROOT,
+                text=True,
+            ).splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(tracked_release_paths, [], "release metadata should not be tracked in release/")
+        self.assertTrue((ROOT / ".github" / "workflows" / "release.yml").exists())
+        workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        for token in ["gh release create", "RELEASE_MANIFEST.toml", "atlas-${{ github.ref_name }}"]:
+            self.assertIn(token, workflow)
+
+    def test_readme_and_gitignore_cover_project_handoff(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        for token in [
+            "AtlasCTF",
+            "from-scratch",
+            "CTF",
+            "Hardware acceleration",
+            "Benchmarks",
+            "GitHub Releases",
+            "cargo run -p atlas-cli",
+        ]:
+            self.assertIn(token, readme)
+
+        gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        for token in [
+            "target/",
+            ".env",
+            ".vscode/",
+            "release/",
+            "*.pyc",
+            "benchmark-output/",
+        ]:
+            self.assertIn(token, gitignore)
 
     def test_rejects_absent_required_suites_and_skipped_tests(self) -> None:
         text = MANIFEST.read_text(encoding="utf-8")
@@ -112,6 +151,24 @@ class ReleaseManifestTest(unittest.TestCase):
         self.assertIn(
             "Track 3 benchmark evidence is incomplete",
             validate_manifest(missing_track3_benchmark),
+        )
+
+    def test_manifest_includes_ctf_benchmark_evidence(self) -> None:
+        text = MANIFEST.read_text(encoding="utf-8")
+
+        self.assertIn('path = "benchmarks/ctf/manifest.toml"', text)
+        self.assertIn('path = "benchmarks/results/ctf-benchmarks.json"', text)
+        missing_ctf_benchmark = write_manifest_variant(
+            text.replace(
+                'path = "benchmarks/ctf/manifest.toml"',
+                'path = "benchmarks/ctf/missing.toml"',
+                1,
+            )
+        )
+
+        self.assertIn(
+            "CTF benchmark evidence is incomplete",
+            validate_manifest(missing_ctf_benchmark),
         )
 
 
