@@ -50,6 +50,8 @@ Runtime behavior:
   `.hsaco` code object instead of a host executable;
 - launch configuration records global size, local size, output cap, and transfer
   bytes;
+- accelerator placement can load Track 3 calibration thresholds for SIMD and
+  GPU break-even decisions;
 - generated kernels are cache-keyed by program, compiler, device, and options;
 - every GPU-reported match is revalidated against CPU IR semantics;
 - runtime telemetry records whether the result came from CPU fallback or from a

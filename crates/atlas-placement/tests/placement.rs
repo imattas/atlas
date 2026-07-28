@@ -1,6 +1,8 @@
 //! Placement model tests.
 
-use atlas_placement::{PlacementCapabilities, PlacementModel, PlacementTarget, SearchFeatures};
+use atlas_placement::{
+    PlacementCalibration, PlacementCapabilities, PlacementModel, PlacementTarget, SearchFeatures,
+};
 
 #[test]
 fn selects_scalar_for_tiny_or_divergent_jobs() {
@@ -90,4 +92,30 @@ fn never_selects_unavailable_accelerators() {
     );
 
     assert_eq!(decision.target, PlacementTarget::Scalar);
+}
+
+#[test]
+fn loads_gpu_thresholds_from_track3_calibration_manifest() {
+    let calibration = PlacementCalibration::from_file("../../benchmarks/track3/calibration.toml")
+        .expect("track3 calibration should load");
+
+    assert_eq!(calibration.simd_min_candidates, 1024);
+    assert_eq!(calibration.gpu_min_candidates, 1_000_000);
+    assert_eq!(calibration.gpu_cache_hit_min_candidates, 100_000);
+
+    let decision = PlacementModel::choose_with_calibration(
+        SearchFeatures {
+            candidates: calibration.gpu_cache_hit_min_candidates,
+            regular: true,
+            kernel_cache_hit: true,
+        },
+        PlacementCapabilities {
+            scalar: true,
+            simd: true,
+            gpu: true,
+        },
+        calibration,
+    );
+
+    assert_eq!(decision.target, PlacementTarget::Gpu);
 }
