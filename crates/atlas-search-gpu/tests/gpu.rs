@@ -3572,6 +3572,76 @@ fn runtime_uses_scalar_for_tiny_workloads_without_launching_gpu_driver() {
 }
 
 #[test]
+fn runtime_uses_external_calibration_for_gpu_placement_threshold() {
+    struct Cleanup {
+        original_calibration: Option<std::ffi::OsString>,
+        calibration_path: PathBuf,
+    }
+
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            restore_env(
+                "ATLAS_PLACEMENT_CALIBRATION",
+                self.original_calibration.clone(),
+            );
+            let _ = fs::remove_file(&self.calibration_path);
+        }
+    }
+
+    let _env_guard = env_lock();
+    let calibration_path = std::env::temp_dir().join(format!(
+        "atlas-placement-calibration-{}.toml",
+        std::process::id()
+    ));
+    fs::write(
+        &calibration_path,
+        "\
+schema_major = 1
+host = \"test-gpu\"
+
+[thresholds]
+simd_min_candidates = 1024
+gpu_min_candidates = 64
+gpu_cache_hit_min_candidates = 64
+",
+    )
+    .unwrap();
+    let cleanup = Cleanup {
+        original_calibration: std::env::var_os("ATLAS_PLACEMENT_CALIBRATION"),
+        calibration_path,
+    };
+    std::env::set_var("ATLAS_PLACEMENT_CALIBRATION", &cleanup.calibration_path);
+
+    let program = SearchProgram::try_from_fixture("add").unwrap();
+    let token = CancellationToken::new();
+    let sdks = [GpuSdk::OpenCl {
+        sdk: "test OpenCL".to_owned(),
+    }];
+    let runner = CountingDriverRunner {
+        calls: RefCell::new(0),
+        output: DriverRunOutput {
+            exit_code: 0,
+            reported_matches: vec![3],
+            stdout: "device completed".to_owned(),
+            stderr: String::new(),
+        },
+    };
+
+    let report = AcceleratorRuntime::execute_with_detected_driver(
+        &program,
+        SearchDomain::new(0, 64),
+        &sdks,
+        &token,
+        &runner,
+    );
+
+    assert_eq!(report.mode, RuntimeMode::DeviceValidated);
+    assert_eq!(*runner.calls.borrow(), 1);
+    assert_eq!(report.matches, vec![3]);
+    assert!(report.telemetry.rationale.contains("driver exit 0"));
+}
+
+#[test]
 fn runtime_force_gpu_policy_launches_driver_for_tiny_workloads() {
     let program = SearchProgram::try_from_fixture("add").unwrap();
     let token = CancellationToken::new();

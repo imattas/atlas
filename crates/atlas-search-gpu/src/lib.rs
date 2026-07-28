@@ -268,8 +268,35 @@ fn gpu_placement_for_sdk(
             simd: false,
             gpu: true,
         },
-        PlacementCalibration::default(),
+        runtime_placement_calibration(),
     )
+}
+
+fn runtime_placement_calibration() -> PlacementCalibration {
+    if let Some(path) = std::env::var_os("ATLAS_PLACEMENT_CALIBRATION") {
+        if let Ok(calibration) = PlacementCalibration::from_file(PathBuf::from(path)) {
+            return calibration;
+        }
+    }
+    default_track3_calibration_path()
+        .and_then(|path| PlacementCalibration::from_file(path).ok())
+        .unwrap_or_default()
+}
+
+fn default_track3_calibration_path() -> Option<PathBuf> {
+    let mut directory = std::env::current_dir().ok()?;
+    loop {
+        let candidate = directory
+            .join("benchmarks")
+            .join("track3")
+            .join("calibration.toml");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+        if !directory.pop() {
+            return None;
+        }
+    }
 }
 
 /// SDK-specific driver command plan.
