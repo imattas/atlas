@@ -68,6 +68,28 @@ class VerifyScriptTests(unittest.TestCase):
                 self.assertNotEqual(-1, first_hardware_test_index)
                 self.assertLess(doctor_index, first_hardware_test_index)
 
+    def test_hardware_profile_records_forced_gpu_benchmark_before_device_tests(self):
+        scripts = [
+            ROOT / "scripts" / "verify.ps1",
+            ROOT / "scripts" / "verify.sh",
+        ]
+
+        for script in scripts:
+            with self.subTest(script=script.name):
+                text = script.read_text(encoding="utf-8")
+                doctor_index = text.find("cargo run -q -p atlas-cli -- doctor")
+                benchmark_index = text.find("cargo run -q -p atlas-cli -- benchmark")
+                force_gpu_index = text.find("--force-gpu")
+                first_hardware_test_index = text.find(
+                    "generated_opencl_kernel_runs_on_device_and_preserves_full_candidates"
+                )
+                self.assertNotEqual(-1, doctor_index)
+                self.assertNotEqual(-1, benchmark_index)
+                self.assertNotEqual(-1, force_gpu_index)
+                self.assertNotEqual(-1, first_hardware_test_index)
+                self.assertLess(doctor_index, benchmark_index)
+                self.assertLess(benchmark_index, first_hardware_test_index)
+
     def test_hardware_profile_attempts_every_backend_before_reporting_failure(self):
         expectations = {
             "verify.ps1": ["Invoke-HardwareStep", "$HardwareFailures", "$HardwareFailures.Count"],
