@@ -275,7 +275,11 @@ fn driver_command_plan_selects_sdk_specific_sources_and_compilers() {
 
     assert_eq!(opencl.template_file, "gpu/opencl/atlas_search.cl");
     assert_eq!(opencl.source_file, "target/atlas-gpu/atlas_search.cl");
-    assert_eq!(opencl.compile_command[0], "opencl-clang");
+    assert_eq!(opencl.compile_command[0], "atlas-gpu-opencl-run");
+    assert!(opencl
+        .compile_command
+        .iter()
+        .any(|arg| arg == "--compile-check"));
     assert_eq!(vulkan.template_file, "gpu/vulkan/atlas_search.comp");
     assert_eq!(vulkan.compile_command[0], "glslc");
     assert_eq!(cuda.template_file, "gpu/cuda/atlas_search.cu");
@@ -328,8 +332,15 @@ fn opencl_driver_plan_carries_generated_semantic_kernel_source() {
     assert!(plan
         .kernel_source
         .contains("((candidate ^ 170UL) & mask) == 255UL"));
-    assert_eq!(plan.compile_command[0], "opencl-clang");
-    assert_eq!(plan.compile_command[3], "target/atlas-gpu/atlas_search.cl");
+    assert_eq!(plan.compile_command[0], "atlas-gpu-opencl-run");
+    assert!(plan
+        .compile_command
+        .iter()
+        .any(|arg| arg == "--compile-check"));
+    assert!(plan
+        .compile_command
+        .iter()
+        .any(|arg| arg == "target/atlas-gpu/atlas_search.cl"));
 }
 
 #[test]
@@ -384,6 +395,7 @@ fn driver_launch_plan_carries_domain_and_output_capacity() {
         .launch_command
         .windows(2)
         .any(|args| args == ["--global-size", "128"]));
+    assert_eq!(plan.launch_command[1], "target/atlas-gpu/atlas_search.cl");
 }
 
 #[test]

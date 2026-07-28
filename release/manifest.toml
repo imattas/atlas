@@ -54,6 +54,11 @@ name = "portable-gpu-sdk-selection"
 status = "supported"
 evidence = "crates/atlas-search-gpu/src/lib.rs"
 
+[[capabilities]]
+name = "opencl-device-adapter"
+status = "supported"
+evidence = "crates/atlas-gpu-opencl-adapter"
+
 [[artifacts]]
 name = "protocol-schema"
 path = "crates/atlas-protocol/src/lib.rs"
@@ -92,6 +97,16 @@ digest = "tracked-by-git"
 [[artifacts]]
 name = "notebook-replay"
 path = "tests/fixtures/events/track1_stream.toml"
+digest = "tracked-by-git"
+
+[[artifacts]]
+name = "opencl-adapter-lib"
+path = "crates/atlas-gpu-opencl-adapter/src/lib.rs"
+digest = "tracked-by-git"
+
+[[artifacts]]
+name = "opencl-adapter-bin"
+path = "crates/atlas-gpu-opencl-adapter/src/main.rs"
 digest = "tracked-by-git"
 
 [[artifacts]]

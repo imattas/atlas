@@ -19,8 +19,11 @@ Runtime behavior:
   restricted IR boundary;
 - OpenCL code generation lowers the restricted search operations into device
   predicates for candidate filtering and bounded atomic match output;
-- per-SDK command plans select checked-in kernel artifacts and compiler
-  frontends (`opencl-clang`, `glslc`, `nvcc`, or `hipcc`);
+- per-SDK command plans select checked-in kernel artifacts and compiler or
+  launcher frontends (`atlas-gpu-opencl-run`, `glslc`, `nvcc`, or `hipcc`);
+- the OpenCL adapter uses dynamic OpenCL loading, build-checks generated source,
+  launches the generated `atlas_search` kernel, and prints `match=<candidate>`
+  lines for CPU validation by the runtime;
 - production driver execution is isolated behind a runner boundary so host
   adapters can compile/launch kernels without changing search semantics;
 - process-backed execution writes generated per-program kernel source into the
@@ -38,6 +41,11 @@ Checked packaging fixtures:
 - `gpu/hip/atlas_search.hip`
 - `gpu/opencl/atlas_search.cl`
 - `gpu/vulkan/atlas_search.comp`
+
+Checked adapter artifacts:
+
+- `crates/atlas-gpu-opencl-adapter/src/lib.rs`
+- `crates/atlas-gpu-opencl-adapter/src/main.rs`
 
 Primary GPU references checked while implementing this boundary:
 

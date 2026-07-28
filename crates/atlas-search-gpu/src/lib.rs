@@ -181,8 +181,8 @@ impl DriverCommandPlan {
                     "gpu/opencl/atlas_search.cl",
                     "atlas_search.cl",
                     "atlas_search.opencl.bin",
-                    "opencl-clang",
-                    "-cl-std=CL3.0 -O2",
+                    "atlas-gpu-opencl-run",
+                    "--compile-check",
                     GpuSearcher::compile_opencl(program),
                 ),
                 GpuSdk::Vulkan { .. } => (
@@ -213,9 +213,14 @@ impl DriverCommandPlan {
         let source_file = join_path(output_dir, source_name);
         let artifact_file = join_path(output_dir, artifact_name);
         let compile_command = compile_command_for(compiler, options, &source_file, &artifact_file);
+        let launch_input = if matches!(sdk, GpuSdk::OpenCl { .. }) {
+            source_file.clone()
+        } else {
+            artifact_file.clone()
+        };
         let launch_command = vec![
             format!("atlas-gpu-{}-run", sdk.name().to_ascii_lowercase()),
-            artifact_file.clone(),
+            launch_input,
             "--start".to_owned(),
             domain.start.to_string(),
             "--end".to_owned(),

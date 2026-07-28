@@ -26,6 +26,10 @@ GPU_KERNEL_EVIDENCE = {
     "gpu/opencl/atlas_search.cl",
     "gpu/vulkan/atlas_search.comp",
 }
+GPU_ADAPTER_EVIDENCE = {
+    "crates/atlas-gpu-opencl-adapter/src/lib.rs",
+    "crates/atlas-gpu-opencl-adapter/src/main.rs",
+}
 
 
 def _git_revision() -> str:
@@ -71,6 +75,8 @@ def validate_manifest(path: Path) -> list[str]:
         errors.append("native math evidence is incomplete")
     if not GPU_KERNEL_EVIDENCE.issubset(artifact_paths):
         errors.append("GPU kernel evidence is incomplete")
+    if not GPU_ADAPTER_EVIDENCE.issubset(artifact_paths):
+        errors.append("GPU adapter evidence is incomplete")
     for artifact in artifacts:
         if not isinstance(artifact, dict):
             continue
@@ -112,6 +118,8 @@ def render_manifest() -> str:
         "tests/fixtures/events/track1_stream.toml",
         "crates/atlas-math/src/lib.rs",
         "backends/native-math/atlas_native_math_backend.py",
+        "crates/atlas-gpu-opencl-adapter/src/lib.rs",
+        "crates/atlas-gpu-opencl-adapter/src/main.rs",
         "gpu/cuda/atlas_search.cu",
         "gpu/hip/atlas_search.hip",
         "gpu/opencl/atlas_search.cl",
@@ -144,6 +152,7 @@ def render_manifest() -> str:
         ("advanced-automation", "tests/e2e/track4/manifest.toml"),
         ("native-exact-math", "crates/atlas-math"),
         ("portable-gpu-sdk-selection", "crates/atlas-search-gpu/src/lib.rs"),
+        ("opencl-device-adapter", "crates/atlas-gpu-opencl-adapter"),
     ]:
         body.extend(["[[capabilities]]", f'name = "{name}"', 'status = "supported"', f'evidence = "{evidence}"', ""])
     for path in evidence_paths:

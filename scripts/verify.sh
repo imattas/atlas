@@ -34,6 +34,8 @@ if [[ "$profile" == "distributed" || "$profile" == "advanced" || "$profile" == "
     benchmarks/track3/calibration.toml \
     docs/guides/workers.md \
     deploy/worker/README.md \
+    crates/atlas-gpu-opencl-adapter/src/lib.rs \
+    crates/atlas-gpu-opencl-adapter/src/main.rs \
     gpu/cuda/atlas_search.cu \
     gpu/hip/atlas_search.hip \
     gpu/opencl/atlas_search.cl \
