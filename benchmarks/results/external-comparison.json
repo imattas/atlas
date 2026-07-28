@@ -1,0 +1,89 @@
+[
+  {
+    "candidates_evaluated": 1,
+    "engine": "atlas-native",
+    "iterations": 2000,
+    "matches": 1,
+    "mean_ns": 35,
+    "name": "xor_width20",
+    "used_closed_form": true
+  },
+  {
+    "candidates_evaluated": 1,
+    "engine": "atlas-native",
+    "iterations": 2000,
+    "matches": 1,
+    "mean_ns": 51,
+    "name": "add_width20",
+    "used_closed_form": true
+  },
+  {
+    "candidates_evaluated": 1024,
+    "engine": "atlas-native",
+    "iterations": 20,
+    "matches": 1024,
+    "mean_ns": 6395,
+    "name": "checksum_width20",
+    "used_closed_form": true
+  },
+  {
+    "candidates_evaluated": null,
+    "engine": "python-scalar",
+    "iterations": 3,
+    "matches": 1,
+    "mean_ns": 88663000,
+    "name": "xor_width20",
+    "used_closed_form": false
+  },
+  {
+    "candidates_evaluated": null,
+    "engine": "python-scalar",
+    "iterations": 3,
+    "matches": 1,
+    "mean_ns": 79692000,
+    "name": "add_width20",
+    "used_closed_form": false
+  },
+  {
+    "candidates_evaluated": null,
+    "engine": "python-scalar",
+    "iterations": 3,
+    "matches": 1024,
+    "mean_ns": 62699933,
+    "name": "checksum_width20",
+    "used_closed_form": false
+  },
+  {
+    "candidates_evaluated": null,
+    "engine": "z3-python-first-model",
+    "iterations": 100,
+    "matches": 1,
+    "mean_ns": 892567,
+    "name": "xor_width20",
+    "used_closed_form": false
+  },
+  {
+    "candidates_evaluated": null,
+    "engine": "z3-python-first-model",
+    "iterations": 100,
+    "matches": 1,
+    "mean_ns": 297418,
+    "name": "add_width20",
+    "used_closed_form": false
+  },
+  {
+    "candidates_evaluated": null,
+    "engine": "z3-python-first-model",
+    "iterations": 100,
+    "matches": 1,
+    "mean_ns": 3958632,
+    "name": "checksum_width20",
+    "used_closed_form": false
+  },
+  {
+    "available": false,
+    "engine": "sage",
+    "name": "all",
+    "reason": "sage CLI not found on PATH"
+  }
+]
