@@ -1047,7 +1047,6 @@ fn standard_sdk_root_dirs() -> Vec<PathBuf> {
             for path in rocm_versioned_roots {
                 roots.push(path.clone());
                 push_existing_dir(&mut roots, path.join("hip"));
-                push_existing_dir(&mut roots, path.join("bin"));
             }
             push_existing_dir(&mut roots, rocm_base.clone());
             push_existing_dir(&mut roots, base.join("Khronos").join("OpenCL-SDK"));

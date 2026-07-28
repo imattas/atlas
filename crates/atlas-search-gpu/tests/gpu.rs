@@ -1286,6 +1286,47 @@ fn process_driver_runner_prefers_newest_standard_rocm_hipcc() {
     assert!(output.stdout.contains("new-hipcc"));
 }
 
+#[cfg(windows)]
+#[test]
+fn process_driver_runner_ignores_duplicate_nested_standard_rocm_bin_roots() {
+    let _env_guard = env_lock();
+    let root = std::env::temp_dir().join(format!(
+        "atlas-rocm-standard-toolkit-clean-{}",
+        std::process::id()
+    ));
+    let invalid_nested_hipcc_path = write_sdk_tool(
+        &root.join("AMD").join("ROCm").join("6.1").join("bin"),
+        "hipcc",
+        "nested-hipcc",
+        13,
+    );
+    let original_path = std::env::var_os("PATH");
+    let original_hip_path = std::env::var_os("HIP_PATH");
+    let original_rocm_path = std::env::var_os("ROCM_PATH");
+    let original_rocm_home = std::env::var_os("ROCM_HOME");
+    let original_program_files = std::env::var_os("ProgramFiles");
+    let original_program_files_x86 = std::env::var_os("ProgramFiles(x86)");
+    std::env::set_var("PATH", "");
+    std::env::remove_var("HIP_PATH");
+    std::env::remove_var("ROCM_PATH");
+    std::env::remove_var("ROCM_HOME");
+    std::env::set_var("ProgramFiles", &root);
+    std::env::remove_var("ProgramFiles(x86)");
+
+    let output = ProcessDriverRunner.run_command(&["hipcc".to_owned()]);
+
+    restore_env("PATH", original_path);
+    restore_env("HIP_PATH", original_hip_path);
+    restore_env("ROCM_PATH", original_rocm_path);
+    restore_env("ROCM_HOME", original_rocm_home);
+    restore_env("ProgramFiles", original_program_files);
+    restore_env("ProgramFiles(x86)", original_program_files_x86);
+    let _ = fs::remove_file(invalid_nested_hipcc_path);
+    let _ = fs::remove_dir_all(root);
+    assert_eq!(output.exit_code, 127);
+    assert!(!output.stdout.contains("nested-hipcc"));
+}
+
 #[test]
 fn driver_launch_plan_carries_domain_and_output_capacity() {
     let program = SearchProgram::try_from_fixture("xor").unwrap();
