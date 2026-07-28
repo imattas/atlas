@@ -8,6 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 atlas-worker = { path = "../atlas-worker" }
+rusqlite = { version = "0.32.1", features = ["bundled"] }
 
 [lib]
 name = "atlas_coordinator"

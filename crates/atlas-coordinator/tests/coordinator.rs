@@ -1,9 +1,11 @@
 //! Coordinator/worker integration tests.
 
 use atlas_coordinator::{
-    caps, ArtifactEnvelope, Coordinator, CoordinatorError, JobEnvelope, WorkerResult,
+    caps, ArtifactEnvelope, Coordinator, CoordinatorError, JobEnvelope, SqliteLeaseStore,
+    WorkerResult,
 };
 use atlas_worker::{SandboxControl, SandboxPolicy, WorkerRegistration};
+use std::path::PathBuf;
 
 fn registration(id: &str, cert: &str, labels: &[&str]) -> WorkerRegistration {
     WorkerRegistration {
@@ -11,6 +13,10 @@ fn registration(id: &str, cert: &str, labels: &[&str]) -> WorkerRegistration {
         certificate_fingerprint: cert.to_owned(),
         capabilities: caps(labels),
     }
+}
+
+fn temp_db_path(prefix: &str) -> PathBuf {
+    std::env::temp_dir().join(format!("{prefix}-{}.sqlite", std::process::id()))
 }
 
 #[test]
@@ -90,6 +96,37 @@ fn coordinator_snapshot_restores_workers_cancellations_leases_and_results() {
         restored.submit_result(&duplicate_job, &duplicate_result, "secret", 1),
         Err(CoordinatorError::DuplicateResult)
     );
+}
+
+#[test]
+fn sqlite_lease_store_recovers_leases_and_result_dedup_after_restart() {
+    let db_path = temp_db_path("atlas-coordinator-lease-store");
+    let mut coordinator = Coordinator::new(["trusted".to_owned()]);
+    coordinator
+        .register(registration("worker-1", "trusted", &["cpu"]))
+        .unwrap();
+    let leased = JobEnvelope::new("leased", "hash", ["cpu".to_owned()], "secret", 20);
+    let completed = JobEnvelope::new("completed", "hash", ["cpu".to_owned()], "secret", 20);
+    let completed_result = WorkerResult::new("completed", "result", "secret");
+
+    coordinator.lease_job(&leased).unwrap();
+    coordinator.cancel("leased");
+    coordinator
+        .submit_result(&completed, &completed_result, "secret", 1)
+        .unwrap();
+
+    let store = SqliteLeaseStore::open(&db_path).unwrap();
+    store.save_snapshot(&coordinator.snapshot()).unwrap();
+    let mut restored = Coordinator::restore(store.load_snapshot().unwrap());
+
+    assert_eq!(restored.active_lease("leased"), Some("worker-1"));
+    assert!(restored.is_cancelled("leased"));
+    assert_eq!(
+        restored.submit_result(&completed, &completed_result, "secret", 1),
+        Err(CoordinatorError::DuplicateResult)
+    );
+
+    let _ = std::fs::remove_file(db_path);
 }
 
 #[test]

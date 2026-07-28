@@ -1,8 +1,10 @@
 //! Authenticated coordinator contracts.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 use atlas_worker::{WorkerCapabilities, WorkerRegistration};
+use rusqlite::{params, Connection};
 
 /// Signed content-addressed job.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -371,6 +373,172 @@ impl Coordinator {
     }
 }
 
+/// SQLite-backed durable coordinator lease state.
+pub struct SqliteLeaseStore {
+    connection: Connection,
+}
+
+impl SqliteLeaseStore {
+    /// Opens or creates a lease-state database.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `SQLite` cannot open the database or initialize the
+    /// schema.
+    pub fn open(path: impl AsRef<Path>) -> Result<Self, String> {
+        let connection = Connection::open(path).map_err(|error| error.to_string())?;
+        connection
+            .execute_batch(
+                "
+                CREATE TABLE IF NOT EXISTS trusted_certificates (
+                    fingerprint TEXT PRIMARY KEY NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS workers (
+                    worker_id TEXT PRIMARY KEY NOT NULL,
+                    certificate_fingerprint TEXT NOT NULL,
+                    cpu_cores INTEGER NOT NULL,
+                    memory_mib INTEGER NOT NULL,
+                    labels TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS accepted_results (
+                    job_id TEXT PRIMARY KEY NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS cancelled_jobs (
+                    job_id TEXT PRIMARY KEY NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS active_leases (
+                    job_id TEXT PRIMARY KEY NOT NULL,
+                    worker_id TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS last_heartbeats (
+                    worker_id TEXT PRIMARY KEY NOT NULL,
+                    tick INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS artifacts (
+                    content_hash TEXT PRIMARY KEY NOT NULL,
+                    bytes BLOB NOT NULL
+                );
+                ",
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(Self { connection })
+    }
+
+    /// Saves a complete coordinator snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `SQLite` rejects a statement or value.
+    pub fn save_snapshot(&self, snapshot: &CoordinatorSnapshot) -> Result<(), String> {
+        self.connection
+            .execute_batch(
+                "
+                DELETE FROM trusted_certificates;
+                DELETE FROM workers;
+                DELETE FROM accepted_results;
+                DELETE FROM cancelled_jobs;
+                DELETE FROM active_leases;
+                DELETE FROM last_heartbeats;
+                DELETE FROM artifacts;
+                ",
+            )
+            .map_err(|error| error.to_string())?;
+
+        for fingerprint in &snapshot.trusted_certificates {
+            self.connection
+                .execute(
+                    "INSERT INTO trusted_certificates (fingerprint) VALUES (?1)",
+                    params![fingerprint],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        for worker in snapshot.workers.values() {
+            self.connection
+                .execute(
+                    "INSERT INTO workers (worker_id, certificate_fingerprint, cpu_cores, memory_mib, labels)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![
+                        &worker.worker_id,
+                        &worker.certificate_fingerprint,
+                        worker.capabilities.cpu_cores,
+                        worker.capabilities.memory_mib,
+                        encode_labels(&worker.capabilities.labels),
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        insert_string_set(
+            &self.connection,
+            "accepted_results",
+            "job_id",
+            &snapshot.accepted_results,
+        )?;
+        insert_string_set(
+            &self.connection,
+            "cancelled_jobs",
+            "job_id",
+            &snapshot.cancelled_jobs,
+        )?;
+        for (job_id, worker_id) in &snapshot.active_leases {
+            self.connection
+                .execute(
+                    "INSERT INTO active_leases (job_id, worker_id) VALUES (?1, ?2)",
+                    params![job_id, worker_id],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        for (worker_id, tick) in &snapshot.last_heartbeats {
+            self.connection
+                .execute(
+                    "INSERT INTO last_heartbeats (worker_id, tick) VALUES (?1, ?2)",
+                    params![worker_id, tick],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        for artifact in snapshot.artifacts.values() {
+            self.connection
+                .execute(
+                    "INSERT INTO artifacts (content_hash, bytes) VALUES (?1, ?2)",
+                    params![&artifact.content_hash, &artifact.bytes],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// Loads a complete coordinator snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `SQLite` rejects a query or row value.
+    pub fn load_snapshot(&self) -> Result<CoordinatorSnapshot, String> {
+        Ok(CoordinatorSnapshot {
+            trusted_certificates: query_string_set(
+                &self.connection,
+                "SELECT fingerprint FROM trusted_certificates",
+            )?,
+            workers: query_workers(&self.connection)?,
+            accepted_results: query_string_set(
+                &self.connection,
+                "SELECT job_id FROM accepted_results",
+            )?,
+            cancelled_jobs: query_string_set(
+                &self.connection,
+                "SELECT job_id FROM cancelled_jobs",
+            )?,
+            active_leases: query_string_map(
+                &self.connection,
+                "SELECT job_id, worker_id FROM active_leases",
+            )?,
+            last_heartbeats: query_u64_map(
+                &self.connection,
+                "SELECT worker_id, tick FROM last_heartbeats",
+            )?,
+            artifacts: query_artifacts(&self.connection)?,
+        })
+    }
+}
+
 /// Creates a deterministic test signature.
 #[must_use]
 pub fn sign_parts(parts: &[&str], secret: &str) -> String {
@@ -381,6 +549,127 @@ pub fn sign_parts(parts: &[&str], secret: &str) -> String {
         }
     }
     format!("{state:016x}")
+}
+
+fn insert_string_set(
+    connection: &Connection,
+    table: &str,
+    column: &str,
+    values: &BTreeSet<String>,
+) -> Result<(), String> {
+    let sql = format!("INSERT INTO {table} ({column}) VALUES (?1)");
+    for value in values {
+        connection
+            .execute(&sql, params![value])
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+fn query_string_set(connection: &Connection, sql: &str) -> Result<BTreeSet<String>, String> {
+    let mut statement = connection.prepare(sql).map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|error| error.to_string())?;
+    let mut values = BTreeSet::new();
+    for row in rows {
+        values.insert(row.map_err(|error| error.to_string())?);
+    }
+    Ok(values)
+}
+
+fn query_string_map(
+    connection: &Connection,
+    sql: &str,
+) -> Result<BTreeMap<String, String>, String> {
+    let mut statement = connection.prepare(sql).map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|error| error.to_string())?;
+    let mut values = BTreeMap::new();
+    for row in rows {
+        let (key, value) = row.map_err(|error| error.to_string())?;
+        values.insert(key, value);
+    }
+    Ok(values)
+}
+
+fn query_u64_map(connection: &Connection, sql: &str) -> Result<BTreeMap<String, u64>, String> {
+    let mut statement = connection.prepare(sql).map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, u64>(1)?))
+        })
+        .map_err(|error| error.to_string())?;
+    let mut values = BTreeMap::new();
+    for row in rows {
+        let (key, value) = row.map_err(|error| error.to_string())?;
+        values.insert(key, value);
+    }
+    Ok(values)
+}
+
+fn query_workers(connection: &Connection) -> Result<BTreeMap<String, WorkerRegistration>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT worker_id, certificate_fingerprint, cpu_cores, memory_mib, labels FROM workers",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            let worker_id = row.get::<_, String>(0)?;
+            Ok(WorkerRegistration {
+                worker_id,
+                certificate_fingerprint: row.get(1)?,
+                capabilities: WorkerCapabilities {
+                    cpu_cores: row.get(2)?,
+                    memory_mib: row.get(3)?,
+                    labels: decode_labels(&row.get::<_, String>(4)?),
+                },
+            })
+        })
+        .map_err(|error| error.to_string())?;
+    let mut workers = BTreeMap::new();
+    for row in rows {
+        let worker = row.map_err(|error| error.to_string())?;
+        workers.insert(worker.worker_id.clone(), worker);
+    }
+    Ok(workers)
+}
+
+fn query_artifacts(connection: &Connection) -> Result<BTreeMap<String, ArtifactEnvelope>, String> {
+    let mut statement = connection
+        .prepare("SELECT content_hash, bytes FROM artifacts")
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            let content_hash = row.get::<_, String>(0)?;
+            Ok(ArtifactEnvelope {
+                content_hash,
+                bytes: row.get(1)?,
+            })
+        })
+        .map_err(|error| error.to_string())?;
+    let mut artifacts = BTreeMap::new();
+    for row in rows {
+        let artifact = row.map_err(|error| error.to_string())?;
+        artifacts.insert(artifact.content_hash.clone(), artifact);
+    }
+    Ok(artifacts)
+}
+
+fn encode_labels(labels: &BTreeSet<String>) -> String {
+    labels.iter().cloned().collect::<Vec<_>>().join("\u{1f}")
+}
+
+fn decode_labels(value: &str) -> BTreeSet<String> {
+    value
+        .split('\u{1f}')
+        .filter(|label| !label.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 fn artifact_hash(bytes: &[u8]) -> String {
