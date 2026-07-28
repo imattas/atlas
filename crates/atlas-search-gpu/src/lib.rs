@@ -852,7 +852,7 @@ fn is_known_sdk_tool(name: &str) -> bool {
 }
 
 fn sdk_root_dirs() -> Vec<PathBuf> {
-    [
+    let mut roots = [
         "CUDA_PATH",
         "CUDA_HOME",
         "CUDA_ROOT",
@@ -863,7 +863,9 @@ fn sdk_root_dirs() -> Vec<PathBuf> {
     .into_iter()
     .filter_map(std::env::var_os)
     .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
-    .collect()
+    .collect::<Vec<_>>();
+    roots.extend(standard_sdk_root_dirs());
+    roots
 }
 
 fn sdk_tool_candidates(dir: &Path, plain_name: &str) -> Vec<PathBuf> {

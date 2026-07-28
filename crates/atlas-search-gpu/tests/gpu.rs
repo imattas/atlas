@@ -1144,6 +1144,46 @@ fn process_driver_runner_resolves_nvcc_from_cuda_sdk_root_when_not_on_path() {
     assert!(output.stdout.contains("nvcc-ok"));
 }
 
+#[cfg(windows)]
+#[test]
+fn process_driver_runner_resolves_nvcc_from_standard_cuda_toolkit_layout_when_not_on_path() {
+    let _env_guard = env_lock();
+    let root = std::env::temp_dir().join(format!(
+        "atlas-cuda-standard-toolkit-{}",
+        std::process::id()
+    ));
+    let sdk_root = root
+        .join("NVIDIA GPU Computing Toolkit")
+        .join("CUDA")
+        .join("v12.4");
+    let nvcc_path = write_sdk_tool(&sdk_root, "nvcc", "standard-nvcc-ok", 9);
+    let original_path = std::env::var_os("PATH");
+    let original_cuda_path = std::env::var_os("CUDA_PATH");
+    let original_cuda_home = std::env::var_os("CUDA_HOME");
+    let original_cuda_root = std::env::var_os("CUDA_ROOT");
+    let original_program_files = std::env::var_os("ProgramFiles");
+    let original_program_files_x86 = std::env::var_os("ProgramFiles(x86)");
+    std::env::set_var("PATH", "");
+    std::env::remove_var("CUDA_PATH");
+    std::env::remove_var("CUDA_HOME");
+    std::env::remove_var("CUDA_ROOT");
+    std::env::set_var("ProgramFiles", &root);
+    std::env::remove_var("ProgramFiles(x86)");
+
+    let output = ProcessDriverRunner.run_command(&["nvcc".to_owned()]);
+
+    restore_env("PATH", original_path);
+    restore_env("CUDA_PATH", original_cuda_path);
+    restore_env("CUDA_HOME", original_cuda_home);
+    restore_env("CUDA_ROOT", original_cuda_root);
+    restore_env("ProgramFiles", original_program_files);
+    restore_env("ProgramFiles(x86)", original_program_files_x86);
+    let _ = fs::remove_file(nvcc_path);
+    let _ = fs::remove_dir_all(root);
+    assert_eq!(output.exit_code, 9);
+    assert!(output.stdout.contains("standard-nvcc-ok"));
+}
+
 #[test]
 fn process_driver_runner_resolves_hipcc_from_rocm_home_when_not_on_path() {
     let _env_guard = env_lock();
